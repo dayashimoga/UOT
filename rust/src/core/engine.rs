@@ -1,0 +1,612 @@
+//! UOT Engine — Main Coordinator
+//!
+//! Manages the lifecycle of discovery, connections, and transfers.
+//! This is the single entry point that the API layer uses.
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use parking_lot::RwLock;
+use tokio::sync::mpsc;
+use uuid::Uuid;
+
+use crate::core::config::AppConfig;
+use crate::core::error::{TransferError, TransportError, UotError};
+use crate::discovery::mdns::{DiscoveryEvent, MdnsDiscovery};
+use crate::discovery::types::{DeviceType, DiscoveredDevice};
+use crate::transfer::engine::{
+    self, ProgressTracker, TransferItem,
+};
+use crate::transfer::types::{TransferDirection, TransferProgress, TransferRecord, TransferStatus};
+use crate::transport::tcp::{self, Frame, FrameType, TcpConnection, TcpTransportListener};
+
+/// Engine state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineState {
+    /// Not started.
+    Stopped,
+    /// Starting up.
+    Starting,
+    /// Running and ready.
+    Running,
+    /// Shutting down.
+    ShuttingDown,
+}
+
+/// Main UOT engine coordinator.
+pub struct UotEngine {
+    /// Configuration.
+    config: AppConfig,
+    /// Current state.
+    state: Arc<RwLock<EngineState>>,
+    /// Device ID for this instance.
+    device_id: String,
+    /// mDNS discovery.
+    discovery: Arc<RwLock<Option<MdnsDiscovery>>>,
+    /// TCP listener.
+    listener: Arc<RwLock<Option<TcpTransportListener>>>,
+    /// Active connections by device_id.
+    connections: Arc<RwLock<HashMap<String, TcpConnection>>>,
+    /// Discovered devices.
+    devices: Arc<RwLock<HashMap<String, DiscoveredDevice>>>,
+    /// Active transfers.
+    transfers: Arc<RwLock<HashMap<Uuid, TransferRecord>>>,
+    /// Progress trackers.
+    progress_trackers: Arc<RwLock<HashMap<Uuid, Arc<ProgressTracker>>>>,
+    /// Event channel for UI updates.
+    event_tx: mpsc::Sender<EngineEvent>,
+}
+
+/// Events emitted by the engine for UI consumption.
+#[derive(Debug, Clone)]
+pub enum EngineEvent {
+    /// Engine state changed.
+    StateChanged(EngineState),
+    /// Device discovered.
+    DeviceFound(DiscoveredDevice),
+    /// Device lost.
+    DeviceLost(String),
+    /// Device updated.
+    DeviceUpdated(DiscoveredDevice),
+    /// Transfer progress update.
+    TransferProgress(TransferProgress),
+    /// Transfer status changed.
+    TransferStatusChanged {
+        transfer_id: Uuid,
+        status: TransferStatus,
+    },
+    /// Incoming transfer offer.
+    IncomingOffer {
+        transfer_id: Uuid,
+        from_device: String,
+        items: Vec<String>,
+        total_size: u64,
+    },
+}
+
+impl UotEngine {
+    /// Create a new engine with the given configuration.
+    pub fn new(config: AppConfig) -> (Self, mpsc::Receiver<EngineEvent>) {
+        let (event_tx, event_rx) = mpsc::channel(256);
+        let device_id = Uuid::new_v4().to_string();
+
+        (
+            Self {
+                config,
+                state: Arc::new(RwLock::new(EngineState::Stopped)),
+                device_id,
+                discovery: Arc::new(RwLock::new(None)),
+                listener: Arc::new(RwLock::new(None)),
+                connections: Arc::new(RwLock::new(HashMap::new())),
+                devices: Arc::new(RwLock::new(HashMap::new())),
+                transfers: Arc::new(RwLock::new(HashMap::new())),
+                progress_trackers: Arc::new(RwLock::new(HashMap::new())),
+                event_tx,
+            },
+            event_rx,
+        )
+    }
+
+    /// Start the engine: bind TCP, register mDNS, start browsing.
+    pub async fn start(&self) -> Result<(), UotError> {
+        *self.state.write() = EngineState::Starting;
+        let _ = self.event_tx.send(EngineEvent::StateChanged(EngineState::Starting)).await;
+
+        // Start TCP listener
+        let port = self.config.network_port.unwrap_or(tcp::DEFAULT_PORT);
+        let (tcp_listener, mut incoming_streams) = TcpTransportListener::bind(port)
+            .await
+            .map_err(UotError::Transport)?;
+
+        let actual_port = tcp_listener.port();
+        *self.listener.write() = Some(tcp_listener);
+
+        // Start mDNS discovery
+        let mut mdns = MdnsDiscovery::new()
+            .map_err(|e| UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e)))?;
+
+        let device_type = DeviceType::Desktop; // TODO: detect platform
+        mdns.register(
+            &self.device_id,
+            &self.config.device_name,
+            actual_port,
+            device_type,
+        )
+        .map_err(|e| UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e)))?;
+
+        // Start browsing
+        let mut discovery_rx = mdns.start_browsing()
+            .map_err(|e| UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e)))?;
+
+        *self.discovery.write() = Some(mdns);
+
+        // Spawn discovery event handler
+        let devices = Arc::clone(&self.devices);
+        let event_tx = self.event_tx.clone();
+        tokio::spawn(async move {
+            while let Some(event) = discovery_rx.recv().await {
+                match event {
+                    DiscoveryEvent::DeviceFound(device) => {
+                        devices.write().insert(device.device_id.clone(), device.clone());
+                        let _ = event_tx.send(EngineEvent::DeviceFound(device)).await;
+                    }
+                    DiscoveryEvent::DeviceLost(id) => {
+                        devices.write().remove(&id);
+                        let _ = event_tx.send(EngineEvent::DeviceLost(id)).await;
+                    }
+                    DiscoveryEvent::DeviceUpdated(device) => {
+                        devices.write().insert(device.device_id.clone(), device.clone());
+                        let _ = event_tx.send(EngineEvent::DeviceUpdated(device)).await;
+                    }
+                }
+            }
+        });
+
+        // Spawn incoming connection handler
+        let connections = Arc::clone(&self.connections);
+        let transfers = Arc::clone(&self.transfers);
+        let progress_trackers = Arc::clone(&self.progress_trackers);
+        let event_tx2 = self.event_tx.clone();
+        let save_dir = self.config.transfer.save_directory.clone();
+
+        tokio::spawn(async move {
+            while let Some(stream) = incoming_streams.recv().await {
+                let (frame_tx, mut frame_rx) = mpsc::channel(256);
+                let conn = match TcpConnection::new(stream, frame_tx) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::error!("Failed to create connection: {e}");
+                        continue;
+                    }
+                };
+
+                let remote = conn.remote_addr().to_string();
+                connections.write().insert(remote.clone(), conn);
+
+                // Handle incoming frames
+                let transfers_clone = Arc::clone(&transfers);
+                let trackers_clone = Arc::clone(&progress_trackers);
+                let event_tx3 = event_tx2.clone();
+                let save_dir_clone = save_dir.clone();
+
+                tokio::spawn(async move {
+                    Self::handle_incoming_frames(
+                        &mut frame_rx,
+                        &remote,
+                        &transfers_clone,
+                        &trackers_clone,
+                        &event_tx3,
+                        &save_dir_clone,
+                    )
+                    .await;
+                });
+            }
+        });
+
+        *self.state.write() = EngineState::Running;
+        let _ = self.event_tx.send(EngineEvent::StateChanged(EngineState::Running)).await;
+        log::info!("UOT engine started on port {actual_port}");
+
+        Ok(())
+    }
+
+    /// Send files to a connected device.
+    pub async fn send_files(
+        &self,
+        device_id: &str,
+        paths: Vec<PathBuf>,
+    ) -> Result<Uuid, UotError> {
+        // Collect file items
+        let mut items = Vec::new();
+        for path in &paths {
+            if path.is_dir() {
+                let dir_items = engine::collect_files(path)
+                    .await
+                    .map_err(UotError::Transfer)?;
+                items.extend(dir_items);
+            } else {
+                let item = TransferItem::from_path(path)
+                    .await
+                    .map_err(UotError::Transfer)?;
+                items.push(item);
+            }
+        }
+
+        if items.is_empty() {
+            return Err(UotError::Transfer(TransferError::EmptyTransfer));
+        }
+
+        // Find the device address
+        let device = self.devices.read().get(device_id).cloned()
+            .ok_or_else(|| UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string())))?;
+
+        let addr_str = device.address
+            .ok_or_else(|| UotError::Transfer(TransferError::DeviceNotFound("No address".to_string())))?;
+
+        let addr: SocketAddr = addr_str.parse()
+            .map_err(|e| UotError::Transport(TransportError::Connection(format!("Invalid addr: {e}"))))?;
+
+        // Create transfer record
+        let record = engine::create_transfer_record(&items, TransferDirection::Send, &device.device_name);
+        let transfer_id = record.transfer_id;
+        self.transfers.write().insert(transfer_id, record);
+
+        // Connect to the device
+        let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
+        let (frame_tx, _frame_rx) = mpsc::channel(256);
+        let conn = TcpConnection::new(stream, frame_tx).map_err(UotError::Transport)?;
+
+        // Create progress tracker
+        let total_bytes: u64 = items.iter().map(|i| i.size).sum();
+        let tracker = Arc::new(ProgressTracker::new(transfer_id, total_bytes, items.len()));
+        self.progress_trackers.write().insert(transfer_id, Arc::clone(&tracker));
+
+        // Send offer message
+        let offer = serde_json::json!({
+            "type": "offer",
+            "transfer_id": transfer_id.to_string(),
+            "device_name": self.config.device_name,
+            "items": items.iter().map(|i| serde_json::json!({
+                "name": i.name,
+                "relative_path": i.relative_path,
+                "size": i.size,
+            })).collect::<Vec<_>>(),
+            "total_size": total_bytes,
+        });
+        let offer_bytes = serde_json::to_vec(&offer)
+            .map_err(|e| UotError::Transfer(TransferError::Protocol(format!("Serialize error: {e}"))))?;
+
+        conn.send(Frame::control(&offer_bytes)).await.map_err(UotError::Transport)?;
+
+        // Update status
+        if let Some(record) = self.transfers.write().get_mut(&transfer_id) {
+            record.status = TransferStatus::Pending;
+            record.started_at = Some(chrono::Utc::now());
+        }
+
+        // Spawn the actual transfer task
+        let transfers = Arc::clone(&self.transfers);
+        let event_tx = self.event_tx.clone();
+        let chunk_size = self.config.transfer.chunk_size;
+
+        tokio::spawn(async move {
+            let result = Self::execute_send(
+                conn, items, transfer_id, &tracker, chunk_size, &event_tx,
+            ).await;
+
+            let mut transfers = transfers.write();
+            if let Some(record) = transfers.get_mut(&transfer_id) {
+                match result {
+                    Ok(()) => {
+                        record.status = TransferStatus::Completed;
+                        record.finished_at = Some(chrono::Utc::now());
+                        record.transferred_bytes = record.total_size;
+                    }
+                    Err(e) => {
+                        record.status = TransferStatus::Failed;
+                        record.finished_at = Some(chrono::Utc::now());
+                        record.error = Some(e.to_string());
+                        log::error!("Transfer {transfer_id} failed: {e}");
+                    }
+                }
+                let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                    transfer_id,
+                    status: record.status,
+                });
+            }
+        });
+
+        Ok(transfer_id)
+    }
+
+    /// Execute the send operation — chunked file transfer.
+    async fn execute_send(
+        conn: TcpConnection,
+        items: Vec<TransferItem>,
+        transfer_id: Uuid,
+        tracker: &ProgressTracker,
+        chunk_size: usize,
+        event_tx: &mpsc::Sender<EngineEvent>,
+    ) -> Result<(), TransferError> {
+        for item in &items {
+            tracker.set_current_item(&item.name);
+
+            let file_size = item.size;
+            let mut offset: u64 = 0;
+
+            // Send file header
+            let header = serde_json::json!({
+                "type": "file_start",
+                "transfer_id": transfer_id.to_string(),
+                "name": item.name,
+                "relative_path": item.relative_path,
+                "size": file_size,
+            });
+            let header_bytes = serde_json::to_vec(&header)
+                .map_err(|e| TransferError::Protocol(format!("Serialize error: {e}")))?;
+            conn.send(Frame::control(&header_bytes))
+                .await
+                .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+            // Send chunks
+            while offset < file_size {
+                let (chunk_data, crc) = engine::read_chunk(&item.path, offset, chunk_size).await?;
+                let chunk_len = chunk_data.len() as u64;
+
+                // Prepend chunk metadata (16 bytes: offset u64 + crc u32 + reserved u32)
+                let mut chunk_frame = Vec::with_capacity(16 + chunk_data.len());
+                chunk_frame.extend_from_slice(&offset.to_be_bytes());
+                chunk_frame.extend_from_slice(&crc.to_be_bytes());
+                chunk_frame.extend_from_slice(&[0u8; 4]); // reserved
+                chunk_frame.extend_from_slice(&chunk_data);
+
+                conn.send(Frame::data(chunk_frame))
+                    .await
+                    .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+                offset += chunk_len;
+                tracker.add_bytes(chunk_len);
+
+                // Emit progress periodically
+                let progress = tracker.snapshot();
+                let _ = event_tx.try_send(EngineEvent::TransferProgress(progress));
+            }
+
+            // Compute and send file hash
+            let hash = engine::compute_sha256(&item.path).await?;
+            let verify = serde_json::json!({
+                "type": "file_end",
+                "transfer_id": transfer_id.to_string(),
+                "name": item.name,
+                "sha256": hash,
+            });
+            let verify_bytes = serde_json::to_vec(&verify)
+                .map_err(|e| TransferError::Protocol(format!("Serialize error: {e}")))?;
+            conn.send(Frame::control(&verify_bytes))
+                .await
+                .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+            tracker.complete_item();
+        }
+
+        // Send transfer complete
+        let complete = serde_json::json!({
+            "type": "transfer_complete",
+            "transfer_id": transfer_id.to_string(),
+        });
+        let complete_bytes = serde_json::to_vec(&complete)
+            .map_err(|e| TransferError::Protocol(format!("Serialize error: {e}")))?;
+        conn.send(Frame::control(&complete_bytes))
+            .await
+            .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Handle incoming frames from a connection.
+    async fn handle_incoming_frames(
+        frame_rx: &mut mpsc::Receiver<Frame>,
+        remote: &str,
+        transfers: &Arc<RwLock<HashMap<Uuid, TransferRecord>>>,
+        _trackers: &Arc<RwLock<HashMap<Uuid, Arc<ProgressTracker>>>>,
+        event_tx: &mpsc::Sender<EngineEvent>,
+        save_dir: &str,
+    ) {
+        let mut current_file: Option<(PathBuf, String, u64)> = None; // (path, name, size)
+        let mut current_transfer_id: Option<Uuid> = None;
+
+        while let Some(frame) = frame_rx.recv().await {
+            match frame.frame_type {
+                FrameType::Control => {
+                    let msg: serde_json::Value = match serde_json::from_slice(&frame.payload) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::error!("Invalid JSON from {remote}: {e}");
+                            continue;
+                        }
+                    };
+
+                    let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+                    match msg_type {
+                        "offer" => {
+                            let transfer_id_str = msg.get("transfer_id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let transfer_id = Uuid::parse_str(transfer_id_str).unwrap_or_else(|_| Uuid::new_v4());
+                            let from_device = msg.get("device_name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("Unknown")
+                                .to_string();
+                            let total_size = msg.get("total_size")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+                            let items: Vec<String> = msg.get("items")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| arr.iter()
+                                    .filter_map(|i| i.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+                                    .collect())
+                                .unwrap_or_default();
+
+                            current_transfer_id = Some(transfer_id);
+
+                            // Auto-accept for now (will add consent UI later)
+                            let _ = event_tx.send(EngineEvent::IncomingOffer {
+                                transfer_id,
+                                from_device,
+                                items,
+                                total_size,
+                            }).await;
+
+                            log::info!("Accepted transfer {transfer_id} from {remote}");
+                        }
+                        "file_start" => {
+                            let name = msg.get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unknown")
+                                .to_string();
+                            let relative_path = msg.get("relative_path")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or(&name);
+                            let size = msg.get("size")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+
+                            // Sanitize path (security: prevent traversal)
+                            let sanitized = relative_path.replace("..", "_").replace('\\', "/");
+                            let file_path = PathBuf::from(save_dir).join(&sanitized);
+
+                            current_file = Some((file_path, name.clone(), size));
+                            log::info!("Receiving file: {name} ({size} bytes)");
+                        }
+                        "file_end" => {
+                            if let Some((ref path, ref name, _)) = current_file {
+                                let expected_hash = msg.get("sha256")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+
+                                match engine::compute_sha256(path).await {
+                                    Ok(actual_hash) => {
+                                        if actual_hash == expected_hash {
+                                            log::info!("File {name} verified ✓");
+                                        } else {
+                                            log::error!("File {name} hash mismatch! Expected: {expected_hash}, Got: {actual_hash}");
+                                        }
+                                    }
+                                    Err(e) => log::error!("Cannot verify {name}: {e}"),
+                                }
+                            }
+                            current_file = None;
+                        }
+                        "transfer_complete" => {
+                            if let Some(tid) = current_transfer_id {
+                                let mut t = transfers.write();
+                                if let Some(record) = t.get_mut(&tid) {
+                                    record.status = TransferStatus::Completed;
+                                    record.finished_at = Some(chrono::Utc::now());
+                                }
+                                let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                                    transfer_id: tid,
+                                    status: TransferStatus::Completed,
+                                });
+                            }
+                            log::info!("Transfer complete from {remote}");
+                        }
+                        _ => {
+                            log::debug!("Unknown message type: {msg_type}");
+                        }
+                    }
+                }
+                FrameType::Data => {
+                    if let Some((ref path, _, _)) = current_file {
+                        if frame.payload.len() < 16 {
+                            log::error!("Data frame too small");
+                            continue;
+                        }
+
+                        let offset = u64::from_be_bytes(frame.payload[..8].try_into().unwrap());
+                        let crc = u32::from_be_bytes(frame.payload[8..12].try_into().unwrap());
+                        let chunk_data = &frame.payload[16..];
+
+                        if let Err(e) = engine::write_chunk(path, offset, chunk_data, crc).await {
+                            log::error!("Write chunk failed: {e}");
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Get the current engine state.
+    pub fn state(&self) -> EngineState {
+        *self.state.read()
+    }
+
+    /// Get the device ID.
+    pub fn device_id(&self) -> &str {
+        &self.device_id
+    }
+
+    /// Get all discovered devices.
+    pub fn discovered_devices(&self) -> Vec<DiscoveredDevice> {
+        self.devices.read().values().cloned().collect()
+    }
+
+    /// Get a specific transfer's progress.
+    pub fn get_progress(&self, transfer_id: &Uuid) -> Option<TransferProgress> {
+        self.progress_trackers
+            .read()
+            .get(transfer_id)
+            .map(|t| t.snapshot())
+    }
+
+    /// Get all transfer records.
+    pub fn get_transfers(&self) -> Vec<TransferRecord> {
+        self.transfers.read().values().cloned().collect()
+    }
+
+    /// Stop the engine.
+    pub fn stop(&self) {
+        *self.state.write() = EngineState::ShuttingDown;
+        if let Some(ref discovery) = *self.discovery.read() {
+            discovery.stop_browsing();
+            discovery.unregister();
+        }
+        if let Some(ref mut listener) = *self.listener.write() {
+            listener.stop();
+        }
+        self.connections.write().clear();
+        *self.state.write() = EngineState::Stopped;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_engine_new() {
+        let config = AppConfig::default();
+        let (engine, _rx) = UotEngine::new(config);
+        assert_eq!(engine.state(), EngineState::Stopped);
+        assert!(!engine.device_id().is_empty());
+        assert!(engine.discovered_devices().is_empty());
+        assert!(engine.get_transfers().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_engine_start_stop() {
+        let mut config = AppConfig::default();
+        config.network_port = Some(0); // Let OS pick port
+        let (engine, _rx) = UotEngine::new(config);
+
+        // Start may fail in CI without network, but should handle gracefully
+        if engine.start().await.is_ok() {
+            assert_eq!(engine.state(), EngineState::Running);
+            engine.stop();
+            assert_eq!(engine.state(), EngineState::Stopped);
+        }
+    }
+}

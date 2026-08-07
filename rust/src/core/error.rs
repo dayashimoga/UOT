@@ -63,6 +63,12 @@ pub enum TransportError {
 
     #[error("Address already in use: {address}")]
     AddressInUse { address: String },
+
+    #[error("Connection error: {0}")]
+    Connection(String),
+
+    #[error("Protocol error: {0}")]
+    Protocol(String),
 }
 
 /// Protocol-specific errors.
@@ -132,6 +138,9 @@ pub enum DiscoveryError {
 
     #[error("Discovery timeout after {timeout_ms}ms")]
     Timeout { timeout_ms: u64 },
+
+    #[error("Service error: {0}")]
+    ServiceError(String),
 }
 
 /// Transfer engine errors.
@@ -142,9 +151,6 @@ pub enum TransferError {
 
     #[error("Permission denied: {path}")]
     PermissionDenied { path: String },
-
-    #[error("Integrity check failed: expected={expected}, got={actual}")]
-    IntegrityFailed { expected: String, actual: String },
 
     #[error("Transfer cancelled: {transfer_id}")]
     Cancelled { transfer_id: String },
@@ -160,6 +166,21 @@ pub enum TransferError {
 
     #[error("Resume not possible: {reason}")]
     ResumeNotPossible { reason: String },
+
+    #[error("File I/O error: {0}")]
+    FileIo(String),
+
+    #[error("Integrity check failed: {0}")]
+    IntegrityFailed(String),
+
+    #[error("Empty transfer: no files to send")]
+    EmptyTransfer,
+
+    #[error("Device not found: {0}")]
+    DeviceNotFound(String),
+
+    #[error("Protocol error: {0}")]
+    Protocol(String),
 }
 
 /// Streaming-specific errors.
@@ -221,14 +242,10 @@ mod tests {
 
     #[test]
     fn test_error_display_transfer() {
-        let err = TransferError::IntegrityFailed {
-            expected: "abc123".to_string(),
-            actual: "def456".to_string(),
-        };
-        assert_eq!(
-            err.to_string(),
-            "Integrity check failed: expected=abc123, got=def456"
+        let err = TransferError::IntegrityFailed(
+            "CRC mismatch at offset 0: expected abc123, got def456".to_string(),
         );
+        assert!(err.to_string().contains("Integrity check failed"));
     }
 
     #[test]

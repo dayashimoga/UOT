@@ -23,6 +23,14 @@ env_logger = "0.11"
 base64 = "0.22"
 hex = "0.4"
 async-trait = "0.1"
+mdns-sd = "0.12"
+bytes = "1"
+crc32fast = "1"
+hostname = "0.4"
+tokio-util = { version = "0.7", features = ["codec"] }
+futures = "0.3"
+parking_lot = "0.12"
+flume = "0.11"
 
 [dev-dependencies]
 tokio-test = "0.4"

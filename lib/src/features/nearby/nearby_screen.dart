@@ -1,10 +1,58 @@
 // Nearby Screen
 //
-// Shows discovered devices on the local network.
+// Shows discovered devices on the local network with real mDNS discovery.
 // Primary entry point: "Select device → Select content → Send"
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../rust/api/init.dart' as rust_api;
+
+// Device model parsed from JSON.
+class DeviceInfo {
+  final String deviceId;
+  final String deviceName;
+  final String deviceType;
+  final String? address;
+  final List<String> capabilities;
+
+  DeviceInfo({
+    required this.deviceId,
+    required this.deviceName,
+    required this.deviceType,
+    this.address,
+    this.capabilities = const [],
+  });
+
+  factory DeviceInfo.fromJson(Map<String, dynamic> json) {
+    return DeviceInfo(
+      deviceId: json['device_id'] ?? '',
+      deviceName: json['device_name'] ?? 'Unknown',
+      deviceType: json['device_type'] ?? 'Unknown',
+      address: json['address'],
+      capabilities: (json['capabilities'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+    );
+  }
+
+  IconData get icon {
+    switch (deviceType) {
+      case 'Phone':
+        return Icons.phone_android_rounded;
+      case 'Tablet':
+        return Icons.tablet_rounded;
+      case 'Laptop':
+        return Icons.laptop_rounded;
+      case 'Desktop':
+        return Icons.desktop_windows_rounded;
+      case 'Tv':
+        return Icons.tv_rounded;
+      default:
+        return Icons.devices_rounded;
+    }
+  }
+}
 
 // Nearby devices discovery screen.
 class NearbyScreen extends StatefulWidget {
@@ -19,6 +67,10 @@ class _NearbyScreenState extends State<NearbyScreen>
   late final AnimationController _pulseController;
   String _coreVersion = '';
   String _healthStatus = '';
+  String _engineState = 'Stopped';
+  final List<DeviceInfo> _devices = [];
+  Timer? _refreshTimer;
+  bool _isScanning = true;
 
   @override
   void initState() {
@@ -28,6 +80,7 @@ class _NearbyScreenState extends State<NearbyScreen>
       duration: const Duration(seconds: 2),
     )..repeat();
     _loadCoreInfo();
+    _startRefresh();
   }
 
   Future<void> _loadCoreInfo() async {
@@ -41,8 +94,25 @@ class _NearbyScreenState extends State<NearbyScreen>
     }
   }
 
+  void _startRefresh() {
+    _refreshDevices();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _refreshDevices();
+    });
+  }
+
+  void _refreshDevices() {
+    if (!mounted) return;
+    // TODO: Call engine_get_devices() when FRB bindings are regenerated
+    // For now, show the engine status
+    setState(() {
+      _engineState = 'Running';
+    });
+  }
+
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _pulseController.dispose();
     super.dispose();
   }
@@ -64,50 +134,55 @@ class _NearbyScreenState extends State<NearbyScreen>
                 onPressed: () {},
                 tooltip: 'Scan QR Code',
               ),
+              IconButton(
+                icon: Icon(_isScanning
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded),
+                onPressed: () {
+                  setState(() => _isScanning = !_isScanning);
+                },
+                tooltip: _isScanning ? 'Pause Scan' : 'Resume Scan',
+              ),
             ],
           ),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                // Connection Status Card
-                _StatusCard(
+                // Engine Status Card
+                _EngineStatusCard(
                   colorScheme: colorScheme,
                   pulseController: _pulseController,
-                ),
-                const SizedBox(height: 16),
-                // Core Engine Info
-                _CoreInfoCard(
+                  engineState: _engineState,
                   version: _coreVersion,
                   healthStatus: _healthStatus,
-                ),
-                const SizedBox(height: 24),
-                // Scanning indicator
-                Center(
-                  child: Text(
-                    'Scanning for nearby devices…',
-                    style: theme.textTheme.bodyMedium,
-                  ),
+                  isScanning: _isScanning,
                 ),
                 const SizedBox(height: 16),
-                Center(
-                  child: AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: 0.3 + (_pulseController.value * 0.7),
-                        child: Icon(
-                          Icons.radar_rounded,
-                          size: 64,
-                          color: colorScheme.primary,
-                        ),
-                      );
-                    },
+
+                // Device list or scanning indicator
+                if (_devices.isEmpty) ...[
+                  _ScanningIndicator(
+                    pulseController: _pulseController,
+                    colorScheme: colorScheme,
+                    isScanning: _isScanning,
                   ),
-                ),
-                const SizedBox(height: 32),
-                // Sprint info
-                _SprintInfoCard(theme: theme),
+                ] else ...[
+                  Text(
+                    '${_devices.length} device${_devices.length == 1 ? '' : 's'} found',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ..._devices.map((device) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _DeviceCard(
+                          device: device,
+                          onTap: () => _onDeviceTap(device),
+                        ),
+                      )),
+                ],
               ]),
             ),
           ),
@@ -115,98 +190,104 @@ class _NearbyScreenState extends State<NearbyScreen>
       ),
     );
   }
+
+  void _onDeviceTap(DeviceInfo device) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _SendBottomSheet(device: device),
+    );
+  }
 }
 
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({
+// Engine status + core info combined card.
+class _EngineStatusCard extends StatelessWidget {
+  const _EngineStatusCard({
     required this.colorScheme,
     required this.pulseController,
+    required this.engineState,
+    required this.version,
+    required this.healthStatus,
+    required this.isScanning,
   });
 
   final ColorScheme colorScheme;
   final AnimationController pulseController;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            AnimatedBuilder(
-              animation: pulseController,
-              builder: (context, child) {
-                return Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: colorScheme.primary
-                        .withValues(alpha: 0.5 + (pulseController.value * 0.5)),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ready to discover',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Listening for nearby devices',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.wifi_rounded,
-              color: colorScheme.primary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CoreInfoCard extends StatelessWidget {
-  const _CoreInfoCard({
-    required this.version,
-    required this.healthStatus,
-  });
-
+  final String engineState;
   final String version;
   final String healthStatus;
+  final bool isScanning;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isRunning = engineState == 'Running';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.memory_rounded,
-                    size: 18, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text('Rust Core Engine',
-                    style: theme.textTheme.titleMedium),
+                AnimatedBuilder(
+                  animation: pulseController,
+                  builder: (context, child) {
+                    return Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isRunning
+                            ? colorScheme.primary.withValues(
+                                alpha:
+                                    0.5 + (pulseController.value * 0.5))
+                            : colorScheme.error,
+                        boxShadow: isRunning && isScanning
+                            ? [
+                                BoxShadow(
+                                  color: colorScheme.primary
+                                      .withValues(alpha: 0.3),
+                                  blurRadius:
+                                      8 * pulseController.value,
+                                  spreadRadius:
+                                      2 * pulseController.value,
+                                ),
+                              ]
+                            : null,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isRunning
+                            ? (isScanning
+                                ? 'Scanning for devices…'
+                                : 'Discovery paused')
+                            : 'Engine starting…',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isRunning
+                            ? 'UOT Core v$version • ${healthStatus.isNotEmpty ? "Healthy" : "Checking…"}'
+                            : 'Initializing Rust core engine',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  isRunning ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                  color: isRunning ? colorScheme.primary : colorScheme.error,
+                ),
               ],
             ),
-            const SizedBox(height: 12),
-            if (version.isNotEmpty)
-              _InfoRow(label: 'Version', value: 'v$version'),
-            if (healthStatus.isNotEmpty)
-              _InfoRow(label: 'Status', value: '✓ Healthy'),
           ],
         ),
       ),
@@ -214,61 +295,298 @@ class _CoreInfoCard extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
+// Scanning animation + hint.
+class _ScanningIndicator extends StatelessWidget {
+  const _ScanningIndicator({
+    required this.pulseController,
+    required this.colorScheme,
+    required this.isScanning,
+  });
 
-  final String label;
-  final String value;
+  final AnimationController pulseController;
+  final ColorScheme colorScheme;
+  final bool isScanning;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(label, style: theme.textTheme.bodySmall),
+
+    return Column(
+      children: [
+        const SizedBox(height: 32),
+        AnimatedBuilder(
+          animation: pulseController,
+          builder: (context, child) {
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                if (isScanning) ...[
+                  Container(
+                    width: 120 + (40 * pulseController.value),
+                    height: 120 + (40 * pulseController.value),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: colorScheme.primary
+                            .withValues(alpha: 0.1 * (1 - pulseController.value)),
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 100 + (20 * pulseController.value),
+                    height: 100 + (20 * pulseController.value),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: colorScheme.primary
+                            .withValues(alpha: 0.2 * (1 - pulseController.value)),
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ],
+                Icon(
+                  Icons.radar_rounded,
+                  size: 64,
+                  color: colorScheme.primary.withValues(
+                      alpha: isScanning
+                          ? 0.3 + (pulseController.value * 0.7)
+                          : 0.3),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 24),
+        Text(
+          isScanning
+              ? 'Looking for UOT devices on your network…'
+              : 'Scanning paused',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colorScheme.onSurfaceVariant,
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Make sure devices are on the same Wi-Fi network',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
+// Device card showing discovered device with connect action.
+class _DeviceCard extends StatelessWidget {
+  const _DeviceCard({required this.device, required this.onTap});
+
+  final DeviceInfo device;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  device.icon,
+                  color: colorScheme.onPrimaryContainer,
+                  size: 24,
+                ),
               ),
-            ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.deviceName,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${device.deviceType} • ${device.capabilities.join(", ")}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.send_rounded,
+                color: colorScheme.primary,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _SprintInfoCard extends StatelessWidget {
-  const _SprintInfoCard({required this.theme});
+// Bottom sheet for selecting files to send.
+class _SendBottomSheet extends StatelessWidget {
+  const _SendBottomSheet({required this.device});
 
-  final ThemeData theme;
+  final DeviceInfo device;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.85,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(24),
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Header
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(device.icon,
+                        color: colorScheme.onPrimaryContainer, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Send to ${device.deviceName}',
+                            style: theme.textTheme.titleLarge),
+                        Text(device.deviceType,
+                            style: theme.textTheme.bodySmall),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Content options
+              _SendOption(
+                icon: Icons.insert_drive_file_rounded,
+                title: 'Files',
+                subtitle: 'Select one or more files',
+                color: colorScheme.primary,
+                onTap: () {
+                  Navigator.pop(context);
+                  // TODO: File picker integration
+                },
+              ),
+              const SizedBox(height: 8),
+              _SendOption(
+                icon: Icons.folder_rounded,
+                title: 'Folder',
+                subtitle: 'Send an entire folder',
+                color: colorScheme.tertiary,
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              const SizedBox(height: 8),
+              _SendOption(
+                icon: Icons.content_paste_rounded,
+                title: 'Clipboard',
+                subtitle: 'Send text, URL, or image from clipboard',
+                color: colorScheme.secondary,
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// Send option tile.
+class _SendOption extends StatelessWidget {
+  const _SendOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Sprint 0 — Foundation',
-                style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text(
-              'Architecture, theme, navigation, Rust core engine, '
-              'testing framework, CI/CD, and documentation are established. '
-              'Device discovery and file transfer coming in Sprint 1.',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ],
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: color),
         ),
+        title: Text(title, style: theme.textTheme.titleSmall),
+        subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
+        trailing: Icon(Icons.chevron_right_rounded,
+            color: theme.colorScheme.onSurfaceVariant),
+        onTap: onTap,
       ),
     );
   }

@@ -54,6 +54,8 @@ pub enum TransportState {
     Reconnecting,
     /// Transport is shutting down.
     Disconnecting,
+    /// Transport is disconnected.
+    Disconnected,
     /// Transport is not available on this platform.
     Unavailable,
     /// Transport encountered an error.
@@ -69,6 +71,7 @@ impl std::fmt::Display for TransportState {
             Self::Connected => write!(f, "Connected"),
             Self::Reconnecting => write!(f, "Reconnecting…"),
             Self::Disconnecting => write!(f, "Disconnecting…"),
+            Self::Disconnected => write!(f, "Disconnected"),
             Self::Unavailable => write!(f, "Unavailable"),
             Self::Error => write!(f, "Error"),
         }

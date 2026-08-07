@@ -25,6 +25,9 @@ pub struct AppConfig {
 
     /// Storage configuration.
     pub storage: StorageConfig,
+
+    /// Network port override (None = use default 42000).
+    pub network_port: Option<u16>,
 }
 
 /// Transfer engine configuration.
@@ -44,6 +47,9 @@ pub struct TransferConfig {
 
     /// Maximum file size in bytes (0 = unlimited).
     pub max_file_size: u64,
+
+    /// Directory to save received files.
+    pub save_directory: String,
 }
 
 /// Discovery configuration.
@@ -100,6 +106,7 @@ impl Default for AppConfig {
             discovery: DiscoveryConfig::default(),
             security: SecurityConfig::default(),
             storage: StorageConfig::default(),
+            network_port: None,
         }
     }
 }
@@ -112,6 +119,7 @@ impl Default for TransferConfig {
             transfer_timeout_secs: 300,
             auto_accept_trusted: false,
             max_file_size: 0, // unlimited
+            save_directory: dirs_fallback().to_string_lossy().to_string(),
         }
     }
 }

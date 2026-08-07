@@ -1,72 +1,101 @@
 // Stream Screen
 //
-// Media streaming interface for video, audio, camera, and screen sharing.
+// Media streaming controls: camera, screen, video, audio streaming.
 
 import 'package:flutter/material.dart';
 
-// Media streaming screen.
-class StreamScreen extends StatelessWidget {
+class StreamScreen extends StatefulWidget {
   const StreamScreen({super.key});
 
   @override
+  State<StreamScreen> createState() => _StreamScreenState();
+}
+
+class _StreamScreenState extends State<StreamScreen> {
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          const SliverAppBar(
+          SliverAppBar(
             floating: true,
-            title: Text('Stream'),
+            title: const Text('Stream'),
           ),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                _StreamOption(
+                // Stream types grid
+                _StreamTypeCard(
                   icon: Icons.videocam_rounded,
                   title: 'Camera',
-                  subtitle: 'Stream your camera to a nearby device',
-                  available: false,
-                  theme: theme,
+                  subtitle: 'Stream camera feed to a device',
+                  color: colorScheme.primary,
+                  onTap: () {},
                 ),
                 const SizedBox(height: 8),
-                _StreamOption(
+                _StreamTypeCard(
                   icon: Icons.screen_share_rounded,
                   title: 'Screen',
-                  subtitle: 'Share your screen with a nearby device',
-                  available: false,
-                  theme: theme,
+                  subtitle: 'Share your screen with a device',
+                  color: colorScheme.tertiary,
+                  onTap: () {},
                 ),
                 const SizedBox(height: 8),
-                _StreamOption(
-                  icon: Icons.movie_rounded,
+                _StreamTypeCard(
+                  icon: Icons.video_library_rounded,
                   title: 'Video File',
-                  subtitle: 'Stream a video file to a nearby device',
-                  available: false,
-                  theme: theme,
+                  subtitle: 'Stream a local video file',
+                  color: colorScheme.secondary,
+                  onTap: () {},
                 ),
                 const SizedBox(height: 8),
-                _StreamOption(
+                _StreamTypeCard(
                   icon: Icons.music_note_rounded,
                   title: 'Audio File',
-                  subtitle: 'Stream an audio file to a nearby device',
-                  available: false,
-                  theme: theme,
+                  subtitle: 'Stream a local audio file',
+                  color: const Color(0xFFE879F9),
+                  onTap: () {},
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
+
+                // Active streams
+                Text(
+                  'ACTIVE STREAMS',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 32, horizontal: 16),
+                    child: Column(
                       children: [
-                        Icon(Icons.info_outline_rounded,
-                            size: 20, color: theme.colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Streaming requires a connected device. '
-                            'Go to Nearby to discover and connect first.',
-                            style: theme.textTheme.bodySmall,
+                        Icon(
+                          Icons.cast_rounded,
+                          size: 48,
+                          color: colorScheme.onSurfaceVariant
+                              .withValues(alpha: 0.4),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No active streams',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Select a stream type above to start',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.7),
                           ),
                         ),
                       ],
@@ -82,42 +111,59 @@ class StreamScreen extends StatelessWidget {
   }
 }
 
-class _StreamOption extends StatelessWidget {
-  const _StreamOption({
+class _StreamTypeCard extends StatelessWidget {
+  const _StreamTypeCard({
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.available,
-    required this.theme,
+    required this.color,
+    required this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final bool available;
-  final ThemeData theme;
+  final Color color;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Card(
-      child: ListTile(
-        leading: Icon(icon,
-            color: available
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurface.withValues(alpha: 0.3)),
-        title: Text(title),
-        subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
-        trailing: available
-            ? Icon(Icons.arrow_forward_ios_rounded,
-                size: 16, color: theme.colorScheme.primary)
-            : Chip(
-                label: Text('Coming Soon',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(fontSize: 10)),
-                padding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 28),
               ),
-        enabled: available,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    )),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  color: theme.colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
       ),
     );
   }
