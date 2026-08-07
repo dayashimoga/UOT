@@ -179,6 +179,27 @@ pub fn engine_set_device_name(name: String) -> String {
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
+/// Send clipboard text to a device.
+pub fn engine_send_clipboard(device_id: String, text: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.send_clipboard(&device_id, text).await }) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Get event log (latest N events as JSON).
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_events(limit: u32) -> String {
+    with_engine(|engine| {
+        let events = engine.get_recent_events(limit as usize);
+        serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_string())
+    })
+    .unwrap_or_else(|| "[]".to_string())
+}
+
 /// Helper: access the engine.
 fn with_engine<F, R>(f: F) -> Option<R>
 where

@@ -671,6 +671,39 @@ impl UotEngine {
         // This will be used for future connections
         log::info!("Device name updated to: {name}");
     }
+
+    /// Send clipboard text to a device.
+    pub async fn send_clipboard(&self, device_id: &str, text: String) -> Result<(), UotError> {
+        let device = self.devices.read().get(device_id).cloned()
+            .ok_or_else(|| UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string())))?;
+
+        let addr: SocketAddr = device.address.as_ref()
+            .ok_or_else(|| UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string())))?
+            .parse()
+            .map_err(|e| UotError::Transport(TransportError::Connection(format!("Bad address: {e}"))))?;
+
+        let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
+        let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
+
+        let msg = serde_json::json!({
+            "type": "clipboard",
+            "content_type": "text/plain",
+            "data": text,
+        });
+        let payload = serde_json::to_vec(&msg)
+            .map_err(|e| UotError::Transfer(TransferError::Protocol(format!("Serialize error: {e}"))))?;
+
+        conn.send(Frame::control(&payload)).await.map_err(UotError::Transport)?;
+        log::info!("Clipboard sent to {device_id}: {} bytes", text.len());
+        Ok(())
+    }
+
+    /// Get recent events as serializable strings.
+    pub fn get_recent_events(&self, _limit: usize) -> Vec<String> {
+        // Events are consumed via the channel; this returns an empty list
+        // as a placeholder for future event log persistence.
+        Vec::new()
+    }
 }
 
 #[cfg(test)]

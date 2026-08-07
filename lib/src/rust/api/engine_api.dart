@@ -71,3 +71,16 @@ String engineGetProgress({required String transferId}) => RustLib.instance.api
 /// Set device name.
 Future<String> engineSetDeviceName({required String name}) =>
     RustLib.instance.api.crateApiEngineApiEngineSetDeviceName(name: name);
+
+/// Send clipboard text to a device.
+Future<String> engineSendClipboard({
+  required String deviceId,
+  required String text,
+}) => RustLib.instance.api.crateApiEngineApiEngineSendClipboard(
+  deviceId: deviceId,
+  text: text,
+);
+
+/// Get event log (latest N events as JSON).
+String engineGetEvents({required int limit}) =>
+    RustLib.instance.api.crateApiEngineApiEngineGetEvents(limit: limit);

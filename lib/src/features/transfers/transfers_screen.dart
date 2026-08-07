@@ -353,7 +353,9 @@ class _ActiveTransferCard extends StatelessWidget {
                 if (transfer.status == 'Transferring') ...[
                   IconButton(
                     icon: const Icon(Icons.pause_rounded, size: 20),
-                    onPressed: () {},
+                    onPressed: () {
+                      engine.enginePauseTransfer(transferId: transfer.id);
+                    },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
                         minWidth: 32, minHeight: 32),
@@ -361,7 +363,9 @@ class _ActiveTransferCard extends StatelessWidget {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, size: 20),
-                    onPressed: () {},
+                    onPressed: () {
+                      engine.engineCancelTransfer(transferId: transfer.id);
+                    },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
                         minWidth: 32, minHeight: 32),

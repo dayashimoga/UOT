@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../rust/api/init.dart' as rust_api;
 import '../../rust/api/engine_api.dart' as engine;
@@ -584,9 +585,15 @@ class _SendBottomSheet extends StatelessWidget {
                 title: 'Clipboard',
                 subtitle: 'Send text, URL, or image from clipboard',
                 color: colorScheme.secondary,
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
-                  // TODO: Clipboard send (Sprint 3)
+                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                  if (data?.text != null && data!.text!.isNotEmpty) {
+                    await engine.engineSendClipboard(
+                      deviceId: device.deviceId,
+                      text: data.text!,
+                    );
+                  }
                 },
               ),
             ],
