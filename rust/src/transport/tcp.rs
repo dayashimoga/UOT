@@ -118,6 +118,8 @@ pub struct TcpConnection {
     stats: Arc<RwLock<TransportStats>>,
     /// Sender for outgoing frames.
     tx: mpsc::Sender<Frame>,
+    /// Receiver for incoming frames.
+    incoming_rx: tokio::sync::Mutex<mpsc::Receiver<Frame>>,
     /// Shutdown signal.
     shutdown_tx: Option<oneshot::Sender<()>>,
 }
@@ -126,7 +128,6 @@ impl TcpConnection {
     /// Create a new connection from an established TCP stream.
     pub fn new(
         stream: TcpStream,
-        incoming_tx: mpsc::Sender<Frame>,
     ) -> Result<Self, TransportError> {
         let remote_addr = stream
             .peer_addr()
@@ -139,6 +140,7 @@ impl TcpConnection {
         let stats = Arc::new(RwLock::new(TransportStats::default()));
 
         let (tx, rx) = mpsc::channel::<Frame>(256);
+        let (incoming_tx, incoming_rx) = mpsc::channel::<Frame>(256);
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
         // Spawn reader/writer tasks
@@ -164,6 +166,7 @@ impl TcpConnection {
             state,
             stats,
             tx,
+            incoming_rx: tokio::sync::Mutex::new(incoming_rx),
             shutdown_tx: Some(shutdown_tx),
         })
     }
@@ -177,6 +180,19 @@ impl TcpConnection {
             .map_err(|_| TransportError::Connection("Channel closed".to_string()))?;
         self.stats.write().bytes_sent += encoded_len;
         Ok(())
+    }
+
+    /// Send a frame (alias for protocol handler).
+    pub async fn send_frame(&self, frame: Frame) -> Result<(), TransportError> {
+        self.send(frame).await
+    }
+
+    /// Receive the next incoming frame.
+    pub async fn recv_frame(&self) -> Result<Frame, TransportError> {
+        let mut rx = self.incoming_rx.lock().await;
+        rx.recv()
+            .await
+            .ok_or_else(|| TransportError::Connection("Connection closed".to_string()))
     }
 
     /// Get current state.
@@ -485,18 +501,15 @@ mod tests {
         let server_stream = rx.recv().await.unwrap();
 
         // Create framed connections
-        let (client_incoming_tx, mut client_incoming_rx) = mpsc::channel(32);
-        let (server_incoming_tx, mut server_incoming_rx) = mpsc::channel(32);
-
-        let client_conn = TcpConnection::new(client_stream, client_incoming_tx).unwrap();
-        let _server_conn = TcpConnection::new(server_stream, server_incoming_tx).unwrap();
+        let client_conn = TcpConnection::new(client_stream).unwrap();
+        let server_conn = TcpConnection::new(server_stream).unwrap();
 
         // Client sends a control frame
         let msg = b"{\"type\":\"hello\"}";
         client_conn.send(Frame::control(msg)).await.unwrap();
 
         // Server receives it
-        let frame = server_incoming_rx.recv().await.unwrap();
+        let frame = server_conn.recv_frame().await.unwrap();
         assert_eq!(frame.frame_type, FrameType::Control);
         assert_eq!(&frame.payload, msg);
 

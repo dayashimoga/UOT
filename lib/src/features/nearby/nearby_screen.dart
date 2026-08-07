@@ -4,8 +4,11 @@
 // Primary entry point: "Select device → Select content → Send"
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../rust/api/init.dart' as rust_api;
+import '../../rust/api/engine_api.dart' as engine;
 
 // Device model parsed from JSON.
 class DeviceInfo {
@@ -71,6 +74,7 @@ class _NearbyScreenState extends State<NearbyScreen>
   final List<DeviceInfo> _devices = [];
   Timer? _refreshTimer;
   bool _isScanning = true;
+  bool _engineInitialized = false;
 
   @override
   void initState() {
@@ -80,7 +84,7 @@ class _NearbyScreenState extends State<NearbyScreen>
       duration: const Duration(seconds: 2),
     )..repeat();
     _loadCoreInfo();
-    _startRefresh();
+    _initEngine();
   }
 
   Future<void> _loadCoreInfo() async {
@@ -94,6 +98,17 @@ class _NearbyScreenState extends State<NearbyScreen>
     }
   }
 
+  Future<void> _initEngine() async {
+    final result = await engine.engineInit();
+    if (mounted) {
+      setState(() {
+        _engineInitialized = true;
+        _engineState = result.startsWith('ok') ? 'Running' : 'Partial';
+      });
+    }
+    _startRefresh();
+  }
+
   void _startRefresh() {
     _refreshDevices();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
@@ -102,12 +117,20 @@ class _NearbyScreenState extends State<NearbyScreen>
   }
 
   void _refreshDevices() {
-    if (!mounted) return;
-    // TODO: Call engine_get_devices() when FRB bindings are regenerated
-    // For now, show the engine status
-    setState(() {
-      _engineState = 'Running';
-    });
+    if (!mounted || !_engineInitialized) return;
+    try {
+      final devicesJson = engine.engineGetDevices();
+      final List<dynamic> parsed = jsonDecode(devicesJson);
+      final newDevices =
+          parsed.map((d) => DeviceInfo.fromJson(d as Map<String, dynamic>)).toList();
+      setState(() {
+        _devices.clear();
+        _devices.addAll(newDevices);
+        _engineState = engine.engineState();
+      });
+    } catch (_) {
+      // Silently handle parse errors during polling
+    }
   }
 
   @override
@@ -518,9 +541,24 @@ class _SendBottomSheet extends StatelessWidget {
                 title: 'Files',
                 subtitle: 'Select one or more files',
                 color: colorScheme.primary,
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
-                  // TODO: File picker integration
+                  final result = await FilePicker.platform.pickFiles(
+                    allowMultiple: true,
+                    type: FileType.any,
+                  );
+                  if (result != null && result.files.isNotEmpty) {
+                    final paths = result.files
+                        .where((f) => f.path != null)
+                        .map((f) => f.path!)
+                        .toList();
+                    if (paths.isNotEmpty) {
+                      await engine.engineSendFiles(
+                        deviceId: device.deviceId,
+                        filePaths: paths,
+                      );
+                    }
+                  }
                 },
               ),
               const SizedBox(height: 8),
@@ -529,8 +567,15 @@ class _SendBottomSheet extends StatelessWidget {
                 title: 'Folder',
                 subtitle: 'Send an entire folder',
                 color: colorScheme.tertiary,
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
+                  final dir = await FilePicker.platform.getDirectoryPath();
+                  if (dir != null) {
+                    await engine.engineSendFiles(
+                      deviceId: device.deviceId,
+                      filePaths: [dir],
+                    );
+                  }
                 },
               ),
               const SizedBox(height: 8),
@@ -541,6 +586,7 @@ class _SendBottomSheet extends StatelessWidget {
                 color: colorScheme.secondary,
                 onTap: () {
                   Navigator.pop(context);
+                  // TODO: Clipboard send (Sprint 3)
                 },
               ),
             ],

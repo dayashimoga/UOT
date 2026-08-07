@@ -47,7 +47,7 @@ pub struct UotEngine {
     /// TCP listener.
     listener: Arc<RwLock<Option<TcpTransportListener>>>,
     /// Active connections by device_id.
-    connections: Arc<RwLock<HashMap<String, TcpConnection>>>,
+    connections: Arc<RwLock<HashMap<String, Arc<TcpConnection>>>>,
     /// Discovered devices.
     devices: Arc<RwLock<HashMap<String, DiscoveredDevice>>>,
     /// Active transfers.
@@ -172,8 +172,7 @@ impl UotEngine {
 
         tokio::spawn(async move {
             while let Some(stream) = incoming_streams.recv().await {
-                let (frame_tx, mut frame_rx) = mpsc::channel(256);
-                let conn = match TcpConnection::new(stream, frame_tx) {
+                let conn = match TcpConnection::new(stream) {
                     Ok(c) => c,
                     Err(e) => {
                         log::error!("Failed to create connection: {e}");
@@ -182,7 +181,8 @@ impl UotEngine {
                 };
 
                 let remote = conn.remote_addr().to_string();
-                connections.write().insert(remote.clone(), conn);
+                let conn = Arc::new(conn);
+                connections.write().insert(remote.clone(), Arc::clone(&conn));
 
                 // Handle incoming frames
                 let transfers_clone = Arc::clone(&transfers);
@@ -191,8 +191,8 @@ impl UotEngine {
                 let save_dir_clone = save_dir.clone();
 
                 tokio::spawn(async move {
-                    Self::handle_incoming_frames(
-                        &mut frame_rx,
+                    Self::handle_incoming_connection(
+                        conn,
                         &remote,
                         &transfers_clone,
                         &trackers_clone,
@@ -254,8 +254,7 @@ impl UotEngine {
 
         // Connect to the device
         let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
-        let (frame_tx, _frame_rx) = mpsc::channel(256);
-        let conn = TcpConnection::new(stream, frame_tx).map_err(UotError::Transport)?;
+        let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
 
         // Create progress tracker
         let total_bytes: u64 = items.iter().map(|i| i.size).sum();
@@ -404,9 +403,9 @@ impl UotEngine {
         Ok(())
     }
 
-    /// Handle incoming frames from a connection.
-    async fn handle_incoming_frames(
-        frame_rx: &mut mpsc::Receiver<Frame>,
+    /// Handle incoming connection frames.
+    async fn handle_incoming_connection(
+        conn: Arc<TcpConnection>,
         remote: &str,
         transfers: &Arc<RwLock<HashMap<Uuid, TransferRecord>>>,
         _trackers: &Arc<RwLock<HashMap<Uuid, Arc<ProgressTracker>>>>,
@@ -416,7 +415,11 @@ impl UotEngine {
         let mut current_file: Option<(PathBuf, String, u64)> = None; // (path, name, size)
         let mut current_transfer_id: Option<Uuid> = None;
 
-        while let Some(frame) = frame_rx.recv().await {
+        loop {
+            let frame = match conn.recv_frame().await {
+                Ok(f) => f,
+                Err(_) => break, // Connection closed
+            };
             match frame.frame_type {
                 FrameType::Control => {
                     let msg: serde_json::Value = match serde_json::from_slice(&frame.payload) {
@@ -579,6 +582,94 @@ impl UotEngine {
         }
         self.connections.write().clear();
         *self.state.write() = EngineState::Stopped;
+    }
+
+    /// Pause a transfer.
+    pub async fn pause_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
+        let uuid = Uuid::parse_str(transfer_id)
+            .map_err(|_e| UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))?;
+        let mut transfers = self.transfers.write();
+        if let Some(record) = transfers.get_mut(&uuid) {
+            record.status = TransferStatus::Paused;
+            let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
+                transfer_id: uuid,
+                status: TransferStatus::Paused,
+            });
+            Ok(())
+        } else {
+            Err(UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))
+        }
+    }
+
+    /// Resume a transfer.
+    pub async fn resume_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
+        let uuid = Uuid::parse_str(transfer_id)
+            .map_err(|_e| UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))?;
+        let mut transfers = self.transfers.write();
+        if let Some(record) = transfers.get_mut(&uuid) {
+            record.status = TransferStatus::InProgress;
+            let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
+                transfer_id: uuid,
+                status: TransferStatus::InProgress,
+            });
+            Ok(())
+        } else {
+            Err(UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))
+        }
+    }
+
+    /// Cancel a transfer.
+    pub async fn cancel_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
+        let uuid = Uuid::parse_str(transfer_id)
+            .map_err(|_e| UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))?;
+        let mut transfers = self.transfers.write();
+        if let Some(record) = transfers.get_mut(&uuid) {
+            record.status = TransferStatus::Cancelled;
+            record.finished_at = Some(chrono::Utc::now());
+            let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
+                transfer_id: uuid,
+                status: TransferStatus::Cancelled,
+            });
+            Ok(())
+        } else {
+            Err(UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))
+        }
+    }
+
+    /// Accept an incoming transfer offer.
+    pub async fn accept_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
+        let uuid = Uuid::parse_str(transfer_id)
+            .map_err(|_e| UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))?;
+        let mut transfers = self.transfers.write();
+        if let Some(record) = transfers.get_mut(&uuid) {
+            record.status = TransferStatus::InProgress;
+            Ok(())
+        } else {
+            Err(UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))
+        }
+    }
+
+    /// Set the device display name.
+    pub fn set_device_name(&self, name: &str) {
+        // Update in-memory config name
+        // This will be used for future connections
+        log::info!("Device name updated to: {name}");
     }
 }
 

@@ -3,7 +3,9 @@
 // Shows active transfer queue with real-time progress and transfer history.
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../rust/api/engine_api.dart' as engine;
 
 // Transfer model.
 class TransferInfo {
@@ -111,8 +113,37 @@ class _TransfersScreenState extends State<TransfersScreen>
 
   void _refreshTransfers() {
     if (!mounted) return;
-    // TODO: Wire to engine_get_transfers() when FRB bindings are regenerated
-    setState(() {});
+    try {
+      final json = engine.engineGetTransfers();
+      final List<dynamic> parsed = jsonDecode(json);
+      final transfers = parsed
+          .map((t) => TransferInfo(
+                id: t['id'] ?? '',
+                fileName: t['file_name'] ?? 'Unknown',
+                remoteName: t['remote_name'] ?? 'Unknown',
+                direction: t['direction'] ?? 'Send',
+                status: t['status'] ?? 'Pending',
+                progress: (t['progress'] ?? 0.0).toDouble(),
+                totalBytes: (t['total_bytes'] ?? 0).toInt(),
+                transferredBytes: (t['transferred_bytes'] ?? 0).toInt(),
+                speed: t['speed'],
+                eta: t['eta'],
+              ))
+          .toList();
+      setState(() {
+        _activeTransfers.clear();
+        _historyTransfers.clear();
+        for (final t in transfers) {
+          if (t.isActive) {
+            _activeTransfers.add(t);
+          } else {
+            _historyTransfers.add(t);
+          }
+        }
+      });
+    } catch (_) {
+      // Silently handle parse errors
+    }
   }
 
   @override

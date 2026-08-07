@@ -166,13 +166,13 @@ pub enum SessionType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OfferPayload {
     pub transfer_id: Uuid,
-    pub items: Vec<TransferItem>,
+    pub items: Vec<OfferItem>,
     pub total_size: u64,
 }
 
 /// Describes a single item in a transfer offer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TransferItem {
+pub struct OfferItem {
     pub item_id: Uuid,
     pub name: String,
     pub relative_path: String,
@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_transfer_item_serialization() {
-        let item = TransferItem {
+        let item = OfferItem {
             item_id: Uuid::new_v4(),
             name: "photo.jpg".to_string(),
             relative_path: "photos/photo.jpg".to_string(),
@@ -317,7 +317,7 @@ mod tests {
             hash: Some("abc123".to_string()),
         };
         let json = serde_json::to_string(&item).unwrap();
-        let deserialized: TransferItem = serde_json::from_str(&json).unwrap();
+        let deserialized: OfferItem = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.name, "photo.jpg");
         assert_eq!(deserialized.size, 1024 * 1024);
     }
@@ -326,7 +326,7 @@ mod tests {
     fn test_offer_payload() {
         let offer = OfferPayload {
             transfer_id: Uuid::new_v4(),
-            items: vec![TransferItem {
+            items: vec![OfferItem {
                 item_id: Uuid::new_v4(),
                 name: "test.txt".to_string(),
                 relative_path: "test.txt".to_string(),

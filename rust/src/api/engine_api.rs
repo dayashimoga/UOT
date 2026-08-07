@@ -112,6 +112,73 @@ pub fn engine_stop() {
     }
 }
 
+/// Pause a transfer.
+pub fn engine_pause_transfer(transfer_id: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.pause_transfer(&transfer_id).await }) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Resume a transfer.
+pub fn engine_resume_transfer(transfer_id: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.resume_transfer(&transfer_id).await }) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Cancel a transfer.
+pub fn engine_cancel_transfer(transfer_id: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.cancel_transfer(&transfer_id).await }) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Accept an incoming transfer.
+pub fn engine_accept_transfer(transfer_id: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.accept_transfer(&transfer_id).await }) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Get transfer progress as JSON.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_progress(transfer_id: String) -> String {
+    with_engine(|engine| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&transfer_id) {
+            if let Some(progress) = engine.get_progress(&uuid) {
+                return serde_json::to_string(&progress).unwrap_or_else(|_| "null".to_string());
+            }
+        }
+        "null".to_string()
+    })
+    .unwrap_or_else(|| "null".to_string())
+}
+
+/// Set device name.
+pub fn engine_set_device_name(name: String) -> String {
+    with_engine(|engine| {
+        engine.set_device_name(&name);
+        "ok".to_string()
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
 /// Helper: access the engine.
 fn with_engine<F, R>(f: F) -> Option<R>
 where
