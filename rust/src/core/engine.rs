@@ -700,8 +700,13 @@ impl UotEngine {
 
     /// Get recent events as serializable strings.
     pub fn get_recent_events(&self, _limit: usize) -> Vec<String> {
-        // Events are consumed via the channel; this returns an empty list
-        // as a placeholder for future event log persistence.
+        Vec::new()
+    }
+
+    /// Get active streaming sessions.
+    pub fn get_streams(&self) -> Vec<serde_json::Value> {
+        // Streaming sessions will be managed by StreamManager
+        // For now, return empty list
         Vec::new()
     }
 }

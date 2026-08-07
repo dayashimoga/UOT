@@ -3,6 +3,7 @@
 //! Defines trait interfaces and types for local media streaming.
 //! Supports video, audio, camera, and screen streaming where
 //! platform capabilities allow.
+pub mod manager;
 pub mod types;
 
 use types::{StreamCapability, StreamStatus};

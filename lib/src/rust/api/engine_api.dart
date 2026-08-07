@@ -84,3 +84,7 @@ Future<String> engineSendClipboard({
 /// Get event log (latest N events as JSON).
 String engineGetEvents({required int limit}) =>
     RustLib.instance.api.crateApiEngineApiEngineGetEvents(limit: limit);
+
+/// Get active streaming sessions as JSON.
+String engineGetStreams() =>
+    RustLib.instance.api.crateApiEngineApiEngineGetStreams();

@@ -200,6 +200,16 @@ pub fn engine_get_events(limit: u32) -> String {
     .unwrap_or_else(|| "[]".to_string())
 }
 
+/// Get active streaming sessions as JSON.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_streams() -> String {
+    with_engine(|engine| {
+        let streams = engine.get_streams();
+        serde_json::to_string(&streams).unwrap_or_else(|_| "[]".to_string())
+    })
+    .unwrap_or_else(|| "[]".to_string())
+}
+
 /// Helper: access the engine.
 fn with_engine<F, R>(f: F) -> Option<R>
 where
