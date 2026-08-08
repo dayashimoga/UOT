@@ -181,16 +181,19 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                 if (_pendingOffers.isEmpty)
                   _EmptyIncoming(colorScheme: colorScheme, theme: theme)
                 else
-                  ..._pendingOffers.map((offer) => _IncomingOfferCard(
-                        offer: offer,
-                        requirePin: _requirePin,
-                        onResponse: (accepted) {
-                          setState(() {
-                            _pendingOffers.removeWhere(
-                                (o) => o['id'] == offer['id']);
-                          });
-                        },
-                      )),
+                  ..._pendingOffers.map(
+                    (offer) => _IncomingOfferCard(
+                      offer: offer,
+                      requirePin: _requirePin,
+                      onResponse: (accepted) {
+                        setState(() {
+                          _pendingOffers.removeWhere(
+                            (o) => o['id'] == offer['id'],
+                          );
+                        });
+                      },
+                    ),
+                  ),
               ]),
             ),
           ),
@@ -249,7 +252,10 @@ class _IncomingOfferCard extends StatelessWidget {
               },
             ),
             IconButton(
-              icon: Icon(Icons.check_circle_rounded, color: colorScheme.primary),
+              icon: Icon(
+                Icons.check_circle_rounded,
+                color: colorScheme.primary,
+              ),
               tooltip: 'Accept',
               onPressed: () async {
                 final result = await IncomingOfferDialog.show(

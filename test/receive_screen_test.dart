@@ -8,14 +8,13 @@ import 'package:uot_app/src/core/theme/app_theme.dart';
 import 'package:uot_app/src/features/receive/receive_screen.dart';
 
 void main() {
-  testWidgets('ReceiveScreen renders visibility card and settings section',
-      (WidgetTester tester) async {
+  testWidgets('ReceiveScreen renders visibility card and settings section', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: UotTheme.dark,
-        home: const Scaffold(
-          body: ReceiveScreen(),
-        ),
+        home: const Scaffold(body: ReceiveScreen()),
       ),
     );
 
@@ -26,7 +25,10 @@ void main() {
 
     // Verify Visibility Toggle Text
     expect(find.text('Visible to nearby devices'), findsOneWidget);
-    expect(find.text('Other devices can find you and send files'), findsOneWidget);
+    expect(
+      find.text('Other devices can find you and send files'),
+      findsOneWidget,
+    );
 
     // Verify Settings List Items
     expect(find.text('Auto-accept from trusted'), findsOneWidget);

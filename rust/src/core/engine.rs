@@ -536,19 +536,17 @@ impl UotEngine {
 
         loop {
             // 60-second idle timeout per frame
-            let frame = match tokio::time::timeout(
-                std::time::Duration::from_secs(60),
-                conn.recv_frame(),
-            )
-            .await
-            {
-                Ok(Ok(f)) => f,
-                Ok(Err(_)) => break,  // Connection closed
-                Err(_) => {
-                    log::warn!("Connection from {remote} timed out (60s idle)");
-                    break;
-                }
-            };
+            let frame =
+                match tokio::time::timeout(std::time::Duration::from_secs(60), conn.recv_frame())
+                    .await
+                {
+                    Ok(Ok(f)) => f,
+                    Ok(Err(_)) => break, // Connection closed
+                    Err(_) => {
+                        log::warn!("Connection from {remote} timed out (60s idle)");
+                        break;
+                    }
+                };
             match frame.frame_type {
                 FrameType::Control => {
                     let wire_msg: WireMessage = match serde_json::from_slice(&frame.payload) {
@@ -612,8 +610,7 @@ impl UotEngine {
 
                             log::info!("Received offer {transfer_id} from {remote}");
                         }
-                        WireMessage::FileStart { .. }
-                        | WireMessage::FileEnd { .. }
+                        WireMessage::FileStart { .. } | WireMessage::FileEnd { .. }
                             if !transfer_accepted =>
                         {
                             // Check if the transfer has been accepted by the UI
@@ -629,7 +626,9 @@ impl UotEngine {
                                     // We need to re-dispatch — fall through to the next match iteration
                                 } else {
                                     // Not yet accepted — skip file frames until accepted
-                                    log::debug!("Skipping file frame for unaccepted transfer {tid}");
+                                    log::debug!(
+                                        "Skipping file frame for unaccepted transfer {tid}"
+                                    );
                                     continue;
                                 }
                             } else {
@@ -869,7 +868,10 @@ impl UotEngine {
 
     /// Generate a 6-digit PIN for device pairing/verification.
     pub fn generate_pin(&self, ttl_secs: u64) -> String {
-        self.trust_manager.write().generate_pin(ttl_secs).to_string()
+        self.trust_manager
+            .write()
+            .generate_pin(ttl_secs)
+            .to_string()
     }
 
     /// Verify a PIN attempt for a remote device.
@@ -952,7 +954,9 @@ impl UotEngine {
             port,
             is_sender,
         );
-        self.log_event(&format!("Stream session {session_id} started ({stream_type})"));
+        self.log_event(&format!(
+            "Stream session {session_id} started ({stream_type})"
+        ));
         session_id
     }
 
@@ -1008,7 +1012,9 @@ impl UotEngine {
         &self,
         candidates: &[(TransportId, TransportState)],
     ) -> Option<TransportId> {
-        self.fallback_manager.read().select_best_transport(candidates)
+        self.fallback_manager
+            .read()
+            .select_best_transport(candidates)
     }
 
     /// Set transport selection strategy (PreferSpeed, PreferOffline, Manual).
@@ -1065,6 +1071,9 @@ mod tests {
         engine.stop_stream(&session_id);
         let streams = engine.get_streams();
         assert_eq!(streams.len(), 1);
-        assert_eq!(streams[0].state, crate::streaming::manager::StreamState::Stopping);
+        assert_eq!(
+            streams[0].state,
+            crate::streaming::manager::StreamState::Stopping
+        );
     }
 }
