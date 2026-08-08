@@ -153,6 +153,9 @@ This file is **append-only** — history is never overwritten.
 - **Subnet Active Scanner** (`discovery/subnet.rs`): `SubnetScanner` fallback scan over IPv4 /24 range on port 42000
 - **Transfer Queue Manager** (`transfer/queue.rs`): `TransferQueueManager` with priority scheduling (`Low`, `Normal`, `High`, `Urgent`)
 - **Lifetime Statistics & Analytics** (`transfer/analytics.rs`): `LifetimeStats` cumulative bytes/transfers/peak speed tracker (`engine_get_stats()`)
+- **Network Interface Enumerator** (`discovery/interface.rs`): `InterfaceEnumerator` active IPv4/IPv6 interface listing
+- **Transfer Rate Limiter** (`transfer/ratelimit.rs`): `RateLimiter` token bucket bandwidth throttler
+
 
 
 

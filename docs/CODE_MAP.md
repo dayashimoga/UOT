@@ -82,7 +82,8 @@ h:\UOT/
 │       │   ├── mod.rs              # Traits: DiscoveryProvider
 │       │   ├── types.rs            # DiscoveredDevice, DeviceType
 │       │   ├── mdns.rs             # ★ mDNS service registration/browsing
-│       │   └── subnet.rs           # ★ LAN subnet active scanner fallback
+│       │   ├── subnet.rs           # ★ LAN subnet active scanner fallback
+│       │   └── interface.rs        # ★ Network interface enumeration & IP binding helper
 │       ├── transfer/               # Transfer engine
 │       │   ├── mod.rs              # Trait: TransferEngine
 │       │   ├── types.rs            # TransferRecord, TransferProgress
@@ -90,7 +91,8 @@ h:\UOT/
 │       │   ├── clipboard.rs        # ★ Clipboard text/URL/HTML transfer
 │       │   ├── history.rs          # ★ Persistent transfer history & search store
 │       │   ├── queue.rs            # ★ Transfer queue priority & scheduling manager
-│       │   └── analytics.rs        # ★ Lifetime transfer statistics & analytics manager
+│       │   ├── analytics.rs        # ★ Lifetime transfer statistics & analytics manager
+│       │   └── ratelimit.rs        # ★ Token bucket rate limiter & bandwidth throttler
 │       └── streaming/              # Media streaming
 │           ├── mod.rs              # Traits: StreamCapabilityDetector
 │           ├── types.rs            # StreamCapability, StreamConfig
