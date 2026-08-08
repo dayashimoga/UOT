@@ -92,11 +92,11 @@
 ## Future Hardware & Native OS Extensions
 
 ### Native Mobile Adapters
-- [ ] Android: BLE GATT host adapter (NDK / Java BluetoothAdapter)
-- [ ] Android: Wi-Fi Direct P2P Group Owner adapter (WifiP2pManager)
-- [ ] iOS: CoreBluetooth GATT peripheral/central adapter
-- [ ] iOS: Multipeer Connectivity framework integration
+- [x] Android: BLE GATT host adapter (`lib/src/platform/ble_adapter.dart`)
+- [x] Android: Wi-Fi Direct P2P Group Owner adapter (`lib/src/platform/wifi_direct_adapter.dart`)
+- [x] iOS: CoreBluetooth GATT peripheral/central adapter (`lib/src/platform/ble_adapter.dart`)
+- [x] iOS: Multipeer Connectivity framework integration (`lib/src/platform/wifi_direct_adapter.dart`)
 
 ### Hardware Payload Pipelines
-- [ ] Flutter camera package optical QR scanner UI
-- [ ] Hardware H.264 / AAC video streaming encoder/decoder pipeline
+- [x] Flutter camera package optical QR scanner UI (`lib/src/features/nearby/qr_scanner_dialog.dart`)
+- [x] Hardware H.264 / AAC video streaming encoder/decoder pipeline (`rust/src/streaming/pipeline.rs`)

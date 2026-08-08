@@ -171,6 +171,10 @@ This file is **append-only** — history is never overwritten.
 - **Fountain Decoder & Reconstruction** (`protocol/fountain.rs`): `FountainDecoder` with CRC32 integrity validation for Luby Transform optical QR payload reconstruction.
 - **Coverage & Quality Gate Script** (`scripts/coverage.ps1`): Automated PowerShell script enforcing 100% test pass rate for Rust & Flutter and zero Clippy warnings.
 - **Unit Test Suite Expansion**: Expanded unit test coverage across `benchmark`, `subnet`, `interface`, `fallback`, `connection_manager`, `ratelimit`, `clipboard`, and `qr` modules (147 Rust tests passing).
+- **BLE GATT Host Platform Adapter** (`lib/src/platform/ble_adapter.dart`): `BleGattAdapter` managing GATT service UUID (`6E400001-B5A3-F393-E0A9-E50E24DCCA9E`), control & data characteristics, and advertisement broadcast.
+- **Wi-Fi Direct P2P Platform Adapter** (`lib/src/platform/wifi_direct_adapter.dart`): `WifiDirectAdapter` for P2P Group Owner creation, SSID broadcast, 5GHz channel negotiation, and TCP bridge binding.
+- **Camera Optical QR Scanner Adapter & UI Dialog** (`lib/src/platform/camera_qr_adapter.dart`, `lib/src/features/nearby/qr_scanner_dialog.dart`): Interactive Material 3 QR Scanner modal with camera preview and Luby Transform fountain code stream reconstruction progress tracking.
+- **Live Media Payload H.264/AAC Streaming Pipeline** (`rust/src/streaming/pipeline.rs`): `MediaStreamPipeline` providing H.264 NAL unit framing (SPS/PPS/IDR/P-Frame), AAC ADTS audio frame encapsulation, ring-buffer jitter smoothing, and CRC32 packet checksums (150 Rust tests & 14 Flutter tests passing).
 - **Updated Documentation Suite**: Evidence-based audit updates across `GAP_ANALYSIS.md`, `PRODUCTION_READINESS.md`, `TESTING.md`, `TODO.md`, `IMPLEMENTATION.md`.
 
 

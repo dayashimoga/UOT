@@ -4,6 +4,7 @@
 //! Supports video, audio, camera, and screen streaming where
 //! platform capabilities allow.
 pub mod manager;
+pub mod pipeline;
 pub mod types;
 
 use types::{StreamCapability, StreamStatus};
