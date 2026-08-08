@@ -3,6 +3,7 @@
 //! Manages the lifecycle of discovery, connections, and transfers.
 //! This is the single entry point that the API layer uses.
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,9 +16,16 @@ use crate::core::config::AppConfig;
 use crate::core::error::{TransferError, TransportError, UotError};
 use crate::discovery::mdns::{DiscoveryEvent, MdnsDiscovery};
 use crate::discovery::types::{DeviceType, DiscoveredDevice};
+use crate::security::path_validator::StrictPathValidator;
+use crate::security::PathValidator;
+use crate::transfer::analytics::LifetimeStats;
 use crate::transfer::engine::{self, ProgressTracker, TransferItem};
+use crate::transfer::history::TransferHistoryStore;
 use crate::transfer::types::{TransferDirection, TransferProgress, TransferRecord, TransferStatus};
 use crate::transport::tcp::{self, Frame, FrameType, TcpConnection, TcpTransportListener};
+
+/// Maximum number of recent events to keep in the ring buffer.
+const MAX_EVENT_LOG: usize = 200;
 
 /// Engine state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +43,7 @@ pub enum EngineState {
 /// Main UOT engine coordinator.
 pub struct UotEngine {
     /// Configuration.
-    config: AppConfig,
+    config: Arc<RwLock<AppConfig>>,
     /// Current state.
     state: Arc<RwLock<EngineState>>,
     /// Device ID for this instance.
@@ -54,6 +62,12 @@ pub struct UotEngine {
     progress_trackers: Arc<RwLock<HashMap<Uuid, Arc<ProgressTracker>>>>,
     /// Event channel for UI updates.
     event_tx: mpsc::Sender<EngineEvent>,
+    /// Lifetime transfer statistics.
+    lifetime_stats: Arc<RwLock<LifetimeStats>>,
+    /// Persistent transfer history.
+    history_store: Arc<RwLock<TransferHistoryStore>>,
+    /// Recent event log ring buffer.
+    event_log: Arc<RwLock<VecDeque<String>>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -89,9 +103,15 @@ impl UotEngine {
         let (event_tx, event_rx) = mpsc::channel(256);
         let device_id = Uuid::new_v4().to_string();
 
+        let stats_path = LifetimeStats::default_path();
+        let lifetime_stats = LifetimeStats::load(&stats_path);
+
+        let history_path = TransferHistoryStore::default_path();
+        let history_store = TransferHistoryStore::load(&history_path);
+
         (
             Self {
-                config,
+                config: Arc::new(RwLock::new(config)),
                 state: Arc::new(RwLock::new(EngineState::Stopped)),
                 device_id,
                 discovery: Arc::new(RwLock::new(None)),
@@ -101,6 +121,9 @@ impl UotEngine {
                 transfers: Arc::new(RwLock::new(HashMap::new())),
                 progress_trackers: Arc::new(RwLock::new(HashMap::new())),
                 event_tx,
+                lifetime_stats: Arc::new(RwLock::new(lifetime_stats)),
+                history_store: Arc::new(RwLock::new(history_store)),
+                event_log: Arc::new(RwLock::new(VecDeque::with_capacity(MAX_EVENT_LOG))),
             },
             event_rx,
         )
@@ -114,8 +137,15 @@ impl UotEngine {
             .send(EngineEvent::StateChanged(EngineState::Starting))
             .await;
 
-        // Start TCP listener
-        let port = self.config.network_port.unwrap_or(tcp::DEFAULT_PORT);
+        // Start TCP listener — extract config values before async call
+        let (port, device_name_clone, save_dir_clone) = {
+            let config = self.config.read();
+            (
+                config.network_port.unwrap_or(tcp::DEFAULT_PORT),
+                config.device_name.clone(),
+                config.transfer.save_directory.clone(),
+            )
+        };
         let (tcp_listener, mut incoming_streams) = TcpTransportListener::bind(port)
             .await
             .map_err(UotError::Transport)?;
@@ -131,7 +161,7 @@ impl UotEngine {
         let device_type = DeviceType::Desktop; // TODO: detect platform
         mdns.register(
             &self.device_id,
-            &self.config.device_name,
+            &device_name_clone,
             actual_port,
             device_type,
         )
@@ -175,7 +205,7 @@ impl UotEngine {
         let transfers = Arc::clone(&self.transfers);
         let progress_trackers = Arc::clone(&self.progress_trackers);
         let event_tx2 = self.event_tx.clone();
-        let save_dir = self.config.transfer.save_directory.clone();
+        let save_dir = save_dir_clone;
 
         tokio::spawn(async move {
             while let Some(stream) = incoming_streams.recv().await {
@@ -279,7 +309,7 @@ impl UotEngine {
         let offer = serde_json::json!({
             "type": "offer",
             "transfer_id": transfer_id.to_string(),
-            "device_name": self.config.device_name,
+            "device_name": self.config.read().device_name,
             "items": items.iter().map(|i| serde_json::json!({
                 "name": i.name,
                 "relative_path": i.relative_path,
@@ -304,7 +334,10 @@ impl UotEngine {
         // Spawn the actual transfer task
         let transfers = Arc::clone(&self.transfers);
         let event_tx = self.event_tx.clone();
-        let chunk_size = self.config.transfer.chunk_size;
+        let chunk_size = self.config.read().transfer.chunk_size;
+
+        let stats = Arc::clone(&self.lifetime_stats);
+        let history = Arc::clone(&self.history_store);
 
         tokio::spawn(async move {
             let result =
@@ -317,18 +350,27 @@ impl UotEngine {
                         record.status = TransferStatus::Completed;
                         record.finished_at = Some(chrono::Utc::now());
                         record.transferred_bytes = record.total_size;
+                        // Record success in analytics
+                        let speed = tracker.snapshot().speed_bytes_per_sec;
+                        stats.write().record_success(record.total_size, true, speed);
                     }
                     Err(e) => {
                         record.status = TransferStatus::Failed;
                         record.finished_at = Some(chrono::Utc::now());
                         record.error = Some(e.to_string());
                         log::error!("Transfer {transfer_id} failed: {e}");
+                        // Record failure in analytics
+                        stats.write().record_failure();
                     }
                 }
                 let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
                     transfer_id,
                     status: record.status,
                 });
+                // Persist history
+                history.write().upsert(record.clone());
+                let _ = history.read().save(&TransferHistoryStore::default_path());
+                let _ = stats.read().save(&LifetimeStats::default_path());
             }
         });
 
@@ -503,9 +545,28 @@ impl UotEngine {
                                 .unwrap_or(&name);
                             let size = msg.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
 
-                            // Sanitize path (security: prevent traversal)
-                            let sanitized = relative_path.replace("..", "_").replace('\\', "/");
+                            // Sanitize path (security: strict path validation)
+                            let path_validator =
+                                StrictPathValidator::new(Some(PathBuf::from(save_dir)));
+                            let sanitized = match path_validator
+                                .validate_relative_path(relative_path)
+                            {
+                                Ok(clean) => clean,
+                                Err(e) => {
+                                    log::error!("Path validation failed for {relative_path}: {e}");
+                                    path_validator.sanitize_filename(&name)
+                                }
+                            };
                             let file_path = PathBuf::from(save_dir).join(&sanitized);
+
+                            // Security: check for symlink at target
+                            if file_path.exists() && file_path.is_symlink() {
+                                log::error!(
+                                    "Refusing to write to symlink: {}",
+                                    file_path.display()
+                                );
+                                continue;
+                            }
 
                             current_file = Some((file_path, name.clone(), size));
                             log::info!("Receiving file: {name} ({size} bytes)");
@@ -697,8 +758,7 @@ impl UotEngine {
 
     /// Set the device display name.
     pub fn set_device_name(&self, name: &str) {
-        // Update in-memory config name
-        // This will be used for future connections
+        self.config.write().device_name = name.to_string();
         log::info!("Device name updated to: {name}");
     }
 
@@ -739,8 +799,19 @@ impl UotEngine {
     }
 
     /// Get recent events as serializable strings.
-    pub fn get_recent_events(&self, _limit: usize) -> Vec<String> {
-        Vec::new()
+    pub fn get_recent_events(&self, limit: usize) -> Vec<String> {
+        let log = self.event_log.read();
+        log.iter().rev().take(limit).cloned().collect()
+    }
+
+    /// Log an event to the ring buffer.
+    pub fn log_event(&self, event: &str) {
+        let mut log = self.event_log.write();
+        if log.len() >= MAX_EVENT_LOG {
+            log.pop_front();
+        }
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        log.push_back(format!("{timestamp}: {event}"));
     }
 
     /// Get active streaming sessions.
@@ -748,6 +819,11 @@ impl UotEngine {
         // Streaming sessions will be managed by StreamManager
         // For now, return empty list
         Vec::new()
+    }
+
+    /// Get the current configuration (read-only).
+    pub fn config(&self) -> AppConfig {
+        self.config.read().clone()
     }
 }
 

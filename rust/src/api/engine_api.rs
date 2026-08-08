@@ -9,6 +9,7 @@ use parking_lot::RwLock;
 
 use crate::core::config::AppConfig;
 use crate::core::engine::UotEngine;
+use crate::security::CryptoProvider;
 
 /// Global engine singleton.
 static ENGINE: OnceLock<RwLock<Option<EngineHandle>>> = OnceLock::new();
@@ -234,11 +235,24 @@ pub fn engine_save_settings(json: String) -> String {
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_generate_qr_invitation(pin: String) -> String {
     with_engine(|engine| {
+        let crypto = crate::security::crypto::SoftwareCryptoProvider::new();
+        let key_pair = match crypto.generate_key_pair() {
+            Ok(kp) => kp,
+            Err(e) => {
+                return format!("error:keygen:{e}");
+            }
+        };
+        let public_key_b64 = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &key_pair.public_key,
+        );
+
+        let config = engine.config();
         let inv = crate::security::qr::QrInvitation::new(
-            "UOT Device".to_string(),
+            config.device_name.clone(),
             engine.device_id().to_string(),
-            "ephemeral_key_placeholder".to_string(),
-            "127.0.0.1:42000".to_string(),
+            public_key_b64,
+            format!("127.0.0.1:{}", config.network_port.unwrap_or(42000)),
             pin,
             300,
         );

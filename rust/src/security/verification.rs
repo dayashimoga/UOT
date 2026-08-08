@@ -54,7 +54,7 @@ impl VerificationSession {
         let random_bytes: [u8; 32] = rng.random();
         let mut hasher = Sha256::new();
         hasher.update(device_id.as_bytes());
-        hasher.update(&random_bytes);
+        hasher.update(random_bytes);
         let token = hex::encode(hasher.finalize());
 
         let now = Instant::now();

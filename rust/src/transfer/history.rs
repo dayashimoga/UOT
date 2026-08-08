@@ -55,7 +55,7 @@ impl TransferHistoryStore {
                     || r.items
                         .iter()
                         .any(|item| item.name.to_lowercase().contains(&q));
-                let matches_status = status_filter.map_or(true, |s| r.status == s);
+                let matches_status = status_filter.is_none_or(|s| r.status == s);
                 matches_text && matches_status
             })
             .cloned()

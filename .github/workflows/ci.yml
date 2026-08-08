@@ -43,6 +43,13 @@ jobs:
       - name: Run tests
         run: cargo test --manifest-path rust/Cargo.toml --verbose
 
+      - name: Security audit
+        run: |
+          cargo install cargo-audit --quiet
+          cargo audit --file rust/Cargo.toml
+        continue-on-error: true
+
+
   # ── Dart/Flutter: Format, Analyze, Test ──
   flutter-check:
     name: Flutter Check

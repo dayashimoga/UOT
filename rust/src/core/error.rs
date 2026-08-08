@@ -120,8 +120,11 @@ pub enum SecurityError {
     #[error("Replay attack detected: nonce={nonce}")]
     ReplayDetected { nonce: String },
 
-    #[error("Path traversal attempt: {path}")]
-    PathTraversal { path: String },
+    #[error("Key exchange failed: {reason}")]
+    KeyExchangeFailed { reason: String },
+
+    #[error("Path traversal attempt: {path} ({reason})")]
+    PathTraversal { path: String, reason: String },
 }
 
 /// Discovery-specific errors.
@@ -233,10 +236,11 @@ mod tests {
     fn test_error_display_security() {
         let err = SecurityError::PathTraversal {
             path: "../../../etc/passwd".to_string(),
+            reason: "Parent directory traversal (..)".to_string(),
         };
         assert_eq!(
             err.to_string(),
-            "Path traversal attempt: ../../../etc/passwd"
+            "Path traversal attempt: ../../../etc/passwd (Parent directory traversal (..))"
         );
     }
 
