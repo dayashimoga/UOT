@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
 use crate::core::config::AppConfig;
@@ -69,6 +69,8 @@ pub struct UotEngine {
     history_store: Arc<RwLock<TransferHistoryStore>>,
     /// Recent event log ring buffer.
     event_log: Arc<RwLock<VecDeque<String>>>,
+    /// Per-transfer pause signals (true = paused).
+    pause_signals: Arc<RwLock<HashMap<Uuid, watch::Sender<bool>>>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -125,6 +127,7 @@ impl UotEngine {
                 lifetime_stats: Arc::new(RwLock::new(lifetime_stats)),
                 history_store: Arc::new(RwLock::new(history_store)),
                 event_log: Arc::new(RwLock::new(VecDeque::with_capacity(MAX_EVENT_LOG))),
+                pause_signals: Arc::new(RwLock::new(HashMap::new())),
             },
             event_rx,
         )
@@ -338,6 +341,11 @@ impl UotEngine {
         let chunk_size = self.config.read().transfer.chunk_size;
         let bandwidth_limit = self.config.read().transfer.bandwidth_limit;
 
+        // Create pause signal for this transfer
+        let (pause_tx, pause_rx) = watch::channel(false);
+        self.pause_signals.write().insert(transfer_id, pause_tx);
+        let pause_signals = Arc::clone(&self.pause_signals);
+
         let stats = Arc::clone(&self.lifetime_stats);
         let history = Arc::clone(&self.history_store);
 
@@ -349,6 +357,7 @@ impl UotEngine {
                 &tracker,
                 chunk_size,
                 bandwidth_limit,
+                pause_rx,
                 &event_tx,
             )
             .await;
@@ -381,6 +390,8 @@ impl UotEngine {
                 history.write().upsert(record.clone());
                 let _ = history.read().save(&TransferHistoryStore::default_path());
                 let _ = stats.read().save(&LifetimeStats::default_path());
+                // Clean up pause signal
+                pause_signals.write().remove(&transfer_id);
             }
         });
 
@@ -388,6 +399,7 @@ impl UotEngine {
     }
 
     /// Execute the send operation — chunked file transfer.
+    #[allow(clippy::too_many_arguments)]
     async fn execute_send(
         conn: TcpConnection,
         items: Vec<TransferItem>,
@@ -395,6 +407,7 @@ impl UotEngine {
         tracker: &ProgressTracker,
         chunk_size: usize,
         bandwidth_limit: u64,
+        mut pause_rx: watch::Receiver<bool>,
         event_tx: &mpsc::Sender<EngineEvent>,
     ) -> Result<(), TransferError> {
         let mut rate_limiter = RateLimiter::new(bandwidth_limit);
@@ -440,6 +453,14 @@ impl UotEngine {
 
                 // Apply rate limiting
                 rate_limiter.consume(chunk_len as usize).await;
+
+                // Check pause signal
+                while *pause_rx.borrow() {
+                    // Wait until unpaused
+                    if pause_rx.changed().await.is_err() {
+                        break; // Sender dropped (transfer cancelled)
+                    }
+                }
 
                 // Emit progress periodically
                 let progress = tracker.snapshot();
@@ -687,50 +708,6 @@ impl UotEngine {
         *self.state.write() = EngineState::Stopped;
     }
 
-    /// Pause a transfer.
-    pub async fn pause_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
-        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
-            UotError::Transfer(TransferError::TransferNotFound {
-                transfer_id: transfer_id.to_string(),
-            })
-        })?;
-        let mut transfers = self.transfers.write();
-        if let Some(record) = transfers.get_mut(&uuid) {
-            record.status = TransferStatus::Paused;
-            let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
-                transfer_id: uuid,
-                status: TransferStatus::Paused,
-            });
-            Ok(())
-        } else {
-            Err(UotError::Transfer(TransferError::TransferNotFound {
-                transfer_id: transfer_id.to_string(),
-            }))
-        }
-    }
-
-    /// Resume a transfer.
-    pub async fn resume_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
-        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
-            UotError::Transfer(TransferError::TransferNotFound {
-                transfer_id: transfer_id.to_string(),
-            })
-        })?;
-        let mut transfers = self.transfers.write();
-        if let Some(record) = transfers.get_mut(&uuid) {
-            record.status = TransferStatus::InProgress;
-            let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
-                transfer_id: uuid,
-                status: TransferStatus::InProgress,
-            });
-            Ok(())
-        } else {
-            Err(UotError::Transfer(TransferError::TransferNotFound {
-                transfer_id: transfer_id.to_string(),
-            }))
-        }
-    }
-
     /// Cancel a transfer.
     pub async fn cancel_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
         let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
@@ -746,6 +723,64 @@ impl UotEngine {
                 transfer_id: uuid,
                 status: TransferStatus::Cancelled,
             });
+            Ok(())
+        } else {
+            Err(UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))
+        }
+    }
+
+    /// Pause an active transfer.
+    pub fn pause_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
+        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
+            UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            })
+        })?;
+
+        // Signal the send loop to pause
+        if let Some(tx) = self.pause_signals.read().get(&uuid) {
+            let _ = tx.send(true);
+        }
+
+        let mut transfers = self.transfers.write();
+        if let Some(record) = transfers.get_mut(&uuid) {
+            record.status = TransferStatus::Paused;
+            let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
+                transfer_id: uuid,
+                status: TransferStatus::Paused,
+            });
+            self.log_event(&format!("Transfer {transfer_id} paused"));
+            Ok(())
+        } else {
+            Err(UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            }))
+        }
+    }
+
+    /// Resume a paused transfer.
+    pub fn resume_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
+        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
+            UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            })
+        })?;
+
+        // Signal the send loop to resume
+        if let Some(tx) = self.pause_signals.read().get(&uuid) {
+            let _ = tx.send(false);
+        }
+
+        let mut transfers = self.transfers.write();
+        if let Some(record) = transfers.get_mut(&uuid) {
+            record.status = TransferStatus::InProgress;
+            let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
+                transfer_id: uuid,
+                status: TransferStatus::InProgress,
+            });
+            self.log_event(&format!("Transfer {transfer_id} resumed"));
             Ok(())
         } else {
             Err(UotError::Transfer(TransferError::TransferNotFound {

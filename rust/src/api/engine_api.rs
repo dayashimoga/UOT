@@ -115,23 +115,23 @@ pub fn engine_stop() {
 
 /// Pause a transfer.
 pub fn engine_pause_transfer(transfer_id: String) -> String {
-    with_engine_runtime(|engine, runtime| {
-        match runtime.block_on(async { engine.pause_transfer(&transfer_id).await }) {
+    with_engine_runtime(
+        |engine, _runtime| match engine.pause_transfer(&transfer_id) {
             Ok(()) => "ok".to_string(),
             Err(e) => format!("error:{e}"),
-        }
-    })
+        },
+    )
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
 /// Resume a transfer.
 pub fn engine_resume_transfer(transfer_id: String) -> String {
-    with_engine_runtime(|engine, runtime| {
-        match runtime.block_on(async { engine.resume_transfer(&transfer_id).await }) {
+    with_engine_runtime(
+        |engine, _runtime| match engine.resume_transfer(&transfer_id) {
             Ok(()) => "ok".to_string(),
             Err(e) => format!("error:{e}"),
-        }
-    })
+        },
+    )
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
