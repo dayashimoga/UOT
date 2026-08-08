@@ -31,11 +31,11 @@
 ## Backlog
 
 ### Sprint 2 — Reliability
-- `[ ]` Persistent transfer state (survive app restart)
+- `[x]` Persistent transfer state (survive app restart `transfer/history.rs`)
 - `[x]` Pause/resume transfers
 - `[x]` Automatic retry on failure
 - `[x]` Reconnection after network loss
-- `[ ]` Transfer history with search
+- `[x]` Transfer history with search (`engine_search_history`)
 
 ### Sprint 3 — QR
 - `[x]` QR pairing with secure invitation (`security/qr.rs` & `engine_api`)
@@ -63,9 +63,9 @@
 ### Sprint 7 — Advanced Connectivity
 - `[x]` Bluetooth LE device discovery (`transport/ble.rs`)
 - `[x]` Bluetooth LE data negotiation (`transport/ble.rs`)
-- `[ ]` Wi-Fi Direct transport
-- `[ ]` Temporary hotspot creation
-- `[ ]` Automatic transport switching and fallback
+- `[x]` Wi-Fi Direct transport (`transport/wifidirect.rs`)
+- `[x]` Temporary hotspot creation (`transport/wifidirect.rs`)
+- `[x]` Automatic transport switching and fallback (`transport/fallback.rs`)
 
 ### Sprint 8 — Hardening
 - `[ ]` Security audit

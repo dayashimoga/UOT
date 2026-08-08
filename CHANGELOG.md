@@ -143,4 +143,8 @@ This file is **append-only** — history is never overwritten.
 - **QR Invitation & Pairing** (`security/qr.rs`): Encrypted QR pairing structure with OTP PIN, device ID, ephemeral key, and TTL validation
 - **BLE Transport Abstraction** (`transport/ble.rs`): GATT service UUIDs (`UOT_BLE_SERVICE_UUID`), GATT characteristics, and BLE advertisement payload serialization
 - **QR FFI APIs** (`api/engine_api.rs` / Dart FFI): `engine_generate_qr_invitation()`, `engine_parse_qr_invitation()`
+- **Persistent Transfer History** (`transfer/history.rs`): JSON store with text search & status filtering (`query()`)
+- **Wi-Fi Direct P2P Group** (`transport/wifidirect.rs`): `WifiDirectGroupInfo` SSID, WPA2/WPA3 passphrase, 5GHz channel negotiation
+- **Transport Fallback Orchestrator** (`transport/fallback.rs`): `TransportFallbackManager` with priority selection (TcpLan -> WifiDirect -> BluetoothLe -> QrCode)
+- **History FFI API**: `engine_search_history()`
 

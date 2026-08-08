@@ -6,8 +6,10 @@
 //! switch, and fall back between transports transparently.
 pub mod ble;
 pub mod connection_manager;
+pub mod fallback;
 pub mod tcp;
 pub mod types;
+pub mod wifidirect;
 
 use crate::core::error::TransportError;
 use async_trait::async_trait;

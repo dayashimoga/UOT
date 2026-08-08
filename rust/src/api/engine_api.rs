@@ -262,6 +262,15 @@ pub fn engine_parse_qr_invitation(json: String) -> String {
     }
 }
 
+/// Search persistent transfer history with query string.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_search_history(query: String) -> String {
+    let path = crate::transfer::history::TransferHistoryStore::default_path();
+    let store = crate::transfer::history::TransferHistoryStore::load(&path);
+    let results = store.query(&query, None);
+    serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string())
+}
+
 /// Helper: access the engine.
 fn with_engine<F, R>(f: F) -> Option<R>
 where

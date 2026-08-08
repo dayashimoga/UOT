@@ -5,6 +5,7 @@
 //! and transfer lifecycle.
 pub mod clipboard;
 pub mod engine;
+pub mod history;
 pub mod types;
 
 use types::{TransferProgress, TransferRecord};

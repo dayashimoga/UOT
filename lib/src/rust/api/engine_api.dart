@@ -104,3 +104,7 @@ String engineGenerateQrInvitation({required String pin}) =>
 /// Parse and validate QR invitation JSON string.
 String engineParseQrInvitation({required String json}) =>
     RustLib.instance.api.crateApiEngineApiEngineParseQrInvitation(json: json);
+
+/// Search persistent transfer history with query string.
+String engineSearchHistory({required String query}) =>
+    RustLib.instance.api.crateApiEngineApiEngineSearchHistory(query: query);

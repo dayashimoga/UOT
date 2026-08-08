@@ -59,7 +59,9 @@ h:\UOT/
 │       │   ├── types.rs            # TransportState, TransportStats
 │       │   ├── tcp.rs              # ★ TCP/LAN transport (framing, send_frame/recv_frame)
 │       │   ├── connection_manager.rs # ★ Auto-reconnect with exponential backoff
-│       │   └── ble.rs              # ★ BLE GATT service & advertisement
+│       │   ├── ble.rs              # ★ BLE GATT service & advertisement
+│       │   ├── wifidirect.rs       # ★ Wi-Fi Direct P2P group & AP hotspot
+│       │   └── fallback.rs         # ★ Transport auto-switching & fallback orchestrator
 │       ├── protocol/               # Transfer protocol
 │       │   ├── mod.rs
 │       │   ├── state.rs            # Protocol state machine
@@ -79,7 +81,8 @@ h:\UOT/
 │       │   ├── mod.rs              # Trait: TransferEngine
 │       │   ├── types.rs            # TransferRecord, TransferProgress
 │       │   ├── engine.rs           # ★ Chunked I/O, CRC32+SHA-256, progress
-│       │   └── clipboard.rs        # ★ Clipboard text/URL/HTML transfer
+│       │   ├── clipboard.rs        # ★ Clipboard text/URL/HTML transfer
+│       │   └── history.rs          # ★ Persistent transfer history & search store
 │       └── streaming/              # Media streaming
 │           ├── mod.rs              # Traits: StreamCapabilityDetector
 │           ├── types.rs            # StreamCapability, StreamConfig
