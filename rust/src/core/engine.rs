@@ -21,6 +21,7 @@ use crate::security::PathValidator;
 use crate::transfer::analytics::LifetimeStats;
 use crate::transfer::engine::{self, ProgressTracker, TransferItem};
 use crate::transfer::history::TransferHistoryStore;
+use crate::transfer::ratelimit::RateLimiter;
 use crate::transfer::types::{TransferDirection, TransferProgress, TransferRecord, TransferStatus};
 use crate::transport::tcp::{self, Frame, FrameType, TcpConnection, TcpTransportListener};
 
@@ -335,13 +336,22 @@ impl UotEngine {
         let transfers = Arc::clone(&self.transfers);
         let event_tx = self.event_tx.clone();
         let chunk_size = self.config.read().transfer.chunk_size;
+        let bandwidth_limit = self.config.read().transfer.bandwidth_limit;
 
         let stats = Arc::clone(&self.lifetime_stats);
         let history = Arc::clone(&self.history_store);
 
         tokio::spawn(async move {
-            let result =
-                Self::execute_send(conn, items, transfer_id, &tracker, chunk_size, &event_tx).await;
+            let result = Self::execute_send(
+                conn,
+                items,
+                transfer_id,
+                &tracker,
+                chunk_size,
+                bandwidth_limit,
+                &event_tx,
+            )
+            .await;
 
             let mut transfers = transfers.write();
             if let Some(record) = transfers.get_mut(&transfer_id) {
@@ -384,8 +394,11 @@ impl UotEngine {
         transfer_id: Uuid,
         tracker: &ProgressTracker,
         chunk_size: usize,
+        bandwidth_limit: u64,
         event_tx: &mpsc::Sender<EngineEvent>,
     ) -> Result<(), TransferError> {
+        let mut rate_limiter = RateLimiter::new(bandwidth_limit);
+
         for item in &items {
             tracker.set_current_item(&item.name);
 
@@ -424,6 +437,9 @@ impl UotEngine {
 
                 offset += chunk_len;
                 tracker.add_bytes(chunk_len);
+
+                // Apply rate limiting
+                rate_limiter.consume(chunk_len as usize).await;
 
                 // Emit progress periodically
                 let progress = tracker.snapshot();

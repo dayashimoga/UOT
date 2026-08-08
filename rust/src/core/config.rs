@@ -50,6 +50,9 @@ pub struct TransferConfig {
 
     /// Directory to save received files.
     pub save_directory: String,
+
+    /// Bandwidth limit in bytes/sec (0 = unlimited).
+    pub bandwidth_limit: u64,
 }
 
 /// Discovery configuration.
@@ -120,6 +123,7 @@ impl Default for TransferConfig {
             auto_accept_trusted: false,
             max_file_size: 0, // unlimited
             save_directory: dirs_fallback().to_string_lossy().to_string(),
+            bandwidth_limit: 0, // unlimited
         }
     }
 }
