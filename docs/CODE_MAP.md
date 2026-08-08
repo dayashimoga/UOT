@@ -58,15 +58,18 @@ h:\UOT/
 │       │   ├── mod.rs              # Traits: TransportConnection, TransportProvider
 │       │   ├── types.rs            # TransportState, TransportStats
 │       │   ├── tcp.rs              # ★ TCP/LAN transport (framing, send_frame/recv_frame)
-│       │   └── connection_manager.rs # ★ Auto-reconnect with exponential backoff
+│       │   ├── connection_manager.rs # ★ Auto-reconnect with exponential backoff
+│       │   └── ble.rs              # ★ BLE GATT service & advertisement
 │       ├── protocol/               # Transfer protocol
 │       │   ├── mod.rs
 │       │   ├── state.rs            # Protocol state machine
 │       │   ├── messages.rs         # Protocol message types
-│       │   └── handler.rs          # ★ WireMessage serialization over TCP frames
+│       │   ├── handler.rs          # ★ WireMessage serialization over TCP frames
+│       │   └── fountain.rs         # ★ Fountain/LT codes for animated QR transport
 │       ├── security/               # Security module
 │       │   ├── mod.rs              # Traits: CryptoProvider, PathValidator
-│       │   ├── types.rs            # TrustedDevice, SessionToken, QrInvitation
+│       │   ├── types.rs            # TrustedDevice, SessionToken
+│       │   ├── qr.rs               # ★ Secure QR invitation & pairing data
 │       │   └── verification.rs     # ★ PIN verification, TrustManager
 │       ├── discovery/              # Device discovery
 │       │   ├── mod.rs              # Traits: DiscoveryProvider

@@ -2,6 +2,7 @@
 //!
 //! Defines trait interfaces for encryption, authentication,
 //! key management, and security validation.
+pub mod qr;
 pub mod types;
 pub mod verification;
 

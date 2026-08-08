@@ -230,6 +230,38 @@ pub fn engine_save_settings(json: String) -> String {
     }
 }
 
+/// Generate QR invitation JSON string for device pairing.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_generate_qr_invitation(pin: String) -> String {
+    with_engine(|engine| {
+        let inv = crate::security::qr::QrInvitation::new(
+            "UOT Device".to_string(),
+            engine.device_id().to_string(),
+            "ephemeral_key_placeholder".to_string(),
+            "127.0.0.1:42000".to_string(),
+            pin,
+            300,
+        );
+        inv.to_json().unwrap_or_else(|_| "{}".to_string())
+    })
+    .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Parse and validate QR invitation JSON string.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_parse_qr_invitation(json: String) -> String {
+    match crate::security::qr::QrInvitation::from_json(&json) {
+        Ok(inv) => {
+            if inv.is_expired() {
+                "error:expired".to_string()
+            } else {
+                serde_json::to_string(&inv).unwrap_or_else(|_| "error:serialize".to_string())
+            }
+        }
+        Err(e) => format!("error:parse:{e}"),
+    }
+}
+
 /// Helper: access the engine.
 fn with_engine<F, R>(f: F) -> Option<R>
 where

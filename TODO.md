@@ -38,8 +38,8 @@
 - `[ ]` Transfer history with search
 
 ### Sprint 3 — QR
-- `[ ]` QR pairing with secure invitation
-- `[ ]` Animated QR data transport (fountain codes)
+- `[x]` QR pairing with secure invitation (`security/qr.rs` & `engine_api`)
+- `[x]` Animated QR data transport (fountain codes `protocol/fountain.rs`)
 - `[ ]` QR scanner integration
 
 ### Sprint 4 — Platforms
@@ -61,10 +61,11 @@
 - `[x]` Video/audio file streaming
 
 ### Sprint 7 — Advanced Connectivity
-- `[ ]` Bluetooth LE discovery
+- `[x]` Bluetooth LE device discovery (`transport/ble.rs`)
+- `[x]` Bluetooth LE data negotiation (`transport/ble.rs`)
 - `[ ]` Wi-Fi Direct transport
-- `[ ]` Hotspot assistance
-- `[ ]` Transport auto-switching
+- `[ ]` Temporary hotspot creation
+- `[ ]` Automatic transport switching and fallback
 
 ### Sprint 8 — Hardening
 - `[ ]` Security audit

@@ -96,3 +96,11 @@ String engineLoadSettings() =>
 /// Save user settings from JSON.
 Future<String> engineSaveSettings({required String json}) =>
     RustLib.instance.api.crateApiEngineApiEngineSaveSettings(json: json);
+
+/// Generate QR invitation JSON string for device pairing.
+String engineGenerateQrInvitation({required String pin}) =>
+    RustLib.instance.api.crateApiEngineApiEngineGenerateQrInvitation(pin: pin);
+
+/// Parse and validate QR invitation JSON string.
+String engineParseQrInvitation({required String json}) =>
+    RustLib.instance.api.crateApiEngineApiEngineParseQrInvitation(json: json);

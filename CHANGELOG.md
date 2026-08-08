@@ -133,3 +133,14 @@ This file is **append-only** — history is never overwritten.
 #### Changed
 - `docs/CODE_MAP.md`: Updated with all Sprint 1-5 files (★ markers for new modules)
 - `TODO.md`: Reorganized with completed/active/backlog sections
+
+## [0.7.0-alpha] - 2026-08-08
+
+### Sprint 6 — QR & Advanced Transports
+
+#### Added
+- **Fountain Encoder** (`protocol/fountain.rs`): Luby Transform (LT) encoder with CRC32 verification for optical QR transport streams
+- **QR Invitation & Pairing** (`security/qr.rs`): Encrypted QR pairing structure with OTP PIN, device ID, ephemeral key, and TTL validation
+- **BLE Transport Abstraction** (`transport/ble.rs`): GATT service UUIDs (`UOT_BLE_SERVICE_UUID`), GATT characteristics, and BLE advertisement payload serialization
+- **QR FFI APIs** (`api/engine_api.rs` / Dart FFI): `engine_generate_qr_invitation()`, `engine_parse_qr_invitation()`
+
