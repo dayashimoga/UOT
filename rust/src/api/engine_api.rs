@@ -277,20 +277,34 @@ pub fn engine_parse_qr_invitation(json: String) -> String {
 }
 
 /// Search persistent transfer history with query string.
+/// Search transfer history via engine's in-memory store.
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_search_history(query: String) -> String {
-    let path = crate::transfer::history::TransferHistoryStore::default_path();
-    let store = crate::transfer::history::TransferHistoryStore::load(&path);
-    let results = store.query(&query, None);
-    serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string())
+    with_engine(|engine| {
+        let results = engine.get_transfer_history(&query, None);
+        serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string())
+    })
+    .unwrap_or_else(|| "[]".to_string())
 }
 
-/// Get cumulative lifetime transfer statistics as JSON.
+/// Get cumulative lifetime transfer statistics from engine.
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_get_stats() -> String {
-    let path = crate::transfer::analytics::LifetimeStats::default_path();
-    let stats = crate::transfer::analytics::LifetimeStats::load(&path);
-    serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string())
+    with_engine(|engine| {
+        let stats = engine.get_lifetime_stats();
+        serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string())
+    })
+    .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Fallback subnet scan for device discovery.
+pub fn engine_subnet_scan() -> String {
+    with_engine_runtime(|engine, runtime| {
+        let addrs = runtime.block_on(engine.subnet_scan());
+        let strs: Vec<String> = addrs.iter().map(|a| a.to_string()).collect();
+        serde_json::to_string(&strs).unwrap_or_else(|_| "[]".to_string())
+    })
+    .unwrap_or_else(|| "[]".to_string())
 }
 
 /// Helper: access the engine.
