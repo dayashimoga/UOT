@@ -75,6 +75,20 @@ impl TransferQueueManager {
         }
     }
 
+    /// Set max concurrent transfers limit.
+    pub fn set_max_concurrent(&mut self, max: usize) {
+        self.max_concurrent = max;
+    }
+
+    /// Pop the next highest priority queued transfer.
+    pub fn pop_next(&mut self) -> Option<QueuedTransfer> {
+        if self.queue.is_empty() {
+            None
+        } else {
+            Some(self.queue.remove(0))
+        }
+    }
+
     /// Get current queued items.
     pub fn items(&self) -> &[QueuedTransfer] {
         &self.queue

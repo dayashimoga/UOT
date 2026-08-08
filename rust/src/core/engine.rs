@@ -22,9 +22,14 @@ use crate::security::PathValidator;
 use crate::transfer::analytics::LifetimeStats;
 use crate::transfer::engine::{self, ProgressTracker, TransferItem};
 use crate::transfer::history::TransferHistoryStore;
+use crate::transfer::queue::{Priority, TransferQueueManager};
 use crate::transfer::ratelimit::RateLimiter;
-use crate::transfer::types::{TransferDirection, TransferProgress, TransferRecord, TransferStatus};
+use crate::transfer::types::{
+    TransferDirection, TransferItemRecord, TransferProgress, TransferRecord, TransferStatus,
+};
+use crate::transport::fallback::{TransportFallbackManager, TransportSelectionStrategy};
 use crate::transport::tcp::{self, Frame, FrameType, TcpConnection, TcpTransportListener};
+use crate::transport::types::{TransportId, TransportState};
 
 /// Maximum number of recent events to keep in the ring buffer.
 const MAX_EVENT_LOG: usize = 200;
@@ -34,19 +39,19 @@ const MAX_EVENT_LOG: usize = 200;
 pub enum EngineState {
     /// Not started.
     Stopped,
-    /// Starting up.
+    /// Starting background services.
     Starting,
-    /// Running and ready.
+    /// Active and operational.
     Running,
     /// Shutting down.
     ShuttingDown,
 }
 
-/// Main UOT engine coordinator.
+/// Central UOT engine that manages discovery, networking, and transfers.
 pub struct UotEngine {
-    /// Configuration.
+    /// Global application configuration.
     config: Arc<RwLock<AppConfig>>,
-    /// Current state.
+    /// Current engine state.
     state: Arc<RwLock<EngineState>>,
     /// Device ID for this instance.
     device_id: String,
@@ -72,6 +77,10 @@ pub struct UotEngine {
     event_log: Arc<RwLock<VecDeque<String>>>,
     /// Per-transfer pause signals (true = paused).
     pause_signals: Arc<RwLock<HashMap<Uuid, watch::Sender<bool>>>>,
+    /// Transfer queue manager for batch priority scheduling.
+    queue_manager: Arc<RwLock<TransferQueueManager>>,
+    /// Multi-transport fallback manager.
+    fallback_manager: Arc<RwLock<TransportFallbackManager>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -106,6 +115,7 @@ impl UotEngine {
     pub fn new(config: AppConfig) -> (Self, mpsc::Receiver<EngineEvent>) {
         let (event_tx, event_rx) = mpsc::channel(256);
         let device_id = Uuid::new_v4().to_string();
+        let max_concurrent = config.transfer.max_concurrent_transfers;
 
         let stats_path = LifetimeStats::default_path();
         let lifetime_stats = LifetimeStats::load(&stats_path);
@@ -129,6 +139,8 @@ impl UotEngine {
                 history_store: Arc::new(RwLock::new(history_store)),
                 event_log: Arc::new(RwLock::new(VecDeque::with_capacity(MAX_EVENT_LOG))),
                 pause_signals: Arc::new(RwLock::new(HashMap::new())),
+                queue_manager: Arc::new(RwLock::new(TransferQueueManager::new(max_concurrent))),
+                fallback_manager: Arc::new(RwLock::new(TransportFallbackManager::default())),
             },
             event_rx,
         )
@@ -297,7 +309,10 @@ impl UotEngine {
         let record =
             engine::create_transfer_record(&items, TransferDirection::Send, &device.device_name);
         let transfer_id = record.transfer_id;
-        self.transfers.write().insert(transfer_id, record);
+        self.transfers.write().insert(transfer_id, record.clone());
+
+        // Push to priority queue manager for batch scheduling
+        self.queue_manager.write().push(record, Priority::Normal);
 
         // Connect to the device
         let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
@@ -532,7 +547,34 @@ impl UotEngine {
 
                             current_transfer_id = Some(transfer_id);
 
-                            // Auto-accept for now (will add consent UI later)
+                            let item_records: Vec<TransferItemRecord> = offer_items
+                                .iter()
+                                .map(|i| TransferItemRecord {
+                                    item_id: Uuid::new_v4(),
+                                    name: i.name.clone(),
+                                    relative_path: i.relative_path.clone(),
+                                    size: i.size,
+                                    transferred_bytes: 0,
+                                    status: TransferStatus::Pending,
+                                    hash: None,
+                                })
+                                .collect();
+
+                            let record = TransferRecord {
+                                transfer_id,
+                                remote_device: device_name.clone(),
+                                direction: TransferDirection::Receive,
+                                status: TransferStatus::Pending,
+                                total_size,
+                                transferred_bytes: 0,
+                                items: item_records,
+                                created_at: chrono::Utc::now(),
+                                started_at: None,
+                                finished_at: None,
+                                error: None,
+                            };
+                            transfers.write().insert(transfer_id, record);
+
                             let _ = event_tx
                                 .send(EngineEvent::IncomingOffer {
                                     transfer_id,
@@ -542,7 +584,7 @@ impl UotEngine {
                                 })
                                 .await;
 
-                            log::info!("Accepted transfer {transfer_id} from {remote}");
+                            log::info!("Received offer {transfer_id} from {remote}");
                         }
                         WireMessage::FileStart {
                             file_name,
@@ -872,6 +914,19 @@ impl UotEngine {
         status_filter: Option<TransferStatus>,
     ) -> Vec<TransferRecord> {
         self.history_store.read().query(query, status_filter)
+    }
+
+    /// Select optimal transport based on candidate states via TransportFallbackManager.
+    pub fn select_best_transport(
+        &self,
+        candidates: &[(TransportId, TransportState)],
+    ) -> Option<TransportId> {
+        self.fallback_manager.read().select_best_transport(candidates)
+    }
+
+    /// Set transport selection strategy (PreferSpeed, PreferOffline, Manual).
+    pub fn set_transport_strategy(&self, strategy: TransportSelectionStrategy) {
+        self.fallback_manager.write().strategy = strategy;
     }
 }
 

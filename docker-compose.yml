@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  sender-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uot-sender-node
+    environment:
+      - RUST_LOG=info
+      - DEVICE_NAME=Node-Alpha
+    networks:
+      uot-mesh:
+        ipv4_address: 172.28.0.10
+    command: ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "transport::tcp::tests"]
+
+  receiver-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uot-receiver-node
+    environment:
+      - RUST_LOG=info
+      - DEVICE_NAME=Node-Beta
+    networks:
+      uot-mesh:
+        ipv4_address: 172.28.0.20
+    command: ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "security::crypto::tests"]
+
+networks:
+  uot-mesh:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

@@ -4,6 +4,8 @@
 // Shows incoming transfer requests.
 
 import 'package:flutter/material.dart';
+import '../../rust/frb_generated.dart';
+import 'incoming_offer_dialog.dart';
 
 class ReceiveScreen extends StatefulWidget {
   const ReceiveScreen({super.key});
@@ -17,6 +19,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
   bool _autoAcceptTrusted = false;
   bool _requirePin = false;
   final String _savePath = 'Downloads/UOT';
+  final List<Map<String, dynamic>> _pendingOffers = [];
 
   @override
   Widget build(BuildContext context) {
@@ -175,13 +178,103 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _EmptyIncoming(colorScheme: colorScheme, theme: theme),
+                if (_pendingOffers.isEmpty)
+                  _EmptyIncoming(colorScheme: colorScheme, theme: theme)
+                else
+                  ..._pendingOffers.map((offer) => _IncomingOfferCard(
+                        offer: offer,
+                        requirePin: _requirePin,
+                        onResponse: (accepted) {
+                          setState(() {
+                            _pendingOffers.removeWhere(
+                                (o) => o['id'] == offer['id']);
+                          });
+                        },
+                      )),
               ]),
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _IncomingOfferCard extends StatelessWidget {
+  const _IncomingOfferCard({
+    required this.offer,
+    required this.requirePin,
+    required this.onResponse,
+  });
+
+  final Map<String, dynamic> offer;
+  final bool requirePin;
+  final ValueChanged<bool> onResponse;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final String transferId = offer['id'] ?? '';
+    final String fromDevice = offer['device'] ?? 'Unknown Device';
+    final List<String> items = List<String>.from(offer['items'] ?? []);
+    final int totalSize = offer['size'] ?? 0;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: colorScheme.primaryContainer,
+          child: Icon(
+            Icons.move_to_inbox_rounded,
+            color: colorScheme.onPrimaryContainer,
+          ),
+        ),
+        title: Text(fromDevice, style: theme.textTheme.titleSmall),
+        subtitle: Text(
+          '${items.length} file(s) • ${_formatSize(totalSize)}',
+          style: theme.textTheme.bodySmall,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(Icons.close_rounded, color: colorScheme.error),
+              tooltip: 'Decline',
+              onPressed: () {
+                try {
+                  engineCancelTransfer(transferId: transferId);
+                } catch (_) {}
+                onResponse(false);
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.check_circle_rounded, color: colorScheme.primary),
+              tooltip: 'Accept',
+              onPressed: () async {
+                final result = await IncomingOfferDialog.show(
+                  context,
+                  transferId: transferId,
+                  fromDevice: fromDevice,
+                  items: items,
+                  totalSize: totalSize,
+                  requirePin: requirePin,
+                );
+                if (result != null) {
+                  onResponse(result);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }
 
