@@ -53,7 +53,8 @@ h:\UOT/
 │       │   ├── error.rs            # Error type hierarchy
 │       │   ├── version.rs          # Version/build info
 │       │   ├── engine.rs           # ★ UotEngine coordinator (lifecycle, mDNS+TCP, send/receive)
-│       │   └── settings.rs         # ★ UserSettings persistence (JSON load/save)
+│       │   ├── settings.rs         # ★ UserSettings persistence (JSON load/save)
+│       │   └── benchmark.rs        # ★ Real-time throughput & bandwidth benchmark engine
 │       ├── transport/              # Transport layer
 │       │   ├── mod.rs              # Traits: TransportConnection, TransportProvider
 │       │   ├── types.rs            # TransportState, TransportStats
@@ -61,7 +62,8 @@ h:\UOT/
 │       │   ├── connection_manager.rs # ★ Auto-reconnect with exponential backoff
 │       │   ├── ble.rs              # ★ BLE GATT service & advertisement
 │       │   ├── wifidirect.rs       # ★ Wi-Fi Direct P2P group & AP hotspot
-│       │   └── fallback.rs         # ★ Transport auto-switching & fallback orchestrator
+│       │   ├── fallback.rs         # ★ Transport auto-switching & fallback orchestrator
+│       │   └── hotspot.rs          # ★ Access Point hotspot assist & status tracking
 │       ├── protocol/               # Transfer protocol
 │       │   ├── mod.rs
 │       │   ├── state.rs            # Protocol state machine
@@ -72,7 +74,8 @@ h:\UOT/
 │       │   ├── mod.rs              # Traits: CryptoProvider, PathValidator
 │       │   ├── types.rs            # TrustedDevice, SessionToken
 │       │   ├── qr.rs               # ★ Secure QR invitation & pairing data
-│       │   └── verification.rs     # ★ PIN verification, TrustManager
+│       │   ├── verification.rs     # ★ PIN verification, TrustManager
+│       │   └── crypto.rs           # ★ SoftwareCryptoProvider (AES-256-GCM session encryption)
 │       ├── discovery/              # Device discovery
 │       │   ├── mod.rs              # Traits: DiscoveryProvider
 │       │   ├── types.rs            # DiscoveredDevice, DeviceType

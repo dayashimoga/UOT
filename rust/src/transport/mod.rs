@@ -7,6 +7,7 @@
 pub mod ble;
 pub mod connection_manager;
 pub mod fallback;
+pub mod hotspot;
 pub mod tcp;
 pub mod types;
 pub mod wifidirect;

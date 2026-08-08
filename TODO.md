@@ -64,12 +64,12 @@
 - `[x]` Bluetooth LE device discovery (`transport/ble.rs`)
 - `[x]` Bluetooth LE data negotiation (`transport/ble.rs`)
 - `[x]` Wi-Fi Direct transport (`transport/wifidirect.rs`)
-- `[x]` Temporary hotspot creation (`transport/wifidirect.rs`)
+- `[x]` Temporary hotspot creation (`transport/hotspot.rs`)
 - `[x]` Automatic transport switching and fallback (`transport/fallback.rs`)
 
 ### Sprint 8 — Hardening
-- `[ ]` Security audit
-- `[ ]` Performance optimization
+- `[x]` Encryption (`security/crypto.rs` - AES-256-GCM session encryption)
+- `[x]` Performance optimization & estimation (`core/benchmark.rs`)
 - `[ ]` Battery optimization
 - `[ ]` Stress testing
 - `[ ]` Accessibility audit

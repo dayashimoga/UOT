@@ -147,4 +147,7 @@ This file is **append-only** — history is never overwritten.
 - **Wi-Fi Direct P2P Group** (`transport/wifidirect.rs`): `WifiDirectGroupInfo` SSID, WPA2/WPA3 passphrase, 5GHz channel negotiation
 - **Transport Fallback Orchestrator** (`transport/fallback.rs`): `TransportFallbackManager` with priority selection (TcpLan -> WifiDirect -> BluetoothLe -> QrCode)
 - **History FFI API**: `engine_search_history()`
+- **Cryptographic Provider** (`security/crypto.rs`): `SoftwareCryptoProvider` implementing `CryptoProvider` trait (AES-256-GCM envelope cipher & SHA-256 derivation)
+- **Hotspot Assist** (`transport/hotspot.rs`): `HotspotConfig` for local Access Point configuration and status tracking
+- **Throughput Benchmark** (`core/benchmark.rs`): `ThroughputBenchmark` real-time bandwidth calculator and Mbps snapshotting
 

@@ -1,4 +1,4 @@
-//! Core module: configuration, errors, version, engine, and shared utilities.
+pub mod benchmark;
 pub mod config;
 pub mod engine;
 pub mod error;
