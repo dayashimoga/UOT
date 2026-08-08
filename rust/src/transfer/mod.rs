@@ -6,6 +6,7 @@
 pub mod clipboard;
 pub mod engine;
 pub mod history;
+pub mod queue;
 pub mod types;
 
 use types::{TransferProgress, TransferRecord};

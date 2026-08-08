@@ -79,13 +79,15 @@ h:\UOT/
 │       ├── discovery/              # Device discovery
 │       │   ├── mod.rs              # Traits: DiscoveryProvider
 │       │   ├── types.rs            # DiscoveredDevice, DeviceType
-│       │   └── mdns.rs             # ★ mDNS service registration/browsing
+│       │   ├── mdns.rs             # ★ mDNS service registration/browsing
+│       │   └── subnet.rs           # ★ LAN subnet active scanner fallback
 │       ├── transfer/               # Transfer engine
 │       │   ├── mod.rs              # Trait: TransferEngine
 │       │   ├── types.rs            # TransferRecord, TransferProgress
 │       │   ├── engine.rs           # ★ Chunked I/O, CRC32+SHA-256, progress
 │       │   ├── clipboard.rs        # ★ Clipboard text/URL/HTML transfer
-│       │   └── history.rs          # ★ Persistent transfer history & search store
+│       │   ├── history.rs          # ★ Persistent transfer history & search store
+│       │   └── queue.rs            # ★ Transfer queue priority & scheduling manager
 │       └── streaming/              # Media streaming
 │           ├── mod.rs              # Traits: StreamCapabilityDetector
 │           ├── types.rs            # StreamCapability, StreamConfig

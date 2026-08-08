@@ -3,6 +3,7 @@
 //! Defines trait interfaces for discovering nearby devices
 //! using various mechanisms (mDNS, BLE, QR, etc.).
 pub mod mdns;
+pub mod subnet;
 pub mod types;
 
 use types::{DiscoveredDevice, DiscoveryMethod};
