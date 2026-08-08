@@ -16,6 +16,7 @@ use crate::core::config::AppConfig;
 use crate::core::error::{TransferError, TransportError, UotError};
 use crate::discovery::mdns::{DiscoveryEvent, MdnsDiscovery};
 use crate::discovery::types::{DeviceType, DiscoveredDevice};
+use crate::protocol::handler::{self as proto, OfferItemInfo, WireMessage};
 use crate::security::path_validator::StrictPathValidator;
 use crate::security::PathValidator;
 use crate::transfer::analytics::LifetimeStats;
@@ -310,22 +311,21 @@ impl UotEngine {
             .insert(transfer_id, Arc::clone(&tracker));
 
         // Send offer message
-        let offer = serde_json::json!({
-            "type": "offer",
-            "transfer_id": transfer_id.to_string(),
-            "device_name": self.config.read().device_name,
-            "items": items.iter().map(|i| serde_json::json!({
-                "name": i.name,
-                "relative_path": i.relative_path,
-                "size": i.size,
-            })).collect::<Vec<_>>(),
-            "total_size": total_bytes,
-        });
-        let offer_bytes = serde_json::to_vec(&offer).map_err(|e| {
-            UotError::Transfer(TransferError::Protocol(format!("Serialize error: {e}")))
-        })?;
-
-        conn.send(Frame::control(&offer_bytes))
+        let offer = WireMessage::Offer {
+            transfer_id: transfer_id.to_string(),
+            device_name: self.config.read().device_name.clone(),
+            items: items
+                .iter()
+                .map(|i| OfferItemInfo {
+                    name: i.name.clone(),
+                    relative_path: i.relative_path.clone(),
+                    size: i.size,
+                    is_directory: false,
+                })
+                .collect(),
+            total_size: total_bytes,
+        };
+        proto::send_message(&conn, &offer)
             .await
             .map_err(UotError::Transport)?;
 
@@ -419,16 +419,14 @@ impl UotEngine {
             let mut offset: u64 = 0;
 
             // Send file header
-            let header = serde_json::json!({
-                "type": "file_start",
-                "transfer_id": transfer_id.to_string(),
-                "name": item.name,
-                "relative_path": item.relative_path,
-                "size": file_size,
-            });
-            let header_bytes = serde_json::to_vec(&header)
-                .map_err(|e| TransferError::Protocol(format!("Serialize error: {e}")))?;
-            conn.send(Frame::control(&header_bytes))
+            let header = WireMessage::FileStart {
+                transfer_id: transfer_id.to_string(),
+                item_index: items.iter().position(|x| x.name == item.name).unwrap_or(0) as u32,
+                file_name: item.name.clone(),
+                file_size,
+                relative_path: item.relative_path.clone(),
+            };
+            proto::send_message(&conn, &header)
                 .await
                 .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
 
@@ -469,15 +467,12 @@ impl UotEngine {
 
             // Compute and send file hash
             let hash = engine::compute_sha256(&item.path).await?;
-            let verify = serde_json::json!({
-                "type": "file_end",
-                "transfer_id": transfer_id.to_string(),
-                "name": item.name,
-                "sha256": hash,
-            });
-            let verify_bytes = serde_json::to_vec(&verify)
-                .map_err(|e| TransferError::Protocol(format!("Serialize error: {e}")))?;
-            conn.send(Frame::control(&verify_bytes))
+            let verify = WireMessage::FileEnd {
+                transfer_id: transfer_id.to_string(),
+                item_index: items.iter().position(|x| x.name == item.name).unwrap_or(0) as u32,
+                sha256: hash,
+            };
+            proto::send_message(&conn, &verify)
                 .await
                 .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
 
@@ -485,13 +480,11 @@ impl UotEngine {
         }
 
         // Send transfer complete
-        let complete = serde_json::json!({
-            "type": "transfer_complete",
-            "transfer_id": transfer_id.to_string(),
-        });
-        let complete_bytes = serde_json::to_vec(&complete)
-            .map_err(|e| TransferError::Protocol(format!("Serialize error: {e}")))?;
-        conn.send(Frame::control(&complete_bytes))
+        let complete = WireMessage::TransferComplete {
+            transfer_id: transfer_id.to_string(),
+            success: true,
+        };
+        proto::send_message(&conn, &complete)
             .await
             .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
 
@@ -517,44 +510,25 @@ impl UotEngine {
             };
             match frame.frame_type {
                 FrameType::Control => {
-                    let msg: serde_json::Value = match serde_json::from_slice(&frame.payload) {
-                        Ok(v) => v,
+                    let wire_msg: WireMessage = match serde_json::from_slice(&frame.payload) {
+                        Ok(m) => m,
                         Err(e) => {
-                            log::error!("Invalid JSON from {remote}: {e}");
+                            log::error!("Invalid protocol message from {remote}: {e}");
                             continue;
                         }
                     };
 
-                    let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
-
-                    match msg_type {
-                        "offer" => {
-                            let transfer_id_str = msg
-                                .get("transfer_id")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
+                    match wire_msg {
+                        WireMessage::Offer {
+                            transfer_id: tid_str,
+                            device_name,
+                            items: offer_items,
+                            total_size,
+                        } => {
                             let transfer_id =
-                                Uuid::parse_str(transfer_id_str).unwrap_or_else(|_| Uuid::new_v4());
-                            let from_device = msg
-                                .get("device_name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("Unknown")
-                                .to_string();
-                            let total_size =
-                                msg.get("total_size").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let items: Vec<String> = msg
-                                .get("items")
-                                .and_then(|v| v.as_array())
-                                .map(|arr| {
-                                    arr.iter()
-                                        .filter_map(|i| {
-                                            i.get("name")
-                                                .and_then(|n| n.as_str())
-                                                .map(|s| s.to_string())
-                                        })
-                                        .collect()
-                                })
-                                .unwrap_or_default();
+                                Uuid::parse_str(&tid_str).unwrap_or_else(|_| Uuid::new_v4());
+                            let items: Vec<String> =
+                                offer_items.iter().map(|i| i.name.clone()).collect();
 
                             current_transfer_id = Some(transfer_id);
 
@@ -562,7 +536,7 @@ impl UotEngine {
                             let _ = event_tx
                                 .send(EngineEvent::IncomingOffer {
                                     transfer_id,
-                                    from_device,
+                                    from_device: device_name,
                                     items,
                                     total_size,
                                 })
@@ -570,28 +544,22 @@ impl UotEngine {
 
                             log::info!("Accepted transfer {transfer_id} from {remote}");
                         }
-                        "file_start" => {
-                            let name = msg
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("unknown")
-                                .to_string();
-                            let relative_path = msg
-                                .get("relative_path")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or(&name);
-                            let size = msg.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
-
+                        WireMessage::FileStart {
+                            file_name,
+                            file_size,
+                            relative_path,
+                            ..
+                        } => {
                             // Sanitize path (security: strict path validation)
                             let path_validator =
                                 StrictPathValidator::new(Some(PathBuf::from(save_dir)));
                             let sanitized = match path_validator
-                                .validate_relative_path(relative_path)
+                                .validate_relative_path(&relative_path)
                             {
                                 Ok(clean) => clean,
                                 Err(e) => {
                                     log::error!("Path validation failed for {relative_path}: {e}");
-                                    path_validator.sanitize_filename(&name)
+                                    path_validator.sanitize_filename(&file_name)
                                 }
                             };
                             let file_path = PathBuf::from(save_dir).join(&sanitized);
@@ -605,20 +573,17 @@ impl UotEngine {
                                 continue;
                             }
 
-                            current_file = Some((file_path, name.clone(), size));
-                            log::info!("Receiving file: {name} ({size} bytes)");
+                            current_file = Some((file_path, file_name.clone(), file_size));
+                            log::info!("Receiving file: {file_name} ({file_size} bytes)");
                         }
-                        "file_end" => {
+                        WireMessage::FileEnd { sha256, .. } => {
                             if let Some((ref path, ref name, _)) = current_file {
-                                let expected_hash =
-                                    msg.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
-
                                 match engine::compute_sha256(path).await {
                                     Ok(actual_hash) => {
-                                        if actual_hash == expected_hash {
+                                        if actual_hash == sha256 {
                                             log::info!("File {name} verified ✓");
                                         } else {
-                                            log::error!("File {name} hash mismatch! Expected: {expected_hash}, Got: {actual_hash}");
+                                            log::error!("File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}");
                                         }
                                     }
                                     Err(e) => log::error!("Cannot verify {name}: {e}"),
@@ -626,7 +591,7 @@ impl UotEngine {
                             }
                             current_file = None;
                         }
-                        "transfer_complete" => {
+                        WireMessage::TransferComplete { .. } => {
                             if let Some(tid) = current_transfer_id {
                                 let mut t = transfers.write();
                                 if let Some(record) = t.get_mut(&tid) {
@@ -640,8 +605,8 @@ impl UotEngine {
                             }
                             log::info!("Transfer complete from {remote}");
                         }
-                        _ => {
-                            log::debug!("Unknown message type: {msg_type}");
+                        other => {
+                            log::debug!("Unhandled message type from {remote}: {other:?}");
                         }
                     }
                 }
@@ -833,19 +798,15 @@ impl UotEngine {
         let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
         let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
 
-        let msg = serde_json::json!({
-            "type": "clipboard",
-            "content_type": "text/plain",
-            "data": text,
-        });
-        let payload = serde_json::to_vec(&msg).map_err(|e| {
-            UotError::Transfer(TransferError::Protocol(format!("Serialize error: {e}")))
-        })?;
-
-        conn.send(Frame::control(&payload))
+        let text_len = text.len();
+        let msg = WireMessage::ClipboardData {
+            content_type: "text/plain".to_string(),
+            data: text,
+        };
+        proto::send_message(&conn, &msg)
             .await
             .map_err(UotError::Transport)?;
-        log::info!("Clipboard sent to {device_id}: {} bytes", text.len());
+        log::info!("Clipboard sent to {device_id}: {text_len} bytes");
         Ok(())
     }
 

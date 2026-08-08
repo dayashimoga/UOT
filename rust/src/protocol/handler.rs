@@ -9,7 +9,7 @@ use crate::transport::tcp::{Frame, FrameType, TcpConnection};
 
 /// High-level protocol message types for the wire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum WireMessage {
     /// Device announces itself.
     Hello {
@@ -29,6 +29,7 @@ pub enum WireMessage {
     /// Offer to send files.
     Offer {
         transfer_id: String,
+        device_name: String,
         items: Vec<OfferItemInfo>,
         total_size: u64,
     },
@@ -175,7 +176,7 @@ mod tests {
             capabilities: vec!["files".to_string(), "clipboard".to_string()],
         };
         let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains("\"type\":\"Hello\""));
+        assert!(json.contains("\"type\":\"hello\""));
         assert!(json.contains("test-123"));
 
         let deserialized: WireMessage = serde_json::from_str(&json).unwrap();
@@ -191,6 +192,7 @@ mod tests {
     fn test_offer_serialization() {
         let msg = WireMessage::Offer {
             transfer_id: "test-transfer-123".to_string(),
+            device_name: "Test Device".to_string(),
             items: vec![OfferItemInfo {
                 name: "test.txt".to_string(),
                 relative_path: "test.txt".to_string(),
@@ -200,7 +202,7 @@ mod tests {
             total_size: 1024,
         };
         let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains("\"type\":\"Offer\""));
+        assert!(json.contains("\"type\":\"offer\""));
 
         let _: WireMessage = serde_json::from_str(&json).unwrap();
     }
