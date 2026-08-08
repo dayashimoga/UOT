@@ -23,9 +23,11 @@ h:\UOT/
 │       │       └── app_router.dart # Adaptive navigation
 │       ├── features/
 │       │   ├── nearby/
-│       │   │   └── nearby_screen.dart    # Device discovery + send (file_picker, engine)
+│       │   │   ├── nearby_screen.dart    # Device discovery + send (file_picker, engine)
+│       │   │   └── widgets/quick_actions.dart # ★ QuickActionsBar (Files, Clipboard, QR, Subnet)
 │       │   ├── transfers/
-│       │   │   └── transfers_screen.dart # Transfer queue/history (pause/cancel wired)
+│       │   │   ├── transfers_screen.dart # Transfer queue/history (pause/cancel wired)
+│       │   │   └── widgets/transfer_search.dart # ★ TransferSearchBar (text query & status filter)
 │       │   ├── receive/
 │       │   │   └── receive_screen.dart   # Receive configuration
 │       │   ├── stream/
