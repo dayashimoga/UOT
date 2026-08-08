@@ -87,3 +87,49 @@ This file is **append-only** — history is never overwritten.
 - `TransportError`: added `Connection`, `Protocol` tuple variants
 - `DiscoveryError`: added `ServiceError` tuple variant
 - `AppConfig`: added `network_port`, `save_directory` fields
+
+## [0.3.0-alpha] - 2026-08-07
+
+### Sprint 2 — Wiring
+
+#### Added
+- **FRB bindings** for engine API (devices, transfers, send, stop)
+- **File picker integration**: Files + folders via `file_picker` package
+- **Live device polling**: Nearby screen polls `engine_get_devices()` every 2s
+- **Transfer polling**: Transfers screen polls `engine_get_transfers()` every 1s
+- **Protocol handler** (`protocol/handler.rs`): `WireMessage` enum, `send_message()`, `recv_message()`, `send_data_chunk()`, `recv_data_chunk()`
+- **TcpConnection**: added `send_frame()` and `recv_frame()` for bidirectional framed I/O
+
+## [0.4.0-alpha] - 2026-08-07
+
+### Sprint 3 — Features
+
+#### Added
+- **Clipboard module** (`transfer/clipboard.rs`): `ClipboardItem`, auto-detect text/URL/HTML, preview generation
+- **Security verification** (`security/verification.rs`): `VerificationPin` (6-digit, TTL), `VerificationSession` (SHA-256 tokens), `TrustManager`
+- **Transfer control APIs**: `pause_transfer()`, `resume_transfer()`, `cancel_transfer()`, `accept_transfer()`
+- **Clipboard send API**: `engine_send_clipboard()` with system clipboard wiring
+- **Events API**: `engine_get_events()` for event log
+
+## [0.5.0-alpha] - 2026-08-07
+
+### Sprint 4 — Streaming
+
+#### Added
+- **StreamManager** (`streaming/manager.rs`): Session lifecycle (start/stop/pause/update)
+- **StreamSession**: `StreamType` (Camera/Screen/Video/Audio), `StreamState` (Idle→Streaming→Stopping)
+- **Stream API**: `engine_get_streams()` for Flutter
+
+## [0.6.0-alpha] - 2026-08-08
+
+### Sprint 5 — Persistence & Reliability
+
+#### Added
+- **UserSettings** (`core/settings.rs`): JSON-based settings persistence (device name, theme, chunk size, SHA-256 toggle, auto-accept, PIN, save directory, port, scan interval, concurrent transfers)
+- **ConnectionManager** (`transport/connection_manager.rs`): Exponential backoff reconnection (configurable max retries, base/max delay), connection pooling, device tracking
+- **Settings API**: `engine_load_settings()`, `engine_save_settings()`
+- **deps**: `dirs-next` for platform config/download directories
+
+#### Changed
+- `docs/CODE_MAP.md`: Updated with all Sprint 1-5 files (★ markers for new modules)
+- `TODO.md`: Reorganized with completed/active/backlog sections

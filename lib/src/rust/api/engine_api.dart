@@ -88,3 +88,11 @@ String engineGetEvents({required int limit}) =>
 /// Get active streaming sessions as JSON.
 String engineGetStreams() =>
     RustLib.instance.api.crateApiEngineApiEngineGetStreams();
+
+/// Load user settings as JSON.
+String engineLoadSettings() =>
+    RustLib.instance.api.crateApiEngineApiEngineLoadSettings();
+
+/// Save user settings from JSON.
+Future<String> engineSaveSettings({required String json}) =>
+    RustLib.instance.api.crateApiEngineApiEngineSaveSettings(json: json);

@@ -23,9 +23,9 @@ h:\UOT/
 │       │       └── app_router.dart # Adaptive navigation
 │       ├── features/
 │       │   ├── nearby/
-│       │   │   └── nearby_screen.dart    # Device discovery UI
+│       │   │   └── nearby_screen.dart    # Device discovery + send (file_picker, engine)
 │       │   ├── transfers/
-│       │   │   └── transfers_screen.dart # Transfer queue/history
+│       │   │   └── transfers_screen.dart # Transfer queue/history (pause/cancel wired)
 │       │   ├── receive/
 │       │   │   └── receive_screen.dart   # Receive configuration
 │       │   ├── stream/
@@ -35,6 +35,7 @@ h:\UOT/
 │       │   └── settings/
 │       │       └── settings_screen.dart  # App settings
 │       └── rust/                   # Auto-generated FRB bindings
+│           └── api/engine_api.dart # Generated engine API bindings
 ├── rust/                           # Rust core engine
 │   ├── Cargo.toml                  # Dependencies
 │   └── src/
@@ -42,42 +43,48 @@ h:\UOT/
 │       ├── frb_generated.rs        # FRB generated code
 │       ├── api/                    # FFI API (exposed to Dart)
 │       │   ├── mod.rs
-│       │   ├── simple.rs           # Scaffold greeting (preserved)
+│       │   ├── simple.rs           # Scaffold greeting
 │       │   ├── init.rs             # Version, health check
-│       │   └── types.rs            # Shared API types
+│       │   ├── types.rs            # Shared API types
+│       │   └── engine_api.rs       # ★ Engine singleton API (init/stop/devices/transfers/send/pause/resume/cancel/clipboard/settings/streams)
 │       ├── core/                   # Shared utilities
 │       │   ├── mod.rs
 │       │   ├── config.rs           # App configuration
 │       │   ├── error.rs            # Error type hierarchy
-│       │   └── version.rs          # Version/build info
-│       ├── transport/              # Transport abstraction
+│       │   ├── version.rs          # Version/build info
+│       │   ├── engine.rs           # ★ UotEngine coordinator (lifecycle, mDNS+TCP, send/receive)
+│       │   └── settings.rs         # ★ UserSettings persistence (JSON load/save)
+│       ├── transport/              # Transport layer
 │       │   ├── mod.rs              # Traits: TransportConnection, TransportProvider
-│       │   └── types.rs            # TransportId, TransportState, etc.
+│       │   ├── types.rs            # TransportState, TransportStats
+│       │   ├── tcp.rs              # ★ TCP/LAN transport (framing, send_frame/recv_frame)
+│       │   └── connection_manager.rs # ★ Auto-reconnect with exponential backoff
 │       ├── protocol/               # Transfer protocol
 │       │   ├── mod.rs
 │       │   ├── state.rs            # Protocol state machine
-│       │   └── messages.rs         # Protocol message types
+│       │   ├── messages.rs         # Protocol message types
+│       │   └── handler.rs          # ★ WireMessage serialization over TCP frames
 │       ├── security/               # Security module
 │       │   ├── mod.rs              # Traits: CryptoProvider, PathValidator
-│       │   └── types.rs            # TrustedDevice, SessionToken, QrInvitation
+│       │   ├── types.rs            # TrustedDevice, SessionToken, QrInvitation
+│       │   └── verification.rs     # ★ PIN verification, TrustManager
 │       ├── discovery/              # Device discovery
-│       │   ├── mod.rs              # Traits: DiscoveryProvider, DiscoveryService
-│       │   └── types.rs            # DiscoveredDevice, DeviceType, DiscoveryMethod
+│       │   ├── mod.rs              # Traits: DiscoveryProvider
+│       │   ├── types.rs            # DiscoveredDevice, DeviceType
+│       │   └── mdns.rs             # ★ mDNS service registration/browsing
 │       ├── transfer/               # Transfer engine
 │       │   ├── mod.rs              # Trait: TransferEngine
-│       │   └── types.rs            # TransferRecord, TransferProgress, etc.
+│       │   ├── types.rs            # TransferRecord, TransferProgress
+│       │   ├── engine.rs           # ★ Chunked I/O, CRC32+SHA-256, progress
+│       │   └── clipboard.rs        # ★ Clipboard text/URL/HTML transfer
 │       └── streaming/              # Media streaming
-│           ├── mod.rs              # Traits: StreamCapabilityDetector, StreamManager
-│           └── types.rs            # StreamCapability, StreamConfig, StreamStatus
+│           ├── mod.rs              # Traits: StreamCapabilityDetector
+│           ├── types.rs            # StreamCapability, StreamConfig
+│           └── manager.rs          # ★ StreamManager session lifecycle
 ├── rust_builder/                   # FRB Cargokit builder
-├── test/                           # Dart tests
-├── integration_test/               # Flutter integration tests
-├── scripts/                        # Build/test scripts
-├── pubspec.yaml                    # Flutter dependencies
-├── IMPLEMENTATION.md               # Implementation status
-├── TODO.md                         # Current work items
+├── pubspec.yaml                    # Flutter deps (file_picker, path_provider)
 ├── CHANGELOG.md                    # Append-only changelog
-├── ROADMAP.md                      # Sprint plan
+├── TODO.md                         # Current work items
 └── README.md                       # Project overview
 ```
 

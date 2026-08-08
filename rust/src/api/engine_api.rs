@@ -210,6 +210,26 @@ pub fn engine_get_streams() -> String {
     .unwrap_or_else(|| "[]".to_string())
 }
 
+/// Load user settings as JSON.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_load_settings() -> String {
+    let path = crate::core::settings::UserSettings::default_path();
+    let settings = crate::core::settings::UserSettings::load(&path);
+    serde_json::to_string(&settings).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// Save user settings from JSON.
+pub fn engine_save_settings(json: String) -> String {
+    let path = crate::core::settings::UserSettings::default_path();
+    match serde_json::from_str::<crate::core::settings::UserSettings>(&json) {
+        Ok(settings) => match settings.save(&path) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error:{e}"),
+        },
+        Err(e) => format!("error:parse:{e}"),
+    }
+}
+
 /// Helper: access the engine.
 fn with_engine<F, R>(f: F) -> Option<R>
 where

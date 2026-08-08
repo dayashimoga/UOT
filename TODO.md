@@ -1,96 +1,82 @@
 # UOT TODO
 
-## Active — Sprint 1 (Next)
+## ✅ Completed
 
-### Core Discovery & Transfer
-- `[ ]` Implement mDNS/NSD discovery provider (Rust)
-- `[ ]` Implement TCP/LAN transport provider (Rust)
-- `[ ]` Implement connection orchestrator (Rust)
-- `[ ]` Implement device pairing flow (Rust)
-- `[ ]` Implement secure session establishment (Rust)
-- `[ ]` Implement file transfer engine (Rust)
-- `[ ]` Implement chunked file I/O (Rust)
-- `[ ]` Implement SHA-256 integrity verification (Rust)
-- `[ ]` Wire discovery to Flutter UI (nearby screen)
-- `[ ]` Wire file picker to transfer flow
-- `[ ]` Implement transfer progress streaming (Rust→Dart)
-- `[ ]` Implement transfer queue UI
+### Sprint 0 — Foundation
+- `[x]` Project scaffold (Flutter 3.44 + Rust 1.97 + FRB v2.12)
+- `[x]` 7 architectural modules with trait interfaces
+- `[x]` Material 3 dark-first theme, adaptive navigation
+- `[x]` 68 unit tests, CI/CD workflows
+- `[x]` Documentation (README, CODE_MAP, CHANGELOG)
+
+### Sprint 1 — Core
+- `[x]` TCP/LAN transport with length-prefixed framing
+- `[x]` mDNS discovery (register/browse/events)
+- `[x]` File transfer engine (chunked I/O, CRC32, SHA-256)
+- `[x]` UOT engine coordinator (lifecycle, orchestration)
+- `[x]` Engine API singleton with tokio runtime
+
+### Sprint 2 — Wiring
+- `[x]` FRB bindings for all engine APIs
+- `[x]` Live device polling (nearby screen)
+- `[x]` File picker integration (files + folders)
+- `[x]` Transfer polling (transfers screen)
+- `[x]` Protocol handler (WireMessage over TCP frames)
+
+### Sprint 3 — Features
+- `[x]` Clipboard module (text/URL/HTML auto-detect)
+- `[x]` PIN verification (6-digit, time-limited)
+- `[x]` TrustManager (trusted devices, sessions)
+- `[x]` Pause/resume/cancel/accept transfer APIs
+- `[x]` Clipboard send wired to Flutter UI
+
+### Sprint 4 — Streaming
+- `[x]` StreamManager session lifecycle
+- `[x]` StreamSession state tracking
+- `[x]` Stream API endpoint
+
+### Sprint 5 — Persistence & Reliability
+- `[x]` UserSettings persistence (JSON load/save)
+- `[x]` ConnectionManager with exponential backoff reconnection
+- `[x]` Settings API (load/save from Flutter)
+- `[x]` CODE_MAP.md updated with all new files
+
+---
+
+## Active — Next
+
+### Testing & Polish
+- `[ ]` Run full Rust test suite, fix any failures
+- `[ ]` Add tests for new modules (settings, clipboard, verification, connection_manager)
+- `[ ]` Run cargo fmt + dart format
+- `[ ]` Flutter widget tests for all screens
+- `[ ]` Integration tests for Rust→Dart bridge
 
 ### Environment
 - `[ ]` Enable Developer Mode on Windows for symlink support
-- `[ ]` Install Android SDK for local Android builds
 - `[ ]` Set up Docker dev environment
-
-### Testing
-- `[ ]` Add Flutter widget tests for all screens
-- `[ ]` Add integration tests for Rust→Dart bridge
-- `[ ]` Set up coverage reporting (Rust + Dart)
 
 ---
 
 ## Backlog
 
-### Sprint 2 — Reliability
-- `[ ]` Persistent transfer state (survive app restart)
-- `[ ]` Pause/resume transfers
-- `[ ]` Automatic retry on failure
-- `[ ]` Reconnection after network loss
-- `[ ]` Transfer history with search
-
-### Sprint 3 — QR
+### QR Pairing
 - `[ ]` QR pairing with secure invitation
 - `[ ]` Animated QR data transport (fountain codes)
-- `[ ]` QR scanner integration
 
-### Sprint 4 — Platforms
+### Platform Integration
 - `[ ]` Android permissions and share sheet
 - `[ ]` iOS permissions and share sheet
 - `[ ]` macOS sandbox configuration
-- `[ ]` Linux desktop integration
 - `[ ]` Windows drag-and-drop
+- `[ ]` Linux desktop integration
 
-### Sprint 5 — Data Types
-- `[ ]` Clipboard sharing
-- `[ ]` Text/URL sharing
-- `[ ]` Image quick-share
-
-### Sprint 6 — Streaming
-- `[ ]` WebRTC integration
-- `[ ]` Camera streaming
-- `[ ]` Screen sharing
-- `[ ]` Video/audio file streaming
-
-### Sprint 7 — Advanced Connectivity
-- `[ ]` Bluetooth LE discovery
+### Advanced Features
+- `[ ]` Persistent transfer state (survive app restart)
+- `[ ]` Transfer history search
+- `[ ]` Camera/screen streaming implementation
+- `[ ]` Encryption (AES-256-GCM session encryption)
 - `[ ]` Wi-Fi Direct transport
-- `[ ]` Hotspot assistance
-- `[ ]` Transport auto-switching
-
-### Sprint 8 — Hardening
-- `[ ]` Security audit
-- `[ ]` Performance optimization
-- `[ ]` Battery optimization
-- `[ ]` Stress testing
-- `[ ]` Accessibility audit
-- `[ ]` Production documentation
-
----
-
-## Completed History
-
-### Sprint 0 — Foundation ✅ (2026-08-07)
-- [x] Project scaffold (Flutter + Rust + FRB)
-- [x] Rust core architecture (7 modules)
-- [x] Protocol state machine (15 states)
-- [x] Protocol messages (16 types)
-- [x] Error hierarchy (30+ variants)
-- [x] Configuration system
-- [x] Transport abstraction (8 transport types)
-- [x] Security/discovery/transfer/streaming traits
-- [x] Flutter app shell (6 screens)
-- [x] Material 3 theme (dark/light)
-- [x] Adaptive navigation
-- [x] 68 Rust unit tests (100% pass)
-- [x] Developer skill
-- [x] CI/CD workflows
-- [x] Documentation suite
+- `[ ]` Bluetooth transport
+- `[ ]` USB transport
+- `[ ]` Cloud relay (optional)

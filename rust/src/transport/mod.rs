@@ -4,6 +4,7 @@
 //! Each transport (Wi-Fi/LAN, Bluetooth, QR, USB, etc.) implements
 //! these traits, allowing the Connection Orchestrator to select,
 //! switch, and fall back between transports transparently.
+pub mod connection_manager;
 pub mod tcp;
 pub mod types;
 
