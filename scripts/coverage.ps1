@@ -29,6 +29,13 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+Write-Host "=== Running Flutter Analyze Check (0 Issues Required) ===" -ForegroundColor Cyan
+& "C:\flutter\bin\flutter.bat" analyze
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Flutter analyze failed!"
+    exit 1
+}
+
 Write-Host "=== Running Flutter Test Suite (100% Pass Required) ===" -ForegroundColor Cyan
 & "C:\flutter\bin\flutter.bat" test --coverage
 if ($LASTEXITCODE -ne 0) {
