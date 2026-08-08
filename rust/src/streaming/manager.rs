@@ -1,12 +1,10 @@
 //! Streaming Module — Video/Audio/Camera/Screen Streaming
 //!
 //! Manages local media streaming between devices over TCP.
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 use uuid::Uuid;
 
 /// Stream types supported.

@@ -38,6 +38,10 @@ impl TransferQueueManager {
         }
     }
 
+    pub fn max_concurrent(&self) -> usize {
+        self.max_concurrent
+    }
+
     /// Enqueue a new transfer.
     pub fn push(&mut self, record: TransferRecord, priority: Priority) {
         let queued = QueuedTransfer {

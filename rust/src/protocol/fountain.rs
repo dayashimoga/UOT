@@ -87,3 +87,18 @@ impl FountainEncoder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fountain_encoder() {
+        let data = b"Hello, Fountain Codes!";
+        let mut encoder = FountainEncoder::new(data, 8);
+        let pkt = encoder.next_packet();
+        assert_eq!(pkt.total_size, data.len() as u64);
+        assert!(pkt.num_blocks > 0);
+        assert!(pkt.crc32 > 0);
+    }
+}
