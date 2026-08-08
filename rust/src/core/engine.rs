@@ -841,6 +841,42 @@ impl UotEngine {
     pub fn config(&self) -> AppConfig {
         self.config.read().clone()
     }
+
+    /// Fallback discovery: scan local subnet for UOT listeners.
+    pub async fn subnet_scan(&self) -> Vec<std::net::SocketAddr> {
+        use crate::discovery::subnet::SubnetScanner;
+
+        let port = self.config.read().network_port.unwrap_or(tcp::DEFAULT_PORT);
+        let scanner = SubnetScanner::new(port);
+
+        // Get local IPs and scan each /24 subnet
+        let local_ips = tcp::local_ips();
+        let mut all_found = Vec::new();
+        for ip in local_ips {
+            if let std::net::IpAddr::V4(v4) = ip {
+                let octets = v4.octets();
+                let found = scanner.scan_subnet(octets).await;
+                all_found.extend(found);
+            }
+        }
+
+        self.log_event(&format!("Subnet scan found {} hosts", all_found.len()));
+        all_found
+    }
+
+    /// Get lifetime transfer statistics.
+    pub fn get_lifetime_stats(&self) -> LifetimeStats {
+        self.lifetime_stats.read().clone()
+    }
+
+    /// Get transfer history with optional filtering.
+    pub fn get_transfer_history(
+        &self,
+        query: &str,
+        status_filter: Option<TransferStatus>,
+    ) -> Vec<TransferRecord> {
+        self.history_store.read().query(query, status_filter)
+    }
 }
 
 #[cfg(test)]
