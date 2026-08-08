@@ -144,3 +144,24 @@ impl Default for ConnectionManager {
         Self::new(ReconnectPolicy::default())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reconnect_policy_default() {
+        let policy = ReconnectPolicy::default();
+        assert_eq!(policy.max_retries, 5);
+        assert_eq!(policy.base_delay, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_connection_manager_state() {
+        let manager = ConnectionManager::default();
+        assert!(!manager.is_connected("dev1"));
+        assert!(manager.get("dev1").is_none());
+        assert!(manager.active_connections().is_empty());
+        manager.clear();
+    }
+}

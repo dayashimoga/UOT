@@ -70,3 +70,26 @@ impl Default for TransportFallbackManager {
         Self::new(TransportSelectionStrategy::PreferSpeed)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fallback_manager_prefer_speed() {
+        let manager = TransportFallbackManager::default();
+        let candidates = vec![
+            (TransportId::BluetoothLe, TransportState::Connected),
+            (TransportId::TcpLan, TransportState::Connected),
+        ];
+        let best = manager.select_best_transport(&candidates);
+        assert_eq!(best, Some(TransportId::TcpLan));
+    }
+
+    #[test]
+    fn test_fallback_manager_empty_or_inactive() {
+        let manager = TransportFallbackManager::new(TransportSelectionStrategy::PreferOffline);
+        let candidates = vec![(TransportId::TcpLan, TransportState::Disconnected)];
+        assert_eq!(manager.select_best_transport(&candidates), None);
+    }
+}

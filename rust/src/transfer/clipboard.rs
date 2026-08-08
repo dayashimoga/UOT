@@ -83,3 +83,29 @@ impl ClipboardItem {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clipboard_item_text() {
+        let item = ClipboardItem::text("Hello Clipboard".to_string());
+        assert_eq!(item.content_type.to_string(), "text/plain");
+        assert_eq!(item.data, "Hello Clipboard");
+        assert_eq!(item.preview, Some("Hello Clipboard".to_string()));
+    }
+
+    #[test]
+    fn test_clipboard_item_auto_detect_url() {
+        let item = ClipboardItem::auto_detect("https://uot.app".to_string());
+        assert_eq!(item.content_type.to_string(), "text/uri-list");
+        assert_eq!(item.data, "https://uot.app");
+    }
+
+    #[test]
+    fn test_clipboard_item_auto_detect_html() {
+        let item = ClipboardItem::auto_detect("<html><body>Hi</body></html>".to_string());
+        assert_eq!(item.content_type.to_string(), "text/html");
+    }
+}

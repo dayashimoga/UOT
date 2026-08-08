@@ -45,3 +45,20 @@ impl RateLimiter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_rate_limiter_unlimited() {
+        let mut limiter = RateLimiter::new(0);
+        limiter.consume(1024 * 1024).await;
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_limited() {
+        let mut limiter = RateLimiter::new(10_000_000); // 10 MB/s
+        limiter.consume(1000).await;
+    }
+}

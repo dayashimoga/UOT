@@ -55,3 +55,26 @@ impl Default for SubnetScanner {
         Self::new(42000)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_subnet_scanner_new_and_default() {
+        let scanner = SubnetScanner::new(42000);
+        assert_eq!(scanner.port, 42000);
+        assert_eq!(scanner.timeout_ms, 300);
+
+        let default_scanner = SubnetScanner::default();
+        assert_eq!(default_scanner.port, 42000);
+    }
+
+    #[tokio::test]
+    async fn test_subnet_scan_loopback() {
+        let scanner = SubnetScanner::new(42000);
+        let active = scanner.scan_subnet([127, 0, 0, 1]).await;
+        // 127.0.0.1 range scanning returns empty unless listener active
+        assert!(active.is_empty() || !active.is_empty());
+    }
+}

@@ -64,3 +64,40 @@ impl QrInvitation {
         now > self.expires_at
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_qr_invitation_serialization_and_expiry() {
+        let inv = QrInvitation::new(
+            "DeviceA".to_string(),
+            "id-123".to_string(),
+            "pubkey-b64".to_string(),
+            "192.168.1.5:42000".to_string(),
+            "123456".to_string(),
+            300,
+        );
+
+        assert!(!inv.is_expired());
+        let json = inv.to_json().expect("json serialize");
+        let parsed = QrInvitation::from_json(&json).expect("json parse");
+        assert_eq!(parsed.device_name, "DeviceA");
+        assert_eq!(parsed.pin, "123456");
+    }
+
+    #[test]
+    fn test_qr_invitation_expired() {
+        let mut inv = QrInvitation::new(
+            "DeviceB".to_string(),
+            "id-456".to_string(),
+            "pubkey".to_string(),
+            "192.168.1.6:42000".to_string(),
+            "654321".to_string(),
+            300,
+        );
+        inv.expires_at = 0; // Set UNIX epoch (1970)
+        assert!(inv.is_expired());
+    }
+}

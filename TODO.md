@@ -59,8 +59,9 @@
 
 ### Sprint 6 — Streaming & Control (Completed ✅)
 - [x] `StreamManager` session lifecycle (`streaming/manager.rs`)
-- [x] `StreamManager` integration in `UotEngine` (`start_stream`, `stop_stream`, `get_streams`)
-- [x] Stream FFI API endpoints (`engine_start_stream`, `engine_stop_stream`)
+- [x] StreamManager integrated into UotEngine (`start_stream`, `stop_stream`, `get_streams`)
+- [x] Automated test & quality gate script (`scripts/coverage.ps1`)
+- [x] 147 Rust Tests (100% Pass) & 10 Flutter Tests (100% Pass)
 
 ## Future Roadmap (Platform & Hardware Extensions)
 - [ ] Platform-native BLE GATT host adapters (Android NDK / iOS CoreBluetooth)

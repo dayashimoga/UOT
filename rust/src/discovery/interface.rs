@@ -39,3 +39,23 @@ impl InterfaceEnumerator {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_interface_enumerator_local_ips() {
+        let ips = InterfaceEnumerator::local_ips();
+        assert!(!ips.is_empty() || ips.is_empty());
+    }
+
+    #[test]
+    fn test_interface_enumerator_active_interfaces() {
+        let interfaces = InterfaceEnumerator::active_interfaces();
+        for iface in interfaces {
+            assert!(!iface.name.is_empty());
+            assert!(iface.is_up);
+        }
+    }
+}

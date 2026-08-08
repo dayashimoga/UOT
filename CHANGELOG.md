@@ -169,6 +169,8 @@ This file is **append-only** — history is never overwritten.
 - **Flutter Widget Tests** (`test/receive_screen_test.dart`, `test/incoming_offer_dialog_test.dart`): UI tests for `ReceiveScreen` settings/visibility and `IncomingOfferDialog` consent/PIN flow (10 widget tests passing).
 - **Docker Mesh Container Setup** (`Dockerfile`, `docker-compose.yml`): Multi-stage container build and isolated 2-node subnet bridge simulation network.
 - **Fountain Decoder & Reconstruction** (`protocol/fountain.rs`): `FountainDecoder` with CRC32 integrity validation for Luby Transform optical QR payload reconstruction.
+- **Coverage & Quality Gate Script** (`scripts/coverage.ps1`): Automated PowerShell script enforcing 100% test pass rate for Rust & Flutter and zero Clippy warnings.
+- **Unit Test Suite Expansion**: Expanded unit test coverage across `benchmark`, `subnet`, `interface`, `fallback`, `connection_manager`, `ratelimit`, `clipboard`, and `qr` modules (147 Rust tests passing).
 - **Updated Documentation Suite**: Evidence-based audit updates across `GAP_ANALYSIS.md`, `PRODUCTION_READINESS.md`, `TESTING.md`, `TODO.md`, `IMPLEMENTATION.md`.
 
 

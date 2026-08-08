@@ -67,3 +67,26 @@ impl Default for ThroughputBenchmark {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_throughput_benchmark_new_and_snapshot() {
+        let mut bench = ThroughputBenchmark::new();
+        bench.update(1024 * 1024); // 1 MB
+        let snap = bench.snapshot();
+        assert_eq!(snap.total_bytes, 1024 * 1024);
+        assert!(snap.elapsed_secs >= 0.0);
+    }
+
+    #[test]
+    fn test_throughput_benchmark_default() {
+        let bench = ThroughputBenchmark::default();
+        let snap = bench.snapshot();
+        assert_eq!(snap.total_bytes, 0);
+        assert_eq!(snap.bytes_per_sec, 0);
+        assert_eq!(snap.mbps, 0.0);
+    }
+}
