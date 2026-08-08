@@ -89,6 +89,7 @@ impl FountainEncoder {
 }
 
 /// Decoder for reconstructing original data from a stream of FountainPackets.
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct FountainDecoder {
     block_size: usize,
@@ -184,5 +185,6 @@ mod tests {
 
         assert!(reconstructed.is_some());
         assert_eq!(reconstructed.unwrap(), data);
+        assert_eq!(decoder.decoded_count(), 1);
     }
 }

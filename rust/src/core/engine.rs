@@ -20,6 +20,7 @@ use crate::protocol::handler::{self as proto, OfferItemInfo, WireMessage};
 use crate::security::path_validator::StrictPathValidator;
 use crate::security::verification::TrustManager;
 use crate::security::PathValidator;
+use crate::streaming::manager::{StreamManager, StreamSession, StreamType};
 use crate::transfer::analytics::LifetimeStats;
 use crate::transfer::engine::{self, ProgressTracker, TransferItem};
 use crate::transfer::history::TransferHistoryStore;
@@ -86,6 +87,8 @@ pub struct UotEngine {
     trust_manager: Arc<RwLock<TrustManager>>,
     /// Accepted transfer IDs (signaled by UI via accept_transfer).
     accepted_transfers: Arc<RwLock<std::collections::HashSet<Uuid>>>,
+    /// Streaming session manager.
+    stream_manager: Arc<RwLock<StreamManager>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -148,6 +151,7 @@ impl UotEngine {
                 fallback_manager: Arc::new(RwLock::new(TransportFallbackManager::default())),
                 trust_manager: Arc::new(RwLock::new(TrustManager::new())),
                 accepted_transfers: Arc::new(RwLock::new(std::collections::HashSet::new())),
+                stream_manager: Arc::new(RwLock::new(StreamManager::new())),
             },
             event_rx,
         )
@@ -928,10 +932,34 @@ impl UotEngine {
     }
 
     /// Get active streaming sessions.
-    pub fn get_streams(&self) -> Vec<serde_json::Value> {
-        // Streaming sessions will be managed by StreamManager
-        // For now, return empty list
-        Vec::new()
+    pub fn get_streams(&self) -> Vec<StreamSession> {
+        self.stream_manager.read().active_sessions()
+    }
+
+    /// Start a new streaming session.
+    pub fn start_stream(
+        &self,
+        stream_type: StreamType,
+        remote_device_id: &str,
+        remote_device_name: &str,
+        port: u16,
+        is_sender: bool,
+    ) -> String {
+        let session_id = self.stream_manager.read().start_session(
+            stream_type,
+            remote_device_id,
+            remote_device_name,
+            port,
+            is_sender,
+        );
+        self.log_event(&format!("Stream session {session_id} started ({stream_type})"));
+        session_id
+    }
+
+    /// Stop a streaming session.
+    pub fn stop_stream(&self, session_id: &str) {
+        self.stream_manager.read().stop_session(session_id);
+        self.log_event(&format!("Stream session {session_id} stopped"));
     }
 
     /// Get the current configuration (read-only).
@@ -1015,5 +1043,28 @@ mod tests {
             engine.stop();
             assert_eq!(engine.state(), EngineState::Stopped);
         }
+    }
+
+    #[test]
+    fn test_engine_streaming_sessions() {
+        let config = AppConfig::default();
+        let (engine, _rx) = UotEngine::new(config);
+
+        assert!(engine.get_streams().is_empty());
+
+        let session_id = engine.start_stream(
+            StreamType::Camera,
+            "device-123",
+            "Remote Camera",
+            42001,
+            true,
+        );
+        assert!(!session_id.is_empty());
+        assert_eq!(engine.get_streams().len(), 1);
+
+        engine.stop_stream(&session_id);
+        let streams = engine.get_streams();
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0].state, crate::streaming::manager::StreamState::Stopping);
     }
 }

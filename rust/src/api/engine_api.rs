@@ -211,6 +211,38 @@ pub fn engine_get_streams() -> String {
     .unwrap_or_else(|| "[]".to_string())
 }
 
+/// Start a new media streaming session.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_start_stream(
+    stream_type: String,
+    remote_device_id: String,
+    remote_device_name: String,
+    port: u16,
+    is_sender: bool,
+) -> String {
+    let st = match stream_type.to_lowercase().as_str() {
+        "camera" => crate::streaming::manager::StreamType::Camera,
+        "screen" => crate::streaming::manager::StreamType::Screen,
+        "video" => crate::streaming::manager::StreamType::Video,
+        "audio" => crate::streaming::manager::StreamType::Audio,
+        _ => crate::streaming::manager::StreamType::Camera,
+    };
+    with_engine(|engine| {
+        engine.start_stream(st, &remote_device_id, &remote_device_name, port, is_sender)
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Stop an active media streaming session.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_stop_stream(session_id: String) -> String {
+    with_engine(|engine| {
+        engine.stop_stream(&session_id);
+        "ok".to_string()
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
 /// Load user settings as JSON.
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_load_settings() -> String {
