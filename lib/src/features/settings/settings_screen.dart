@@ -47,19 +47,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _saveSettings() {
-    engine.engineSaveSettings(json: jsonEncode({
-      'device_name': 'UOT Device',
-      'theme_mode': _darkMode ? 'dark' : 'light',
-      'chunk_size_kb': _chunkSize.toInt(),
-      'verify_sha256': _integrity,
-      'auto_accept_trusted': _autoAcceptTrusted,
-      'require_pin': _requirePin,
-      'save_directory': '',
-      'network_port': 42000,
-      'scan_interval_secs': 5,
-      'show_hidden_files': false,
-      'max_concurrent_transfers': 3,
-    }));
+    engine.engineSaveSettings(
+      json: jsonEncode({
+        'device_name': 'UOT Device',
+        'theme_mode': _darkMode ? 'dark' : 'light',
+        'chunk_size_kb': _chunkSize.toInt(),
+        'verify_sha256': _integrity,
+        'auto_accept_trusted': _autoAcceptTrusted,
+        'require_pin': _requirePin,
+        'save_directory': '',
+        'network_port': 42000,
+        'scan_interval_secs': 5,
+        'show_hidden_files': false,
+        'max_concurrent_transfers': 3,
+      }),
+    );
   }
 
   @override
@@ -70,10 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            floating: true,
-            title: const Text('Settings'),
-          ),
+          SliverAppBar(floating: true, title: const Text('Settings')),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
@@ -85,12 +84,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     children: [
                       SwitchListTile(
-                        title: Text('Dark Mode',
-                            style: theme.textTheme.titleSmall),
-                        subtitle: Text('Use dark color scheme',
-                            style: theme.textTheme.bodySmall),
-                        secondary: Icon(Icons.dark_mode_rounded,
-                            color: colorScheme.primary),
+                        title: Text(
+                          'Dark Mode',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        subtitle: Text(
+                          'Use dark color scheme',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        secondary: Icon(
+                          Icons.dark_mode_rounded,
+                          color: colorScheme.primary,
+                        ),
                         value: _darkMode,
                         onChanged: (v) {
                           setState(() => _darkMode = v);
@@ -110,17 +115,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     children: [
                       ListTile(
-                        leading: Icon(Icons.speed_rounded,
-                            color: colorScheme.primary),
-                        title: Text('Chunk Size',
-                            style: theme.textTheme.titleSmall),
+                        leading: Icon(
+                          Icons.speed_rounded,
+                          color: colorScheme.primary,
+                        ),
+                        title: Text(
+                          'Chunk Size',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
-                            '${_chunkSize.toInt()} KB per chunk',
-                            style: theme.textTheme.bodySmall),
+                          '${_chunkSize.toInt()} KB per chunk',
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ),
                       Padding(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Slider(
                           value: _chunkSize,
                           min: 64,
@@ -128,21 +137,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           divisions: 15,
                           label: '${_chunkSize.toInt()} KB',
                           onChanged: (v) {
-                              setState(() => _chunkSize = v);
-                              _saveSettings();
+                            setState(() => _chunkSize = v);
+                            _saveSettings();
                           },
                         ),
                       ),
                       const Divider(height: 1, indent: 72),
                       SwitchListTile(
-                        title: Text('SHA-256 Verification',
-                            style: theme.textTheme.titleSmall),
+                        title: Text(
+                          'SHA-256 Verification',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
                           'Verify file integrity after transfer',
                           style: theme.textTheme.bodySmall,
                         ),
-                        secondary: Icon(Icons.verified_rounded,
-                            color: colorScheme.secondary),
+                        secondary: Icon(
+                          Icons.verified_rounded,
+                          color: colorScheme.secondary,
+                        ),
                         value: _integrity,
                         onChanged: (v) {
                           setState(() => _integrity = v);
@@ -161,17 +174,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     children: [
                       SwitchListTile(
-                        title: Text('Discoverable',
-                            style: theme.textTheme.titleSmall),
+                        title: Text(
+                          'Discoverable',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
                           'Allow other devices to find you via mDNS',
                           style: theme.textTheme.bodySmall,
                         ),
-                        secondary: Icon(Icons.wifi_tethering_rounded,
-                            color: colorScheme.primary),
+                        secondary: Icon(
+                          Icons.wifi_tethering_rounded,
+                          color: colorScheme.primary,
+                        ),
                         value: _discoverable,
-                        onChanged: (v) =>
-                            setState(() => _discoverable = v),
+                        onChanged: (v) => setState(() => _discoverable = v),
                       ),
                     ],
                   ),
@@ -185,14 +201,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     children: [
                       SwitchListTile(
-                        title: Text('Auto-accept trusted',
-                            style: theme.textTheme.titleSmall),
+                        title: Text(
+                          'Auto-accept trusted',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
                           'Automatically accept from paired devices',
                           style: theme.textTheme.bodySmall,
                         ),
-                        secondary: Icon(Icons.verified_user_rounded,
-                            color: colorScheme.primary),
+                        secondary: Icon(
+                          Icons.verified_user_rounded,
+                          color: colorScheme.primary,
+                        ),
                         value: _autoAcceptTrusted,
                         onChanged: (v) {
                           setState(() => _autoAcceptTrusted = v);
@@ -201,14 +221,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const Divider(height: 1, indent: 72),
                       SwitchListTile(
-                        title: Text('Require PIN',
-                            style: theme.textTheme.titleSmall),
+                        title: Text(
+                          'Require PIN',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
                           'PIN required for new connections',
                           style: theme.textTheme.bodySmall,
                         ),
-                        secondary: Icon(Icons.pin_rounded,
-                            color: colorScheme.secondary),
+                        secondary: Icon(
+                          Icons.pin_rounded,
+                          color: colorScheme.secondary,
+                        ),
                         value: _requirePin,
                         onChanged: (v) {
                           setState(() => _requirePin = v);
@@ -227,10 +251,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     children: [
                       ListTile(
-                        leading: Icon(Icons.info_outline_rounded,
-                            color: colorScheme.onSurfaceVariant),
-                        title: Text('UOT',
-                            style: theme.textTheme.titleSmall),
+                        leading: Icon(
+                          Icons.info_outline_rounded,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        title: Text('UOT', style: theme.textTheme.titleSmall),
                         subtitle: Text(
                           'Universal Offline Transfer v$_version',
                           style: theme.textTheme.bodySmall,
@@ -238,10 +263,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const Divider(height: 1, indent: 72),
                       ListTile(
-                        leading: Icon(Icons.memory_rounded,
-                            color: colorScheme.onSurfaceVariant),
-                        title: Text('Rust Core Engine',
-                            style: theme.textTheme.titleSmall),
+                        leading: Icon(
+                          Icons.memory_rounded,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        title: Text(
+                          'Rust Core Engine',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
                           'flutter_rust_bridge v2.12.0',
                           style: theme.textTheme.bodySmall,
@@ -249,10 +278,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const Divider(height: 1, indent: 72),
                       ListTile(
-                        leading: Icon(Icons.code_rounded,
-                            color: colorScheme.onSurfaceVariant),
-                        title: Text('Architecture',
-                            style: theme.textTheme.titleSmall),
+                        leading: Icon(
+                          Icons.code_rounded,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        title: Text(
+                          'Architecture',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
                           'Flutter + Rust • TCP/mDNS • SHA-256',
                           style: theme.textTheme.bodySmall,

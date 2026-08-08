@@ -56,14 +56,17 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 32, horizontal: 16),
+                        vertical: 32,
+                        horizontal: 16,
+                      ),
                       child: Column(
                         children: [
                           Icon(
                             Icons.devices_rounded,
                             size: 48,
-                            color: colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.4),
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.4,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -76,8 +79,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
                           Text(
                             'Devices you pair with will appear here.\nTrusted devices can auto-accept transfers.',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant
-                                  .withValues(alpha: 0.7),
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -92,11 +96,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
                     ),
                   )
                 else
-                  ...(_pairedDevices.map((device) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child:
-                            _PairedDeviceCard(device: device, theme: theme),
-                      ))),
+                  ...(_pairedDevices.map(
+                    (device) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _PairedDeviceCard(device: device, theme: theme),
+                    ),
+                  )),
               ]),
             ),
           ),
@@ -107,10 +112,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 }
 
 class _ThisDeviceCard extends StatelessWidget {
-  const _ThisDeviceCard({
-    required this.colorScheme,
-    required this.theme,
-  });
+  const _ThisDeviceCard({required this.colorScheme, required this.theme});
 
   final ColorScheme colorScheme;
   final ThemeData theme;
@@ -127,10 +129,7 @@ class _ThisDeviceCard extends StatelessWidget {
               height: 56,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    colorScheme.primary,
-                    colorScheme.tertiary,
-                  ],
+                  colors: [colorScheme.primary, colorScheme.tertiary],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -158,7 +157,9 @@ class _ThisDeviceCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(4),

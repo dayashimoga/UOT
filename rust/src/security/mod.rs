@@ -20,7 +20,8 @@ pub trait CryptoProvider: Send + Sync {
     ) -> Result<Vec<u8>, SecurityError>;
 
     /// Encrypt data with the given session key.
-    fn encrypt(&self, key: &[u8], plaintext: &[u8], nonce: &[u8]) -> Result<Vec<u8>, SecurityError>;
+    fn encrypt(&self, key: &[u8], plaintext: &[u8], nonce: &[u8])
+        -> Result<Vec<u8>, SecurityError>;
 
     /// Decrypt data with the given session key.
     fn decrypt(

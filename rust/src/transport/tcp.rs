@@ -126,9 +126,7 @@ pub struct TcpConnection {
 
 impl TcpConnection {
     /// Create a new connection from an established TCP stream.
-    pub fn new(
-        stream: TcpStream,
-    ) -> Result<Self, TransportError> {
+    pub fn new(stream: TcpStream) -> Result<Self, TransportError> {
         let remote_addr = stream
             .peer_addr()
             .map_err(|e| TransportError::Connection(format!("No peer addr: {e}")))?;

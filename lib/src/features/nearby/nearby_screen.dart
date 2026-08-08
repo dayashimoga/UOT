@@ -33,7 +33,8 @@ class DeviceInfo {
       deviceName: json['device_name'] ?? 'Unknown',
       deviceType: json['device_type'] ?? 'Unknown',
       address: json['address'],
-      capabilities: (json['capabilities'] as List<dynamic>?)
+      capabilities:
+          (json['capabilities'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
@@ -122,8 +123,9 @@ class _NearbyScreenState extends State<NearbyScreen>
     try {
       final devicesJson = engine.engineGetDevices();
       final List<dynamic> parsed = jsonDecode(devicesJson);
-      final newDevices =
-          parsed.map((d) => DeviceInfo.fromJson(d as Map<String, dynamic>)).toList();
+      final newDevices = parsed
+          .map((d) => DeviceInfo.fromJson(d as Map<String, dynamic>))
+          .toList();
       setState(() {
         _devices.clear();
         _devices.addAll(newDevices);
@@ -159,9 +161,9 @@ class _NearbyScreenState extends State<NearbyScreen>
                 tooltip: 'Scan QR Code',
               ),
               IconButton(
-                icon: Icon(_isScanning
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded),
+                icon: Icon(
+                  _isScanning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                ),
                 onPressed: () {
                   setState(() => _isScanning = !_isScanning);
                 },
@@ -199,13 +201,15 @@ class _NearbyScreenState extends State<NearbyScreen>
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ..._devices.map((device) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _DeviceCard(
-                          device: device,
-                          onTap: () => _onDeviceTap(device),
-                        ),
-                      )),
+                  ..._devices.map(
+                    (device) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _DeviceCard(
+                        device: device,
+                        onTap: () => _onDeviceTap(device),
+                      ),
+                    ),
+                  ),
                 ],
               ]),
             ),
@@ -264,18 +268,17 @@ class _EngineStatusCard extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: isRunning
                             ? colorScheme.primary.withValues(
-                                alpha:
-                                    0.5 + (pulseController.value * 0.5))
+                                alpha: 0.5 + (pulseController.value * 0.5),
+                              )
                             : colorScheme.error,
                         boxShadow: isRunning && isScanning
                             ? [
                                 BoxShadow(
-                                  color: colorScheme.primary
-                                      .withValues(alpha: 0.3),
-                                  blurRadius:
-                                      8 * pulseController.value,
-                                  spreadRadius:
-                                      2 * pulseController.value,
+                                  color: colorScheme.primary.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                  blurRadius: 8 * pulseController.value,
+                                  spreadRadius: 2 * pulseController.value,
                                 ),
                               ]
                             : null,
@@ -291,8 +294,8 @@ class _EngineStatusCard extends StatelessWidget {
                       Text(
                         isRunning
                             ? (isScanning
-                                ? 'Scanning for devices…'
-                                : 'Discovery paused')
+                                  ? 'Scanning for devices…'
+                                  : 'Discovery paused')
                             : 'Engine starting…',
                         style: theme.textTheme.titleMedium,
                       ),
@@ -351,8 +354,9 @@ class _ScanningIndicator extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: colorScheme.primary
-                            .withValues(alpha: 0.1 * (1 - pulseController.value)),
+                        color: colorScheme.primary.withValues(
+                          alpha: 0.1 * (1 - pulseController.value),
+                        ),
                         width: 2,
                       ),
                     ),
@@ -363,8 +367,9 @@ class _ScanningIndicator extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: colorScheme.primary
-                            .withValues(alpha: 0.2 * (1 - pulseController.value)),
+                        color: colorScheme.primary.withValues(
+                          alpha: 0.2 * (1 - pulseController.value),
+                        ),
                         width: 2,
                       ),
                     ),
@@ -374,9 +379,10 @@ class _ScanningIndicator extends StatelessWidget {
                   Icons.radar_rounded,
                   size: 64,
                   color: colorScheme.primary.withValues(
-                      alpha: isScanning
-                          ? 0.3 + (pulseController.value * 0.7)
-                          : 0.3),
+                    alpha: isScanning
+                        ? 0.3 + (pulseController.value * 0.7)
+                        : 0.3,
+                  ),
                 ),
               ],
             );
@@ -443,10 +449,7 @@ class _DeviceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      device.deviceName,
-                      style: theme.textTheme.titleMedium,
-                    ),
+                    Text(device.deviceName, style: theme.textTheme.titleMedium),
                     const SizedBox(height: 2),
                     Text(
                       '${device.deviceType} • ${device.capabilities.join(", ")}',
@@ -457,10 +460,7 @@ class _DeviceCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                Icons.send_rounded,
-                color: colorScheme.primary,
-              ),
+              Icon(Icons.send_rounded, color: colorScheme.primary),
             ],
           ),
         ),
@@ -489,8 +489,7 @@ class _SendBottomSheet extends StatelessWidget {
         return Container(
           decoration: BoxDecoration(
             color: theme.scaffoldBackgroundColor,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: ListView(
             controller: scrollController,
@@ -518,18 +517,25 @@ class _SendBottomSheet extends StatelessWidget {
                       color: colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(device.icon,
-                        color: colorScheme.onPrimaryContainer, size: 20),
+                    child: Icon(
+                      device.icon,
+                      color: colorScheme.onPrimaryContainer,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Send to ${device.deviceName}',
-                            style: theme.textTheme.titleLarge),
-                        Text(device.deviceType,
-                            style: theme.textTheme.bodySmall),
+                        Text(
+                          'Send to ${device.deviceName}',
+                          style: theme.textTheme.titleLarge,
+                        ),
+                        Text(
+                          device.deviceType,
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ],
                     ),
                   ),
@@ -637,8 +643,10 @@ class _SendOption extends StatelessWidget {
         ),
         title: Text(title, style: theme.textTheme.titleSmall),
         subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
-        trailing: Icon(Icons.chevron_right_rounded,
-            color: theme.colorScheme.onSurfaceVariant),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
         onTap: onTap,
       ),
     );

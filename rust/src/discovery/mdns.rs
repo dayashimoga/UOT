@@ -82,15 +82,9 @@ impl MdnsDiscovery {
 
         let host = format!("{device_id}.local.");
 
-        let service_info = ServiceInfo::new(
-            SERVICE_TYPE,
-            &instance_name,
-            &host,
-            "",
-            port,
-            properties,
-        )
-        .map_err(|e| format!("Failed to create service info: {e}"))?;
+        let service_info =
+            ServiceInfo::new(SERVICE_TYPE, &instance_name, &host, "", port, properties)
+                .map_err(|e| format!("Failed to create service info: {e}"))?;
 
         self.daemon
             .register(service_info)
@@ -152,10 +146,7 @@ impl MdnsDiscovery {
                                 let device_id = extract_device_id(&full_name);
                                 if let Some(id) = device_id {
                                     devices.write().remove(&id);
-                                    if tx
-                                        .blocking_send(DiscoveryEvent::DeviceLost(id))
-                                        .is_err()
-                                    {
+                                    if tx.blocking_send(DiscoveryEvent::DeviceLost(id)).is_err() {
                                         break;
                                     }
                                 }
@@ -244,9 +235,7 @@ fn service_info_to_device(info: &ServiceInfo) -> DiscoveredDevice {
     let addresses: Vec<_> = info.get_addresses().iter().collect();
     let port = info.get_port();
 
-    let address = addresses
-        .first()
-        .map(|addr| format!("{addr}:{port}"));
+    let address = addresses.first().map(|addr| format!("{addr}:{port}"));
 
     // Extract device name from the instance name
     let device_name = info

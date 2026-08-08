@@ -26,10 +26,7 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            floating: true,
-            title: const Text('Receive'),
-          ),
+          SliverAppBar(floating: true, title: const Text('Receive')),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
@@ -109,41 +106,57 @@ class _ReceiveScreenState extends State<ReceiveScreen> {
                   child: Column(
                     children: [
                       SwitchListTile(
-                        title: Text('Auto-accept from trusted',
-                            style: theme.textTheme.titleSmall),
+                        title: Text(
+                          'Auto-accept from trusted',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
                           'Automatically accept transfers from paired devices',
                           style: theme.textTheme.bodySmall,
                         ),
-                        secondary: Icon(Icons.verified_user_rounded,
-                            color: colorScheme.primary),
+                        secondary: Icon(
+                          Icons.verified_user_rounded,
+                          color: colorScheme.primary,
+                        ),
                         value: _autoAcceptTrusted,
                         onChanged: (v) =>
                             setState(() => _autoAcceptTrusted = v),
                       ),
                       const Divider(height: 1, indent: 72),
                       SwitchListTile(
-                        title: Text('Require PIN',
-                            style: theme.textTheme.titleSmall),
+                        title: Text(
+                          'Require PIN',
+                          style: theme.textTheme.titleSmall,
+                        ),
                         subtitle: Text(
                           'Require a PIN code for incoming connections',
                           style: theme.textTheme.bodySmall,
                         ),
-                        secondary: Icon(Icons.pin_rounded,
-                            color: colorScheme.secondary),
+                        secondary: Icon(
+                          Icons.pin_rounded,
+                          color: colorScheme.secondary,
+                        ),
                         value: _requirePin,
                         onChanged: (v) => setState(() => _requirePin = v),
                       ),
                       const Divider(height: 1, indent: 72),
                       ListTile(
-                        leading: Icon(Icons.folder_rounded,
-                            color: colorScheme.tertiary),
-                        title: Text('Save location',
-                            style: theme.textTheme.titleSmall),
-                        subtitle: Text(_savePath,
-                            style: theme.textTheme.bodySmall),
-                        trailing: Icon(Icons.chevron_right_rounded,
-                            color: colorScheme.onSurfaceVariant),
+                        leading: Icon(
+                          Icons.folder_rounded,
+                          color: colorScheme.tertiary,
+                        ),
+                        title: Text(
+                          'Save location',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        subtitle: Text(
+                          _savePath,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                         onTap: () {
                           // TODO: Directory picker
                         },

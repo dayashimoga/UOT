@@ -34,9 +34,7 @@ class TransferInfo {
   });
 
   bool get isActive =>
-      status == 'Transferring' ||
-      status == 'Pending' ||
-      status == 'Queued';
+      status == 'Transferring' || status == 'Pending' || status == 'Queued';
 
   IconData get statusIcon {
     switch (status) {
@@ -117,18 +115,20 @@ class _TransfersScreenState extends State<TransfersScreen>
       final json = engine.engineGetTransfers();
       final List<dynamic> parsed = jsonDecode(json);
       final transfers = parsed
-          .map((t) => TransferInfo(
-                id: t['id'] ?? '',
-                fileName: t['file_name'] ?? 'Unknown',
-                remoteName: t['remote_name'] ?? 'Unknown',
-                direction: t['direction'] ?? 'Send',
-                status: t['status'] ?? 'Pending',
-                progress: (t['progress'] ?? 0.0).toDouble(),
-                totalBytes: (t['total_bytes'] ?? 0).toInt(),
-                transferredBytes: (t['transferred_bytes'] ?? 0).toInt(),
-                speed: t['speed'],
-                eta: t['eta'],
-              ))
+          .map(
+            (t) => TransferInfo(
+              id: t['id'] ?? '',
+              fileName: t['file_name'] ?? 'Unknown',
+              remoteName: t['remote_name'] ?? 'Unknown',
+              direction: t['direction'] ?? 'Send',
+              status: t['status'] ?? 'Pending',
+              progress: (t['progress'] ?? 0.0).toDouble(),
+              totalBytes: (t['total_bytes'] ?? 0).toInt(),
+              transferredBytes: (t['transferred_bytes'] ?? 0).toInt(),
+              speed: t['speed'],
+              eta: t['eta'],
+            ),
+          )
           .toList();
       setState(() {
         _activeTransfers.clear();
@@ -171,8 +171,7 @@ class _TransfersScreenState extends State<TransfersScreen>
                 if (_activeTransfers.isNotEmpty)
                   Badge(
                     label: Text('${_activeTransfers.length}'),
-                    child: Icon(Icons.sync_rounded,
-                        color: colorScheme.primary),
+                    child: Icon(Icons.sync_rounded, color: colorScheme.primary),
                   ),
               ],
             ),
@@ -235,8 +234,7 @@ class _TransfersScreenState extends State<TransfersScreen>
       itemBuilder: (context, index) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child:
-              _ActiveTransferCard(transfer: _activeTransfers[index]),
+          child: _ActiveTransferCard(transfer: _activeTransfers[index]),
         );
       },
     );
@@ -258,8 +256,7 @@ class _TransfersScreenState extends State<TransfersScreen>
       itemBuilder: (context, index) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: _HistoryTransferCard(
-              transfer: _historyTransfers[index]),
+          child: _HistoryTransferCard(transfer: _historyTransfers[index]),
         );
       },
     );
@@ -294,9 +291,11 @@ class _EmptyState extends StatelessWidget {
               color: colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Icon(icon,
-                size: 40,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+            child: Icon(
+              icon,
+              size: 40,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
           ),
           const SizedBox(height: 16),
           Text(title, style: theme.textTheme.titleMedium),
@@ -358,7 +357,9 @@ class _ActiveTransferCard extends StatelessWidget {
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                        minWidth: 32, minHeight: 32),
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
                     tooltip: 'Pause',
                   ),
                   IconButton(
@@ -368,7 +369,9 @@ class _ActiveTransferCard extends StatelessWidget {
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                        minWidth: 32, minHeight: 32),
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
                     tooltip: 'Cancel',
                   ),
                 ],
@@ -381,8 +384,7 @@ class _ActiveTransferCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: transfer.progress,
                 minHeight: 6,
-                backgroundColor:
-                    colorScheme.surfaceContainerHighest,
+                backgroundColor: colorScheme.surfaceContainerHighest,
                 valueColor: AlwaysStoppedAnimation(statusColor),
               ),
             ),

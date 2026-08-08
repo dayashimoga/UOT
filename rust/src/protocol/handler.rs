@@ -53,29 +53,18 @@ pub enum WireMessage {
         sha256: String,
     },
     /// Signal transfer complete.
-    TransferComplete {
-        transfer_id: String,
-        success: bool,
-    },
+    TransferComplete { transfer_id: String, success: bool },
     /// Request to cancel a transfer.
     Cancel {
         transfer_id: String,
         reason: Option<String>,
     },
     /// Request to pause a transfer.
-    Pause {
-        transfer_id: String,
-    },
+    Pause { transfer_id: String },
     /// Request to resume a transfer.
-    Resume {
-        transfer_id: String,
-        offset: u64,
-    },
+    Resume { transfer_id: String, offset: u64 },
     /// Clipboard/text data.
-    ClipboardData {
-        content_type: String,
-        data: String,
-    },
+    ClipboardData { content_type: String, data: String },
 }
 
 /// Item info in an offer.
@@ -88,13 +77,9 @@ pub struct OfferItemInfo {
 }
 
 /// Send a protocol message over a TCP connection.
-pub async fn send_message(
-    conn: &TcpConnection,
-    msg: &WireMessage,
-) -> Result<(), TransportError> {
-    let json = serde_json::to_vec(msg).map_err(|e| {
-        TransportError::Protocol(format!("Failed to serialize message: {e}"))
-    })?;
+pub async fn send_message(conn: &TcpConnection, msg: &WireMessage) -> Result<(), TransportError> {
+    let json = serde_json::to_vec(msg)
+        .map_err(|e| TransportError::Protocol(format!("Failed to serialize message: {e}")))?;
     conn.send_frame(Frame {
         frame_type: FrameType::Control,
         payload: json,
@@ -103,16 +88,11 @@ pub async fn send_message(
 }
 
 /// Receive a protocol message from a TCP connection.
-pub async fn recv_message(
-    conn: &TcpConnection,
-) -> Result<WireMessage, TransportError> {
+pub async fn recv_message(conn: &TcpConnection) -> Result<WireMessage, TransportError> {
     let frame = conn.recv_frame().await?;
     match frame.frame_type {
-        FrameType::Control => {
-            serde_json::from_slice(&frame.payload).map_err(|e| {
-                TransportError::Protocol(format!("Failed to deserialize message: {e}"))
-            })
-        }
+        FrameType::Control => serde_json::from_slice(&frame.payload)
+            .map_err(|e| TransportError::Protocol(format!("Failed to deserialize message: {e}"))),
         FrameType::Ping => {
             // Auto-reply to pings
             conn.send_frame(Frame {
@@ -153,32 +133,22 @@ pub async fn send_data_chunk(
 
 /// Receive a file data chunk from a TCP connection.
 /// Returns (offset, crc32, data).
-pub async fn recv_data_chunk(
-    conn: &TcpConnection,
-) -> Result<(u64, u32, Vec<u8>), TransportError> {
+pub async fn recv_data_chunk(conn: &TcpConnection) -> Result<(u64, u32, Vec<u8>), TransportError> {
     let frame = conn.recv_frame().await?;
     match frame.frame_type {
         FrameType::Data => {
             if frame.payload.len() < 16 {
-                return Err(TransportError::Protocol(
-                    "Data frame too short".to_string(),
-                ));
+                return Err(TransportError::Protocol("Data frame too short".to_string()));
             }
-            let offset = u64::from_be_bytes(
-                frame.payload[0..8].try_into().unwrap(),
-            );
-            let crc32 = u32::from_be_bytes(
-                frame.payload[8..12].try_into().unwrap(),
-            );
+            let offset = u64::from_be_bytes(frame.payload[0..8].try_into().unwrap());
+            let crc32 = u32::from_be_bytes(frame.payload[8..12].try_into().unwrap());
             let data = frame.payload[16..].to_vec();
             Ok((offset, crc32, data))
         }
         FrameType::Control => {
             // Might be a cancel/pause message during transfer
-            let msg: WireMessage =
-                serde_json::from_slice(&frame.payload).map_err(|e| {
-                    TransportError::Protocol(format!("Unexpected control: {e}"))
-                })?;
+            let msg: WireMessage = serde_json::from_slice(&frame.payload)
+                .map_err(|e| TransportError::Protocol(format!("Unexpected control: {e}")))?;
             Err(TransportError::Protocol(format!(
                 "Received control message during data transfer: {:?}",
                 msg

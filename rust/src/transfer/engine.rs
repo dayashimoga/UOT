@@ -60,10 +60,7 @@ impl TransferItem {
 
 /// Collect all files from a directory recursively.
 pub async fn collect_files(dir: &Path) -> Result<Vec<TransferItem>, TransferError> {
-    let dir_name = dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("folder");
+    let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("folder");
 
     let mut items = Vec::new();
     collect_files_recursive(dir, dir_name, &mut items).await?;
@@ -85,11 +82,7 @@ async fn collect_files_recursive(
         .map_err(|e| TransferError::FileIo(format!("Dir entry error: {e}")))?
     {
         let path = entry.path();
-        let name = entry
-            .file_name()
-            .to_str()
-            .unwrap_or("unknown")
-            .to_string();
+        let name = entry.file_name().to_str().unwrap_or("unknown").to_string();
         let relative = format!("{prefix}/{name}");
 
         let metadata = entry
@@ -415,10 +408,7 @@ mod tests {
 
         let result = write_chunk(&file_path, 0, &data, wrong_crc).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("CRC mismatch"));
+        assert!(result.unwrap_err().to_string().contains("CRC mismatch"));
     }
 
     #[tokio::test]

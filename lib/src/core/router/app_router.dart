@@ -46,8 +46,9 @@ class _AppRouterState extends State<AppRouter> {
       NavDestination.receive => const ReceiveScreen(),
       NavDestination.stream => const StreamScreen(),
       NavDestination.devices => const DevicesScreen(),
-      NavDestination.settings =>
-        SettingsScreen(onToggleTheme: widget.onToggleTheme),
+      NavDestination.settings => SettingsScreen(
+        onToggleTheme: widget.onToggleTheme,
+      ),
     };
   }
 
@@ -81,11 +82,13 @@ class _AppRouterState extends State<AppRouter> {
               ),
             ),
             destinations: NavDestination.values
-                .map((d) => NavigationRailDestination(
-                      icon: Icon(d.icon),
-                      selectedIcon: Icon(d.icon),
-                      label: Text(d.label),
-                    ))
+                .map(
+                  (d) => NavigationRailDestination(
+                    icon: Icon(d.icon),
+                    selectedIcon: Icon(d.icon),
+                    label: Text(d.label),
+                  ),
+                )
                 .toList(),
           ),
           const VerticalDivider(width: 1, thickness: 1),
@@ -114,11 +117,13 @@ class _AppRouterState extends State<AppRouter> {
         },
         height: 65,
         destinations: NavDestination.values
-            .map((d) => NavigationDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon: Icon(d.icon),
-                  label: d.label,
-                ))
+            .map(
+              (d) => NavigationDestination(
+                icon: Icon(d.icon),
+                selectedIcon: Icon(d.icon),
+                label: d.label,
+              ),
+            )
             .toList(),
       ),
     );

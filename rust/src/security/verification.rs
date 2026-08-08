@@ -93,7 +93,8 @@ impl TrustManager {
 
     /// Trust a device.
     pub fn trust_device(&mut self, device_id: &str, device_name: &str) {
-        self.trusted_devices.insert(device_id.to_string(), device_name.to_string());
+        self.trusted_devices
+            .insert(device_id.to_string(), device_name.to_string());
     }
 
     /// Revoke trust.
@@ -108,7 +109,10 @@ impl TrustManager {
 
     /// Get all trusted devices.
     pub fn trusted_devices(&self) -> Vec<(String, String)> {
-        self.trusted_devices.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        self.trusted_devices
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
 
     /// Generate a new PIN.
@@ -133,7 +137,10 @@ impl TrustManager {
 
     /// Validate a session token.
     pub fn validate_session(&self, token: &str) -> bool {
-        self.sessions.get(token).map(|s| s.is_valid()).unwrap_or(false)
+        self.sessions
+            .get(token)
+            .map(|s| s.is_valid())
+            .unwrap_or(false)
     }
 
     /// Clean expired sessions.

@@ -73,15 +73,20 @@ impl ConnectionManager {
             match tcp::connect(addr).await {
                 Ok(stream) => {
                     let conn = Arc::new(TcpConnection::new(stream)?);
-                    self.connections.write().insert(device_id.to_string(), Arc::clone(&conn));
-                    self.connection_info.write().insert(device_id.to_string(), ConnectionInfo {
-                        device_id: device_id.to_string(),
-                        device_name: device_name.to_string(),
-                        address: addr,
-                        connected_at: Instant::now(),
-                        last_activity: Instant::now(),
-                        retry_count: 0,
-                    });
+                    self.connections
+                        .write()
+                        .insert(device_id.to_string(), Arc::clone(&conn));
+                    self.connection_info.write().insert(
+                        device_id.to_string(),
+                        ConnectionInfo {
+                            device_id: device_id.to_string(),
+                            device_name: device_name.to_string(),
+                            address: addr,
+                            connected_at: Instant::now(),
+                            last_activity: Instant::now(),
+                            retry_count: 0,
+                        },
+                    );
                     return Ok(conn);
                 }
                 Err(e) => {
@@ -95,7 +100,10 @@ impl ConnectionManager {
                     );
                     log::warn!(
                         "Connection to {} failed (attempt {}/{}), retrying in {:?}",
-                        device_id, attempt, self.policy.max_retries, delay
+                        device_id,
+                        attempt,
+                        self.policy.max_retries,
+                        delay
                     );
                     sleep(delay).await;
                 }

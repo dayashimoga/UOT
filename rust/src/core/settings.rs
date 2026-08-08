@@ -1,8 +1,8 @@
 //! Settings Persistence
 //!
 //! Saves/loads user preferences to/from JSON file on disk.
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Persisted user settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]

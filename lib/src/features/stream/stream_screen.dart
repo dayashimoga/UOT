@@ -20,10 +20,7 @@ class _StreamScreenState extends State<StreamScreen> {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            floating: true,
-            title: const Text('Stream'),
-          ),
+          SliverAppBar(floating: true, title: const Text('Stream')),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
@@ -74,14 +71,17 @@ class _StreamScreenState extends State<StreamScreen> {
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        vertical: 32, horizontal: 16),
+                      vertical: 32,
+                      horizontal: 16,
+                    ),
                     child: Column(
                       children: [
                         Icon(
                           Icons.cast_rounded,
                           size: 48,
-                          color: colorScheme.onSurfaceVariant
-                              .withValues(alpha: 0.4),
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.4,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Text(
@@ -94,8 +94,9 @@ class _StreamScreenState extends State<StreamScreen> {
                         Text(
                           'Select a stream type above to start',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.7),
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                         ),
                       ],
@@ -153,14 +154,19 @@ class _StreamTypeCard extends StatelessWidget {
                   children: [
                     Text(title, style: theme.textTheme.titleMedium),
                     const SizedBox(height: 2),
-                    Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    )),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded,
-                  color: theme.colorScheme.onSurfaceVariant),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),

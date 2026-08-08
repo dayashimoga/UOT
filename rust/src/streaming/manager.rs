@@ -142,7 +142,11 @@ impl StreamManager {
 
     /// Get a specific session.
     pub fn get_session(&self, session_id: &str) -> Option<StreamSession> {
-        self.sessions.read().iter().find(|s| s.session_id == session_id).cloned()
+        self.sessions
+            .read()
+            .iter()
+            .find(|s| s.session_id == session_id)
+            .cloned()
     }
 }
 

@@ -127,8 +127,7 @@ class UotTheme {
         backgroundColor: UotColors.surface,
         indicatorColor: UotColors.accent.withValues(alpha: 0.15),
         selectedIconTheme: const IconThemeData(color: UotColors.accent),
-        unselectedIconTheme:
-            const IconThemeData(color: UotColors.textTertiary),
+        unselectedIconTheme: const IconThemeData(color: UotColors.textTertiary),
         selectedLabelTextStyle: const TextStyle(
           color: UotColors.accent,
           fontSize: 12,
@@ -172,20 +171,14 @@ class UotTheme {
           fontSize: 14,
           height: 1.4,
         ),
-        bodySmall: TextStyle(
-          color: UotColors.textTertiary,
-          fontSize: 12,
-        ),
+        bodySmall: TextStyle(color: UotColors.textTertiary, fontSize: 12),
         labelLarge: TextStyle(
           color: UotColors.textPrimary,
           fontWeight: FontWeight.w600,
           fontSize: 14,
         ),
       ),
-      iconTheme: const IconThemeData(
-        color: UotColors.textSecondary,
-        size: 24,
-      ),
+      iconTheme: const IconThemeData(color: UotColors.textSecondary, size: 24),
       dividerTheme: DividerThemeData(
         color: UotColors.surfaceElevated.withValues(alpha: 0.5),
         thickness: 1,
@@ -199,10 +192,7 @@ class UotTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -220,9 +210,7 @@ class UotTheme {
         selectedColor: UotColors.accent.withValues(alpha: 0.15),
         labelStyle: const TextStyle(color: UotColors.textSecondary),
         side: BorderSide.none,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: UotColors.accent,
@@ -231,9 +219,7 @@ class UotTheme {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: UotColors.surfaceElevated,
         contentTextStyle: const TextStyle(color: UotColors.textPrimary),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -273,9 +259,7 @@ class UotTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: Colors.grey.shade200,
-          ),
+          side: BorderSide(color: Colors.grey.shade200),
         ),
       ),
       textTheme: const TextTheme(

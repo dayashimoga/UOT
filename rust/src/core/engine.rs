@@ -15,9 +15,7 @@ use crate::core::config::AppConfig;
 use crate::core::error::{TransferError, TransportError, UotError};
 use crate::discovery::mdns::{DiscoveryEvent, MdnsDiscovery};
 use crate::discovery::types::{DeviceType, DiscoveredDevice};
-use crate::transfer::engine::{
-    self, ProgressTracker, TransferItem,
-};
+use crate::transfer::engine::{self, ProgressTracker, TransferItem};
 use crate::transfer::types::{TransferDirection, TransferProgress, TransferRecord, TransferStatus};
 use crate::transport::tcp::{self, Frame, FrameType, TcpConnection, TcpTransportListener};
 
@@ -111,7 +109,10 @@ impl UotEngine {
     /// Start the engine: bind TCP, register mDNS, start browsing.
     pub async fn start(&self) -> Result<(), UotError> {
         *self.state.write() = EngineState::Starting;
-        let _ = self.event_tx.send(EngineEvent::StateChanged(EngineState::Starting)).await;
+        let _ = self
+            .event_tx
+            .send(EngineEvent::StateChanged(EngineState::Starting))
+            .await;
 
         // Start TCP listener
         let port = self.config.network_port.unwrap_or(tcp::DEFAULT_PORT);
@@ -123,8 +124,9 @@ impl UotEngine {
         *self.listener.write() = Some(tcp_listener);
 
         // Start mDNS discovery
-        let mut mdns = MdnsDiscovery::new()
-            .map_err(|e| UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e)))?;
+        let mut mdns = MdnsDiscovery::new().map_err(|e| {
+            UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e))
+        })?;
 
         let device_type = DeviceType::Desktop; // TODO: detect platform
         mdns.register(
@@ -136,8 +138,9 @@ impl UotEngine {
         .map_err(|e| UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e)))?;
 
         // Start browsing
-        let mut discovery_rx = mdns.start_browsing()
-            .map_err(|e| UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e)))?;
+        let mut discovery_rx = mdns.start_browsing().map_err(|e| {
+            UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e))
+        })?;
 
         *self.discovery.write() = Some(mdns);
 
@@ -148,7 +151,9 @@ impl UotEngine {
             while let Some(event) = discovery_rx.recv().await {
                 match event {
                     DiscoveryEvent::DeviceFound(device) => {
-                        devices.write().insert(device.device_id.clone(), device.clone());
+                        devices
+                            .write()
+                            .insert(device.device_id.clone(), device.clone());
                         let _ = event_tx.send(EngineEvent::DeviceFound(device)).await;
                     }
                     DiscoveryEvent::DeviceLost(id) => {
@@ -156,7 +161,9 @@ impl UotEngine {
                         let _ = event_tx.send(EngineEvent::DeviceLost(id)).await;
                     }
                     DiscoveryEvent::DeviceUpdated(device) => {
-                        devices.write().insert(device.device_id.clone(), device.clone());
+                        devices
+                            .write()
+                            .insert(device.device_id.clone(), device.clone());
                         let _ = event_tx.send(EngineEvent::DeviceUpdated(device)).await;
                     }
                 }
@@ -182,7 +189,9 @@ impl UotEngine {
 
                 let remote = conn.remote_addr().to_string();
                 let conn = Arc::new(conn);
-                connections.write().insert(remote.clone(), Arc::clone(&conn));
+                connections
+                    .write()
+                    .insert(remote.clone(), Arc::clone(&conn));
 
                 // Handle incoming frames
                 let transfers_clone = Arc::clone(&transfers);
@@ -205,18 +214,17 @@ impl UotEngine {
         });
 
         *self.state.write() = EngineState::Running;
-        let _ = self.event_tx.send(EngineEvent::StateChanged(EngineState::Running)).await;
+        let _ = self
+            .event_tx
+            .send(EngineEvent::StateChanged(EngineState::Running))
+            .await;
         log::info!("UOT engine started on port {actual_port}");
 
         Ok(())
     }
 
     /// Send files to a connected device.
-    pub async fn send_files(
-        &self,
-        device_id: &str,
-        paths: Vec<PathBuf>,
-    ) -> Result<Uuid, UotError> {
+    pub async fn send_files(&self, device_id: &str, paths: Vec<PathBuf>) -> Result<Uuid, UotError> {
         // Collect file items
         let mut items = Vec::new();
         for path in &paths {
@@ -238,17 +246,21 @@ impl UotEngine {
         }
 
         // Find the device address
-        let device = self.devices.read().get(device_id).cloned()
-            .ok_or_else(|| UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string())))?;
+        let device = self.devices.read().get(device_id).cloned().ok_or_else(|| {
+            UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string()))
+        })?;
 
-        let addr_str = device.address
-            .ok_or_else(|| UotError::Transfer(TransferError::DeviceNotFound("No address".to_string())))?;
+        let addr_str = device.address.ok_or_else(|| {
+            UotError::Transfer(TransferError::DeviceNotFound("No address".to_string()))
+        })?;
 
-        let addr: SocketAddr = addr_str.parse()
-            .map_err(|e| UotError::Transport(TransportError::Connection(format!("Invalid addr: {e}"))))?;
+        let addr: SocketAddr = addr_str.parse().map_err(|e| {
+            UotError::Transport(TransportError::Connection(format!("Invalid addr: {e}")))
+        })?;
 
         // Create transfer record
-        let record = engine::create_transfer_record(&items, TransferDirection::Send, &device.device_name);
+        let record =
+            engine::create_transfer_record(&items, TransferDirection::Send, &device.device_name);
         let transfer_id = record.transfer_id;
         self.transfers.write().insert(transfer_id, record);
 
@@ -259,7 +271,9 @@ impl UotEngine {
         // Create progress tracker
         let total_bytes: u64 = items.iter().map(|i| i.size).sum();
         let tracker = Arc::new(ProgressTracker::new(transfer_id, total_bytes, items.len()));
-        self.progress_trackers.write().insert(transfer_id, Arc::clone(&tracker));
+        self.progress_trackers
+            .write()
+            .insert(transfer_id, Arc::clone(&tracker));
 
         // Send offer message
         let offer = serde_json::json!({
@@ -273,10 +287,13 @@ impl UotEngine {
             })).collect::<Vec<_>>(),
             "total_size": total_bytes,
         });
-        let offer_bytes = serde_json::to_vec(&offer)
-            .map_err(|e| UotError::Transfer(TransferError::Protocol(format!("Serialize error: {e}"))))?;
+        let offer_bytes = serde_json::to_vec(&offer).map_err(|e| {
+            UotError::Transfer(TransferError::Protocol(format!("Serialize error: {e}")))
+        })?;
 
-        conn.send(Frame::control(&offer_bytes)).await.map_err(UotError::Transport)?;
+        conn.send(Frame::control(&offer_bytes))
+            .await
+            .map_err(UotError::Transport)?;
 
         // Update status
         if let Some(record) = self.transfers.write().get_mut(&transfer_id) {
@@ -290,9 +307,8 @@ impl UotEngine {
         let chunk_size = self.config.transfer.chunk_size;
 
         tokio::spawn(async move {
-            let result = Self::execute_send(
-                conn, items, transfer_id, &tracker, chunk_size, &event_tx,
-            ).await;
+            let result =
+                Self::execute_send(conn, items, transfer_id, &tracker, chunk_size, &event_tx).await;
 
             let mut transfers = transfers.write();
             if let Some(record) = transfers.get_mut(&transfer_id) {
@@ -434,47 +450,58 @@ impl UotEngine {
 
                     match msg_type {
                         "offer" => {
-                            let transfer_id_str = msg.get("transfer_id")
+                            let transfer_id_str = msg
+                                .get("transfer_id")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("");
-                            let transfer_id = Uuid::parse_str(transfer_id_str).unwrap_or_else(|_| Uuid::new_v4());
-                            let from_device = msg.get("device_name")
+                            let transfer_id =
+                                Uuid::parse_str(transfer_id_str).unwrap_or_else(|_| Uuid::new_v4());
+                            let from_device = msg
+                                .get("device_name")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("Unknown")
                                 .to_string();
-                            let total_size = msg.get("total_size")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0);
-                            let items: Vec<String> = msg.get("items")
+                            let total_size =
+                                msg.get("total_size").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let items: Vec<String> = msg
+                                .get("items")
                                 .and_then(|v| v.as_array())
-                                .map(|arr| arr.iter()
-                                    .filter_map(|i| i.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
-                                    .collect())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|i| {
+                                            i.get("name")
+                                                .and_then(|n| n.as_str())
+                                                .map(|s| s.to_string())
+                                        })
+                                        .collect()
+                                })
                                 .unwrap_or_default();
 
                             current_transfer_id = Some(transfer_id);
 
                             // Auto-accept for now (will add consent UI later)
-                            let _ = event_tx.send(EngineEvent::IncomingOffer {
-                                transfer_id,
-                                from_device,
-                                items,
-                                total_size,
-                            }).await;
+                            let _ = event_tx
+                                .send(EngineEvent::IncomingOffer {
+                                    transfer_id,
+                                    from_device,
+                                    items,
+                                    total_size,
+                                })
+                                .await;
 
                             log::info!("Accepted transfer {transfer_id} from {remote}");
                         }
                         "file_start" => {
-                            let name = msg.get("name")
+                            let name = msg
+                                .get("name")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("unknown")
                                 .to_string();
-                            let relative_path = msg.get("relative_path")
+                            let relative_path = msg
+                                .get("relative_path")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or(&name);
-                            let size = msg.get("size")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0);
+                            let size = msg.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
 
                             // Sanitize path (security: prevent traversal)
                             let sanitized = relative_path.replace("..", "_").replace('\\', "/");
@@ -485,9 +512,8 @@ impl UotEngine {
                         }
                         "file_end" => {
                             if let Some((ref path, ref name, _)) = current_file {
-                                let expected_hash = msg.get("sha256")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
+                                let expected_hash =
+                                    msg.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
 
                                 match engine::compute_sha256(path).await {
                                     Ok(actual_hash) => {
@@ -586,10 +612,11 @@ impl UotEngine {
 
     /// Pause a transfer.
     pub async fn pause_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
-        let uuid = Uuid::parse_str(transfer_id)
-            .map_err(|_e| UotError::Transfer(TransferError::TransferNotFound {
+        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
+            UotError::Transfer(TransferError::TransferNotFound {
                 transfer_id: transfer_id.to_string(),
-            }))?;
+            })
+        })?;
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
             record.status = TransferStatus::Paused;
@@ -607,10 +634,11 @@ impl UotEngine {
 
     /// Resume a transfer.
     pub async fn resume_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
-        let uuid = Uuid::parse_str(transfer_id)
-            .map_err(|_e| UotError::Transfer(TransferError::TransferNotFound {
+        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
+            UotError::Transfer(TransferError::TransferNotFound {
                 transfer_id: transfer_id.to_string(),
-            }))?;
+            })
+        })?;
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
             record.status = TransferStatus::InProgress;
@@ -628,10 +656,11 @@ impl UotEngine {
 
     /// Cancel a transfer.
     pub async fn cancel_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
-        let uuid = Uuid::parse_str(transfer_id)
-            .map_err(|_e| UotError::Transfer(TransferError::TransferNotFound {
+        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
+            UotError::Transfer(TransferError::TransferNotFound {
                 transfer_id: transfer_id.to_string(),
-            }))?;
+            })
+        })?;
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
             record.status = TransferStatus::Cancelled;
@@ -650,10 +679,11 @@ impl UotEngine {
 
     /// Accept an incoming transfer offer.
     pub async fn accept_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
-        let uuid = Uuid::parse_str(transfer_id)
-            .map_err(|_e| UotError::Transfer(TransferError::TransferNotFound {
+        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
+            UotError::Transfer(TransferError::TransferNotFound {
                 transfer_id: transfer_id.to_string(),
-            }))?;
+            })
+        })?;
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
             record.status = TransferStatus::InProgress;
@@ -674,13 +704,20 @@ impl UotEngine {
 
     /// Send clipboard text to a device.
     pub async fn send_clipboard(&self, device_id: &str, text: String) -> Result<(), UotError> {
-        let device = self.devices.read().get(device_id).cloned()
-            .ok_or_else(|| UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string())))?;
+        let device = self.devices.read().get(device_id).cloned().ok_or_else(|| {
+            UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string()))
+        })?;
 
-        let addr: SocketAddr = device.address.as_ref()
-            .ok_or_else(|| UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string())))?
+        let addr: SocketAddr = device
+            .address
+            .as_ref()
+            .ok_or_else(|| {
+                UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string()))
+            })?
             .parse()
-            .map_err(|e| UotError::Transport(TransportError::Connection(format!("Bad address: {e}"))))?;
+            .map_err(|e| {
+                UotError::Transport(TransportError::Connection(format!("Bad address: {e}")))
+            })?;
 
         let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
         let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
@@ -690,10 +727,13 @@ impl UotEngine {
             "content_type": "text/plain",
             "data": text,
         });
-        let payload = serde_json::to_vec(&msg)
-            .map_err(|e| UotError::Transfer(TransferError::Protocol(format!("Serialize error: {e}"))))?;
+        let payload = serde_json::to_vec(&msg).map_err(|e| {
+            UotError::Transfer(TransferError::Protocol(format!("Serialize error: {e}")))
+        })?;
 
-        conn.send(Frame::control(&payload)).await.map_err(UotError::Transport)?;
+        conn.send(Frame::control(&payload))
+            .await
+            .map_err(UotError::Transport)?;
         log::info!("Clipboard sent to {device_id}: {} bytes", text.len());
         Ok(())
     }
