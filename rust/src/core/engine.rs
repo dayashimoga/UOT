@@ -18,6 +18,7 @@ use crate::discovery::mdns::{DiscoveryEvent, MdnsDiscovery};
 use crate::discovery::types::{DeviceType, DiscoveredDevice};
 use crate::protocol::handler::{self as proto, OfferItemInfo, WireMessage};
 use crate::security::path_validator::StrictPathValidator;
+use crate::security::verification::TrustManager;
 use crate::security::PathValidator;
 use crate::transfer::analytics::LifetimeStats;
 use crate::transfer::engine::{self, ProgressTracker, TransferItem};
@@ -81,6 +82,10 @@ pub struct UotEngine {
     queue_manager: Arc<RwLock<TransferQueueManager>>,
     /// Multi-transport fallback manager.
     fallback_manager: Arc<RwLock<TransportFallbackManager>>,
+    /// Trust manager for PIN verification and device trust.
+    trust_manager: Arc<RwLock<TrustManager>>,
+    /// Accepted transfer IDs (signaled by UI via accept_transfer).
+    accepted_transfers: Arc<RwLock<std::collections::HashSet<Uuid>>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -141,6 +146,8 @@ impl UotEngine {
                 pause_signals: Arc::new(RwLock::new(HashMap::new())),
                 queue_manager: Arc::new(RwLock::new(TransferQueueManager::new(max_concurrent))),
                 fallback_manager: Arc::new(RwLock::new(TransportFallbackManager::default())),
+                trust_manager: Arc::new(RwLock::new(TrustManager::new())),
+                accepted_transfers: Arc::new(RwLock::new(std::collections::HashSet::new())),
             },
             event_rx,
         )
@@ -223,6 +230,7 @@ impl UotEngine {
         let progress_trackers = Arc::clone(&self.progress_trackers);
         let event_tx2 = self.event_tx.clone();
         let save_dir = save_dir_clone;
+        let accepted_transfers = Arc::clone(&self.accepted_transfers);
 
         tokio::spawn(async move {
             while let Some(stream) = incoming_streams.recv().await {
@@ -245,6 +253,7 @@ impl UotEngine {
                 let trackers_clone = Arc::clone(&progress_trackers);
                 let event_tx3 = event_tx2.clone();
                 let save_dir_clone = save_dir.clone();
+                let accepted_clone = Arc::clone(&accepted_transfers);
 
                 tokio::spawn(async move {
                     Self::handle_incoming_connection(
@@ -254,6 +263,7 @@ impl UotEngine {
                         &trackers_clone,
                         &event_tx3,
                         &save_dir_clone,
+                        &accepted_clone,
                     )
                     .await;
                 });
@@ -514,14 +524,26 @@ impl UotEngine {
         _trackers: &Arc<RwLock<HashMap<Uuid, Arc<ProgressTracker>>>>,
         event_tx: &mpsc::Sender<EngineEvent>,
         save_dir: &str,
+        accepted_transfers: &Arc<RwLock<std::collections::HashSet<Uuid>>>,
     ) {
         let mut current_file: Option<(PathBuf, String, u64)> = None; // (path, name, size)
         let mut current_transfer_id: Option<Uuid> = None;
+        let mut transfer_accepted = false;
 
         loop {
-            let frame = match conn.recv_frame().await {
-                Ok(f) => f,
-                Err(_) => break, // Connection closed
+            // 60-second idle timeout per frame
+            let frame = match tokio::time::timeout(
+                std::time::Duration::from_secs(60),
+                conn.recv_frame(),
+            )
+            .await
+            {
+                Ok(Ok(f)) => f,
+                Ok(Err(_)) => break,  // Connection closed
+                Err(_) => {
+                    log::warn!("Connection from {remote} timed out (60s idle)");
+                    break;
+                }
             };
             match frame.frame_type {
                 FrameType::Control => {
@@ -585,6 +607,31 @@ impl UotEngine {
                                 .await;
 
                             log::info!("Received offer {transfer_id} from {remote}");
+                        }
+                        WireMessage::FileStart { .. }
+                        | WireMessage::FileEnd { .. }
+                            if !transfer_accepted =>
+                        {
+                            // Check if the transfer has been accepted by the UI
+                            if let Some(tid) = current_transfer_id {
+                                if accepted_transfers.read().contains(&tid) {
+                                    transfer_accepted = true;
+                                    if let Some(record) = transfers.write().get_mut(&tid) {
+                                        record.status = TransferStatus::InProgress;
+                                        record.started_at = Some(chrono::Utc::now());
+                                    }
+                                    log::info!("Transfer {tid} accepted, processing files");
+                                    // Re-process this frame by continuing the match
+                                    // We need to re-dispatch — fall through to the next match iteration
+                                } else {
+                                    // Not yet accepted — skip file frames until accepted
+                                    log::debug!("Skipping file frame for unaccepted transfer {tid}");
+                                    continue;
+                                }
+                            } else {
+                                log::warn!("File frame without prior offer from {remote}");
+                                continue;
+                            }
                         }
                         WireMessage::FileStart {
                             file_name,
@@ -803,15 +850,27 @@ impl UotEngine {
                 transfer_id: transfer_id.to_string(),
             })
         })?;
+        self.accepted_transfers.write().insert(uuid);
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
             record.status = TransferStatus::InProgress;
+            self.log_event(&format!("Transfer {transfer_id} accepted"));
             Ok(())
         } else {
             Err(UotError::Transfer(TransferError::TransferNotFound {
                 transfer_id: transfer_id.to_string(),
             }))
         }
+    }
+
+    /// Generate a 6-digit PIN for device pairing/verification.
+    pub fn generate_pin(&self, ttl_secs: u64) -> String {
+        self.trust_manager.write().generate_pin(ttl_secs).to_string()
+    }
+
+    /// Verify a PIN attempt for a remote device.
+    pub fn verify_pin(&self, device_id: &str, attempt: &str) -> Option<String> {
+        self.trust_manager.write().verify_pin(device_id, attempt)
     }
 
     /// Set the device display name.

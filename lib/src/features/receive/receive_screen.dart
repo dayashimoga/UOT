@@ -4,7 +4,7 @@
 // Shows incoming transfer requests.
 
 import 'package:flutter/material.dart';
-import '../../rust/frb_generated.dart';
+import '../../rust/api/engine_api.dart';
 import 'incoming_offer_dialog.dart';
 
 class ReceiveScreen extends StatefulWidget {

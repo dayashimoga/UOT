@@ -307,6 +307,24 @@ pub fn engine_subnet_scan() -> String {
     .unwrap_or_else(|| "[]".to_string())
 }
 
+/// Generate a 6-digit verification PIN with specified TTL in seconds.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_generate_pin(ttl_secs: u64) -> String {
+    with_engine(|engine| engine.generate_pin(ttl_secs))
+        .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Verify a PIN attempt for a device ID, returning session token on success.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_verify_pin(device_id: String, attempt: String) -> String {
+    with_engine(|engine| {
+        engine
+            .verify_pin(&device_id, &attempt)
+            .unwrap_or_else(|| "invalid".to_string())
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
 /// Helper: access the engine.
 fn with_engine<F, R>(f: F) -> Option<R>
 where

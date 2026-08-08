@@ -156,6 +156,21 @@ This file is **append-only** — history is never overwritten.
 - **Network Interface Enumerator** (`discovery/interface.rs`): `InterfaceEnumerator` active IPv4/IPv6 interface listing
 - **Transfer Rate Limiter** (`transfer/ratelimit.rs`): `RateLimiter` token bucket bandwidth throttler
 
+## [0.8.0-alpha] - 2026-08-08
+
+### Sprint 7 — Production Validation & Gap-Closure
+
+#### Added
+- **TrustManager Integration** (`core/engine.rs`): Integrated `TrustManager` & PIN verification into `UotEngine` lifecycle.
+- **PIN Verification APIs** (`api/engine_api.rs`): `engine_generate_pin()`, `engine_verify_pin()` FFI endpoints for Dart.
+- **Offer Consent Gating** (`core/engine.rs`): Incoming file transfers gated until UI calls `accept_transfer()`.
+- **Idle Connection Timeout**: Added 60s idle timeout to connection frame processing loop.
+- **Rust Integration Test Suite** (`rust/tests/integration_transfer.rs`): Two-engine loopback transfer test, queue manager scheduling test.
+- **Flutter Widget Tests** (`test/receive_screen_test.dart`, `test/incoming_offer_dialog_test.dart`): UI tests for `ReceiveScreen` settings/visibility and `IncomingOfferDialog` consent/PIN flow (10 widget tests passing).
+- **Docker Mesh Container Setup** (`Dockerfile`, `docker-compose.yml`): Multi-stage container build and isolated 2-node subnet bridge simulation network.
+- **Updated Documentation Suite**: Evidence-based audit updates across `GAP_ANALYSIS.md`, `PRODUCTION_READINESS.md`, `TESTING.md`, `TODO.md`, `IMPLEMENTATION.md`.
+
+
 
 
 

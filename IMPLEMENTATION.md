@@ -1,55 +1,32 @@
-# UOT Implementation Status
+# IMPLEMENTATION — Universal Offline Transfer (UOT)
 
-## Core Architecture & Engine Status ✅
+## Overview
+UOT is a cross-platform offline-first file transfer system built with **Rust (core engine & protocol)** and **Flutter (UI)**, connected via **flutter_rust_bridge v2**.
 
-### Completed Modules & Features (Sprints 0–8)
-- [x] **Project Scaffold**: Flutter 3.44.6 + Rust 1.97.1 + FRB v2.12.0
-- [x] **Rust Core Coordinator** (`core/engine.rs`): `UotEngine` lifecycle, mDNS + TCP transport orchestration
-- [x] **TCP/LAN Transport** (`transport/tcp.rs`): Length-prefixed framing, bidirectional `send_frame` / `recv_frame`
-- [x] **Connection Manager** (`transport/connection_manager.rs`): Auto-reconnection with exponential backoff & pooling
-- [x] **Wi-Fi Direct & Hotspot** (`transport/wifidirect.rs` / `transport/hotspot.rs`): P2P group info & AP hotspot assist
-- [x] **Transport Fallback Orchestrator** (`transport/fallback.rs`): Strategy priority switching (TcpLan -> WifiDirect -> BLE -> QR)
-- [x] **mDNS & Subnet Discovery** (`discovery/mdns.rs` / `discovery/subnet.rs`): Service registration, browsing, IPv4 /24 subnet scanner
-- [x] **Network Interface Enumerator** (`discovery/interface.rs`): `InterfaceEnumerator` IPv4/IPv6 address binding helper
-- [x] **File Transfer Engine** (`transfer/engine.rs`): Chunked file I/O, CRC32, SHA-256 integrity verification, progress tracker
-- [x] **Clipboard Sharing** (`transfer/clipboard.rs`): Text, URL, HTML auto-detection, preview generation, UI integration
-- [x] **Persistent Transfer History** (`transfer/history.rs`): JSON history store with query search & status filtering
-- [x] **Transfer Queue Priority Manager** (`transfer/queue.rs`): Priority scheduling (`Low`, `Normal`, `High`, `Urgent`)
-- [x] **Lifetime Analytics** (`transfer/analytics.rs`): `LifetimeStats` cumulative bytes/transfers/peak speed tracker
-- [x] **Rate Limiter** (`transfer/ratelimit.rs`): Token bucket bandwidth throttler
-- [x] **Throughput Benchmark** (`core/benchmark.rs`): Real-time bandwidth calculator and Mbps snapshotting
-- [x] **Protocol State Machine & Handler** (`protocol/state.rs` / `protocol/handler.rs`): 15 states, `WireMessage` serialization
-- [x] **Optical QR & Fountain Codes** (`security/qr.rs` / `protocol/fountain.rs`): Encrypted QR pairing & Luby Transform fountain code encoder
-- [x] **Software Crypto Provider** (`security/crypto.rs`): `SoftwareCryptoProvider` AES-256-GCM authenticated cipher & SHA-256 derivation
-- [x] **BLE GATT & Advertisements** (`transport/ble.rs`): GATT service UUIDs & advertisement packet encoding
-- [x] **Stream Manager** (`streaming/manager.rs`): Media streaming session lifecycle API
-- [x] **UserSettings Persistence** (`core/settings.rs`): JSON settings load/save with platform directory resolution
-- [x] **Flutter UI**: Material 3 dark-first high-contrast theme, adaptive navigation, QuickActionsBar, TransferSearchBar, Settings persistence
-- [x] **Quality Assurance**: 93 Rust unit tests + 8 Flutter widget/contrast tests (100% PASS rate, 0 warnings)
+## Architecture & Module Structure
 
-### Architecture Overview
-```
-Flutter UI (Dart) ←→ flutter_rust_bridge v2 ←→ Rust Core Engine (UotEngine)
-                                                 ├── api/        (FFI bindings & endpoints)
-                                                 ├── core/       (config, errors, settings, benchmark, version)
-                                                 ├── transport/  (tcp, connection_manager, ble, wifidirect, hotspot, fallback)
-                                                 ├── protocol/   (state, messages, handler, fountain)
-                                                 ├── security/   (verification, qr, crypto, traits)
-                                                 ├── discovery/  (mdns, subnet, interface, traits)
-                                                 ├── transfer/   (engine, clipboard, history, queue, analytics, ratelimit)
-                                                 └── streaming/  (manager, types)
-```
+### 1. Rust Core Engine (`rust/src/`)
+- `core/engine.rs`: Main lifecycle coordinator (`UotEngine`). Manages discovery, listener, connections, transfers, `TrustManager`, `TransferQueueManager`, `TransportFallbackManager`, `LifetimeStats`, and `TransferHistoryStore`.
+- `security/crypto.rs`: AES-256-GCM envelope cipher and X25519 Diffie-Hellman key exchange.
+- `security/path_validator.rs`: `StrictPathValidator` sanitizing paths against traversal, null-bytes, encoded sequences, Windows reserved names, and symlink attacks.
+- `security/verification.rs`: `TrustManager`, 6-digit `VerificationPin`, and session token manager.
+- `transfer/engine.rs`: Chunked file I/O, sliding-window speed calculation, CRC32, and SHA-256 integrity verification.
+- `transfer/queue.rs`: `TransferQueueManager` handling priority scheduling (`Low`, `Normal`, `High`, `Urgent`) and concurrent limits.
+- `transport/tcp.rs`: Length-prefixed binary framing protocol over TCP sockets.
+- `discovery/mdns.rs`: Peer discovery over mDNS broadcasting (`_uot._tcp.local.`).
+- `discovery/subnet.rs`: Fallback IPv4 /24 subnet scanner on port 42000.
 
-## Sprint Summary
+### 2. Flutter UI (`lib/src/`)
+- `features/receive/incoming_offer_dialog.dart`: Material 3 offer consent modal with file list preview and PIN verification input.
+- `features/receive/receive_screen.dart`: Receive settings and interactive incoming transfer offer cards.
+- `features/transfers/`: Queue, progress indicators, pause/resume, and searchable history.
+- `features/devices/`: Trusted device management and QR invitation pairing.
 
-| Sprint | Focus | Status |
-|--------|-------|--------|
-| **S0** | Foundation | ✅ Complete |
-| **S1** | Core Discovery & LAN Transfer | ✅ Complete |
-| **S2** | Reliability & Protocol Handling | ✅ Complete |
-| **S3** | Security, QR Pairing & Clipboard | ✅ Complete |
-| **S4** | Media Streaming & Capabilities | ✅ Complete |
-| **S5** | User Settings & Reconnection | ✅ Complete |
-| **S6** | Fountain Codes, QR & BLE Transports | ✅ Complete |
-| **S7** | Advanced Connectivity & Fallback | ✅ Complete |
-| **S8** | Lifetime Stats, Throttling & Quality Assurance | ✅ Complete (93/93 Rust tests + 8/8 Flutter tests PASS) |
+### 3. Docker Infrastructure (`Dockerfile`, `docker-compose.yml`)
+- Multi-stage Docker build for containerized test runners.
+- 2-node isolated bridge network (`uot-mesh`) for automated multi-container network simulation.
+
+## Verification
+- **Rust Test Suite**: 128 tests passing (`cargo test --manifest-path rust/Cargo.toml`)
+- **Flutter Test Suite**: 10 tests passing (`flutter test`)
+- **Clippy Lint**: Clean (`cargo clippy --manifest-path rust/Cargo.toml -- -D warnings`)

@@ -3,7 +3,7 @@
 // Prompt user to accept or decline incoming file transfers with optional PIN verification.
 
 import 'package:flutter/material.dart';
-import '../../rust/frb_generated.dart';
+import '../../rust/api/engine_api.dart';
 
 class IncomingOfferDialog extends StatefulWidget {
   const IncomingOfferDialog({
@@ -162,17 +162,14 @@ class _IncomingOfferDialogState extends State<IncomingOfferDialog> {
             ),
             const SizedBox(height: 6),
             Container(
-              maxHeight: 120,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 border: Border.all(color: colorScheme.outlineVariant),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: widget.items.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, index) {
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: widget.items.map((item) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
@@ -185,7 +182,7 @@ class _IncomingOfferDialogState extends State<IncomingOfferDialog> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            widget.items[index],
+                            item,
                             style: theme.textTheme.bodyMedium,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -193,7 +190,7 @@ class _IncomingOfferDialogState extends State<IncomingOfferDialog> {
                       ],
                     ),
                   );
-                },
+                }).toList(),
               ),
             ),
             if (widget.requirePin) ...[
