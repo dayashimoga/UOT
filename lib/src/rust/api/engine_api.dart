@@ -108,3 +108,7 @@ String engineParseQrInvitation({required String json}) =>
 /// Search persistent transfer history with query string.
 String engineSearchHistory({required String query}) =>
     RustLib.instance.api.crateApiEngineApiEngineSearchHistory(query: query);
+
+/// Get cumulative lifetime transfer statistics as JSON.
+String engineGetStats() =>
+    RustLib.instance.api.crateApiEngineApiEngineGetStats();

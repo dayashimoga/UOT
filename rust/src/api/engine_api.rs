@@ -271,6 +271,14 @@ pub fn engine_search_history(query: String) -> String {
     serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// Get cumulative lifetime transfer statistics as JSON.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_stats() -> String {
+    let path = crate::transfer::analytics::LifetimeStats::default_path();
+    let stats = crate::transfer::analytics::LifetimeStats::load(&path);
+    serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string())
+}
+
 /// Helper: access the engine.
 fn with_engine<F, R>(f: F) -> Option<R>
 where

@@ -87,7 +87,8 @@ h:\UOT/
 │       │   ├── engine.rs           # ★ Chunked I/O, CRC32+SHA-256, progress
 │       │   ├── clipboard.rs        # ★ Clipboard text/URL/HTML transfer
 │       │   ├── history.rs          # ★ Persistent transfer history & search store
-│       │   └── queue.rs            # ★ Transfer queue priority & scheduling manager
+│       │   ├── queue.rs            # ★ Transfer queue priority & scheduling manager
+│       │   └── analytics.rs        # ★ Lifetime transfer statistics & analytics manager
 │       └── streaming/              # Media streaming
 │           ├── mod.rs              # Traits: StreamCapabilityDetector
 │           ├── types.rs            # StreamCapability, StreamConfig

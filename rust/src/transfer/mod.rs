@@ -3,6 +3,7 @@
 //! Defines trait interfaces and types for the file transfer engine.
 //! Handles chunking, resume, integrity verification, queue management,
 //! and transfer lifecycle.
+pub mod analytics;
 pub mod clipboard;
 pub mod engine;
 pub mod history;
