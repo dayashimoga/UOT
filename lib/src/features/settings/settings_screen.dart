@@ -2,8 +2,10 @@
 //
 // Application settings: theme, transfer, discovery, security, about.
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../rust/api/init.dart' as rust_api;
+import '../../rust/api/engine_api.dart' as engine;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.onToggleTheme});
@@ -27,6 +29,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _version = rust_api.getVersion();
+    _loadSettings();
+  }
+
+  void _loadSettings() {
+    try {
+      final json = engine.engineLoadSettings();
+      final s = jsonDecode(json) as Map<String, dynamic>;
+      setState(() {
+        _darkMode = s['theme_mode'] == 'dark';
+        _integrity = s['verify_sha256'] ?? true;
+        _autoAcceptTrusted = s['auto_accept_trusted'] ?? false;
+        _requirePin = s['require_pin'] ?? false;
+        _chunkSize = (s['chunk_size_kb'] ?? 256).toDouble();
+      });
+    } catch (_) {}
+  }
+
+  void _saveSettings() {
+    engine.engineSaveSettings(json: jsonEncode({
+      'device_name': 'UOT Device',
+      'theme_mode': _darkMode ? 'dark' : 'light',
+      'chunk_size_kb': _chunkSize.toInt(),
+      'verify_sha256': _integrity,
+      'auto_accept_trusted': _autoAcceptTrusted,
+      'require_pin': _requirePin,
+      'save_directory': '',
+      'network_port': 42000,
+      'scan_interval_secs': 5,
+      'show_hidden_files': false,
+      'max_concurrent_transfers': 3,
+    }));
   }
 
   @override
@@ -62,6 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onChanged: (v) {
                           setState(() => _darkMode = v);
                           widget.onToggleTheme();
+                          _saveSettings();
                         },
                       ),
                     ],
@@ -93,8 +127,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           max: 1024,
                           divisions: 15,
                           label: '${_chunkSize.toInt()} KB',
-                          onChanged: (v) =>
-                              setState(() => _chunkSize = v),
+                          onChanged: (v) {
+                              setState(() => _chunkSize = v);
+                              _saveSettings();
+                          },
                         ),
                       ),
                       const Divider(height: 1, indent: 72),
@@ -108,8 +144,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         secondary: Icon(Icons.verified_rounded,
                             color: colorScheme.secondary),
                         value: _integrity,
-                        onChanged: (v) =>
-                            setState(() => _integrity = v),
+                        onChanged: (v) {
+                          setState(() => _integrity = v);
+                          _saveSettings();
+                        },
                       ),
                     ],
                   ),
@@ -156,8 +194,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         secondary: Icon(Icons.verified_user_rounded,
                             color: colorScheme.primary),
                         value: _autoAcceptTrusted,
-                        onChanged: (v) =>
-                            setState(() => _autoAcceptTrusted = v),
+                        onChanged: (v) {
+                          setState(() => _autoAcceptTrusted = v);
+                          _saveSettings();
+                        },
                       ),
                       const Divider(height: 1, indent: 72),
                       SwitchListTile(
@@ -170,8 +210,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         secondary: Icon(Icons.pin_rounded,
                             color: colorScheme.secondary),
                         value: _requirePin,
-                        onChanged: (v) =>
-                            setState(() => _requirePin = v),
+                        onChanged: (v) {
+                          setState(() => _requirePin = v);
+                          _saveSettings();
+                        },
                       ),
                     ],
                   ),
