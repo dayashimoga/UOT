@@ -18,8 +18,8 @@
 - [x] Lifetime Analytics & Persistent Transfer History
 - [x] Event Log Ring Buffer
 - [x] Real Pause/Resume with tokio watch channels
-- [x] Fountain code packet encoder & decoder for optical QR air-gap stream reconstruction (`protocol/fountain.rs`)
-- [x] 129 Rust Tests (100% Pass) & 10 Flutter Tests (100% Pass)
+- [x] StreamManager integrated into UotEngine (`start_stream`, `stop_stream`, `get_streams`)
+- [x] 130 Rust Tests (100% Pass) & 10 Flutter Tests (100% Pass)
 
 ## Future Roadmap (Platform & Hardware Extensions)
 - [ ] Platform-native BLE GATT host adapters (Android/iOS)
