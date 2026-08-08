@@ -168,6 +168,7 @@ This file is **append-only** — history is never overwritten.
 - **Rust Integration Test Suite** (`rust/tests/integration_transfer.rs`): Two-engine loopback transfer test, queue manager scheduling test.
 - **Flutter Widget Tests** (`test/receive_screen_test.dart`, `test/incoming_offer_dialog_test.dart`): UI tests for `ReceiveScreen` settings/visibility and `IncomingOfferDialog` consent/PIN flow (10 widget tests passing).
 - **Docker Mesh Container Setup** (`Dockerfile`, `docker-compose.yml`): Multi-stage container build and isolated 2-node subnet bridge simulation network.
+- **Fountain Decoder & Reconstruction** (`protocol/fountain.rs`): `FountainDecoder` with CRC32 integrity validation for Luby Transform optical QR payload reconstruction.
 - **Updated Documentation Suite**: Evidence-based audit updates across `GAP_ANALYSIS.md`, `PRODUCTION_READINESS.md`, `TESTING.md`, `TODO.md`, `IMPLEMENTATION.md`.
 
 
