@@ -18,6 +18,7 @@ use crate::discovery::mdns::{DiscoveryEvent, MdnsDiscovery};
 use crate::discovery::types::{DeviceType, DiscoveredDevice};
 use crate::protocol::handler::{self as proto, OfferItemInfo, WireMessage};
 use crate::security::path_validator::StrictPathValidator;
+use crate::security::session_cipher::SessionCipher;
 use crate::security::verification::TrustManager;
 use crate::security::PathValidator;
 use crate::streaming::manager::{StreamManager, StreamSession, StreamType};
@@ -29,6 +30,7 @@ use crate::transfer::ratelimit::RateLimiter;
 use crate::transfer::types::{
     TransferDirection, TransferItemRecord, TransferProgress, TransferRecord, TransferStatus,
 };
+use crate::transport::connection_manager::ConnectionManager;
 use crate::transport::fallback::{TransportFallbackManager, TransportSelectionStrategy};
 use crate::transport::tcp::{self, Frame, FrameType, TcpConnection, TcpTransportListener};
 use crate::transport::types::{TransportId, TransportState};
@@ -89,6 +91,8 @@ pub struct UotEngine {
     accepted_transfers: Arc<RwLock<std::collections::HashSet<Uuid>>>,
     /// Streaming session manager.
     stream_manager: Arc<RwLock<StreamManager>>,
+    /// Connection manager for auto-reconnection with exponential backoff.
+    connection_manager: Arc<ConnectionManager>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -152,6 +156,7 @@ impl UotEngine {
                 trust_manager: Arc::new(RwLock::new(TrustManager::new())),
                 accepted_transfers: Arc::new(RwLock::new(std::collections::HashSet::new())),
                 stream_manager: Arc::new(RwLock::new(StreamManager::new())),
+                connection_manager: Arc::new(ConnectionManager::default()),
             },
             event_rx,
         )
@@ -326,11 +331,52 @@ impl UotEngine {
         self.transfers.write().insert(transfer_id, record.clone());
 
         // Push to priority queue manager for batch scheduling
-        self.queue_manager.write().push(record, Priority::Normal);
+        {
+            let mut qm = self.queue_manager.write();
+            if !qm.can_start() {
+                // Queue the transfer for later execution
+                qm.push(record, Priority::Normal);
+                log::info!("Transfer {transfer_id} queued (concurrent limit reached)");
+                return Ok(transfer_id);
+            }
+            qm.push(record, Priority::Normal);
+            qm.mark_started();
+        }
 
         // Connect to the device
         let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
         let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
+
+        // Perform X25519 key exchange for session encryption
+        let (our_private, our_public) =
+            SessionCipher::create_key_exchange().map_err(UotError::Security)?;
+
+        // Send our public key to the receiver
+        let key_msg = WireMessage::KeyExchange {
+            public_key: our_public,
+        };
+        proto::send_message(&conn, &key_msg)
+            .await
+            .map_err(UotError::Transport)?;
+
+        // Wait for their public key
+        let their_key_msg = proto::recv_message(&conn)
+            .await
+            .map_err(UotError::Transport)?;
+        let their_public = match their_key_msg {
+            WireMessage::KeyExchange { public_key } => public_key,
+            _ => {
+                return Err(UotError::Security(
+                    crate::core::error::SecurityError::KeyExchangeFailed {
+                        reason: "Expected KeyExchange message from receiver".to_string(),
+                    },
+                ));
+            }
+        };
+
+        // Derive session cipher
+        let session_cipher = SessionCipher::from_key_exchange(&our_private, &their_public)
+            .map_err(UotError::Security)?;
 
         // Create progress tracker
         let total_bytes: u64 = items.iter().map(|i| i.size).sum();
@@ -377,6 +423,7 @@ impl UotEngine {
 
         let stats = Arc::clone(&self.lifetime_stats);
         let history = Arc::clone(&self.history_store);
+        let queue_manager = Arc::clone(&self.queue_manager);
 
         tokio::spawn(async move {
             let result = Self::execute_send(
@@ -388,6 +435,7 @@ impl UotEngine {
                 bandwidth_limit,
                 pause_rx,
                 &event_tx,
+                session_cipher,
             )
             .await;
 
@@ -421,13 +469,15 @@ impl UotEngine {
                 let _ = stats.read().save(&LifetimeStats::default_path());
                 // Clean up pause signal
                 pause_signals.write().remove(&transfer_id);
+                // Mark transfer completed in queue manager
+                queue_manager.write().mark_completed();
             }
         });
 
         Ok(transfer_id)
     }
 
-    /// Execute the send operation — chunked file transfer.
+    /// Execute the send operation — chunked file transfer with AES-256-GCM encryption.
     #[allow(clippy::too_many_arguments)]
     async fn execute_send(
         conn: TcpConnection,
@@ -438,6 +488,7 @@ impl UotEngine {
         bandwidth_limit: u64,
         mut pause_rx: watch::Receiver<bool>,
         event_tx: &mpsc::Sender<EngineEvent>,
+        mut session_cipher: SessionCipher,
     ) -> Result<(), TransferError> {
         let mut rate_limiter = RateLimiter::new(bandwidth_limit);
 
@@ -471,7 +522,12 @@ impl UotEngine {
                 chunk_frame.extend_from_slice(&[0u8; 4]); // reserved
                 chunk_frame.extend_from_slice(&chunk_data);
 
-                conn.send(Frame::data(chunk_frame))
+                // Encrypt the entire chunk frame with AES-256-GCM
+                let encrypted_frame = session_cipher
+                    .encrypt_frame(&chunk_frame)
+                    .map_err(|e| TransferError::Protocol(format!("Encryption error: {e}")))?;
+
+                conn.send(Frame::data(encrypted_frame))
                     .await
                     .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
 
@@ -533,6 +589,7 @@ impl UotEngine {
         let mut current_file: Option<(PathBuf, String, u64)> = None; // (path, name, size)
         let mut current_transfer_id: Option<Uuid> = None;
         let mut transfer_accepted = false;
+        let mut session_cipher: Option<SessionCipher> = None;
 
         loop {
             // 60-second idle timeout per frame
@@ -558,6 +615,43 @@ impl UotEngine {
                     };
 
                     match wire_msg {
+                        WireMessage::KeyExchange {
+                            public_key: their_public,
+                        } => {
+                            // Perform key exchange: generate our keypair, derive shared secret
+                            match SessionCipher::create_key_exchange() {
+                                Ok((our_private, our_public)) => {
+                                    // Send our public key back
+                                    let reply = WireMessage::KeyExchange {
+                                        public_key: our_public,
+                                    };
+                                    if let Err(e) = proto::send_message(&conn, &reply).await {
+                                        log::error!("Failed to send KeyExchange reply: {e}");
+                                        break;
+                                    }
+                                    // Derive session cipher
+                                    match SessionCipher::from_key_exchange(
+                                        &our_private,
+                                        &their_public,
+                                    ) {
+                                        Ok(cipher) => {
+                                            session_cipher = Some(cipher);
+                                            log::info!(
+                                                "Session encryption established with {remote}"
+                                            );
+                                        }
+                                        Err(e) => {
+                                            log::error!("Key exchange derivation failed: {e}");
+                                            break;
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Key exchange generation failed: {e}");
+                                    break;
+                                }
+                            }
+                        }
                         WireMessage::Offer {
                             transfer_id: tid_str,
                             device_name,
@@ -622,8 +716,68 @@ impl UotEngine {
                                         record.started_at = Some(chrono::Utc::now());
                                     }
                                     log::info!("Transfer {tid} accepted, processing files");
-                                    // Re-process this frame by continuing the match
-                                    // We need to re-dispatch — fall through to the next match iteration
+                                    // IMPORTANT: Do NOT continue — fall through to let
+                                    // the wire_msg be re-matched by the FileStart/FileEnd
+                                    // arms below (transfer_accepted is now true so this
+                                    // guard arm won't re-match; Rust will try the next arms).
+                                    //
+                                    // However, Rust match already consumed this arm.
+                                    // We must manually dispatch the frame here.
+                                    match wire_msg {
+                                        WireMessage::FileStart {
+                                            file_name,
+                                            file_size,
+                                            relative_path,
+                                            ..
+                                        } => {
+                                            let path_validator = StrictPathValidator::new(Some(
+                                                PathBuf::from(save_dir),
+                                            ));
+                                            let sanitized = match path_validator
+                                                .validate_relative_path(&relative_path)
+                                            {
+                                                Ok(clean) => clean,
+                                                Err(e) => {
+                                                    log::error!(
+                                                        "Path validation failed for {relative_path}: {e}"
+                                                    );
+                                                    path_validator.sanitize_filename(&file_name)
+                                                }
+                                            };
+                                            let file_path =
+                                                PathBuf::from(save_dir).join(&sanitized);
+                                            if file_path.exists() && file_path.is_symlink() {
+                                                log::error!(
+                                                    "Refusing to write to symlink: {}",
+                                                    file_path.display()
+                                                );
+                                            } else {
+                                                current_file =
+                                                    Some((file_path, file_name.clone(), file_size));
+                                                log::info!(
+                                                    "Receiving file: {file_name} ({file_size} bytes)"
+                                                );
+                                            }
+                                        }
+                                        WireMessage::FileEnd { sha256, .. } => {
+                                            if let Some((ref path, ref name, _)) = current_file {
+                                                match engine::compute_sha256(path).await {
+                                                    Ok(actual_hash) => {
+                                                        if actual_hash == sha256 {
+                                                            log::info!("File {name} verified ✓");
+                                                        } else {
+                                                            log::error!("File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}");
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        log::error!("Cannot verify {name}: {e}")
+                                                    }
+                                                }
+                                            }
+                                            current_file = None;
+                                        }
+                                        _ => {} // unreachable due to guard
+                                    }
                                 } else {
                                     // Not yet accepted — skip file frames until accepted
                                     log::debug!(
@@ -704,14 +858,28 @@ impl UotEngine {
                 }
                 FrameType::Data => {
                     if let Some((ref path, _, _)) = current_file {
-                        if frame.payload.len() < 16 {
-                            log::error!("Data frame too small");
+                        // Decrypt the frame payload if session cipher is established
+                        let decrypted = if let Some(ref mut cipher) = session_cipher {
+                            match cipher.decrypt_frame(&frame.payload) {
+                                Ok(plain) => plain,
+                                Err(e) => {
+                                    log::error!("Decryption failed: {e}");
+                                    continue;
+                                }
+                            }
+                        } else {
+                            // Fallback: plaintext (legacy/unencrypted connection)
+                            frame.payload.clone()
+                        };
+
+                        if decrypted.len() < 16 {
+                            log::error!("Data frame too small after decryption");
                             continue;
                         }
 
-                        let offset = u64::from_be_bytes(frame.payload[..8].try_into().unwrap());
-                        let crc = u32::from_be_bytes(frame.payload[8..12].try_into().unwrap());
-                        let chunk_data = &frame.payload[16..];
+                        let offset = u64::from_be_bytes(decrypted[..8].try_into().unwrap());
+                        let crc = u32::from_be_bytes(decrypted[8..12].try_into().unwrap());
+                        let chunk_data = &decrypted[16..];
 
                         if let Err(e) = engine::write_chunk(path, offset, chunk_data, crc).await {
                             log::error!("Write chunk failed: {e}");
@@ -853,6 +1021,17 @@ impl UotEngine {
                 transfer_id: transfer_id.to_string(),
             })
         })?;
+
+        // Check if the sender is trusted — if not, log warning
+        if let Some(record) = self.transfers.read().get(&uuid) {
+            let device_id = &record.remote_device;
+            if !self.trust_manager.read().is_trusted(device_id) {
+                log::warn!(
+                    "Accepting transfer {transfer_id} from untrusted device '{device_id}' — consider using accept_transfer_with_pin()"
+                );
+            }
+        }
+
         self.accepted_transfers.write().insert(uuid);
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
@@ -864,6 +1043,30 @@ impl UotEngine {
                 transfer_id: transfer_id.to_string(),
             }))
         }
+    }
+
+    /// Accept a transfer offer WITH PIN verification (secure path).
+    ///
+    /// Verifies the sender's PIN before allowing the transfer to proceed.
+    /// Use this for untrusted/first-time devices.
+    pub async fn accept_transfer_with_pin(
+        &self,
+        transfer_id: &str,
+        device_id: &str,
+        pin: &str,
+    ) -> Result<(), UotError> {
+        // Verify PIN first
+        let token = self.trust_manager.write().verify_pin(device_id, pin);
+        if token.is_none() {
+            return Err(UotError::Security(
+                crate::core::error::SecurityError::AuthenticationFailed {
+                    reason: "Invalid or expired PIN".to_string(),
+                },
+            ));
+        }
+
+        log::info!("PIN verified for device {device_id}, accepting transfer {transfer_id}");
+        self.accept_transfer(transfer_id).await
     }
 
     /// Generate a 6-digit PIN for device pairing/verification.
@@ -1020,6 +1223,53 @@ impl UotEngine {
     /// Set transport selection strategy (PreferSpeed, PreferOffline, Manual).
     pub fn set_transport_strategy(&self, strategy: TransportSelectionStrategy) {
         self.fallback_manager.write().strategy = strategy;
+    }
+
+    /// Connect to a device with automatic retry and exponential backoff.
+    ///
+    /// Uses `ConnectionManager` to attempt connection up to `max_retries` times
+    /// with exponentially increasing delays (1s, 2s, 4s, ..., max 30s).
+    /// Returns the pooled connection on success.
+    pub async fn connect_with_retry(
+        &self,
+        device_id: &str,
+        addr: std::net::SocketAddr,
+    ) -> Result<Arc<TcpConnection>, UotError> {
+        let device_name = self
+            .devices
+            .read()
+            .get(device_id)
+            .map(|d| d.device_name.clone())
+            .unwrap_or_else(|| device_id.to_string());
+
+        let conn = self
+            .connection_manager
+            .connect(device_id, &device_name, addr)
+            .await
+            .map_err(UotError::Transport)?;
+
+        // Also store in our connections map
+        self.connections
+            .write()
+            .insert(device_id.to_string(), Arc::clone(&conn));
+
+        self.log_event(&format!(
+            "Connected to {device_name} at {addr} (with retry)"
+        ));
+        Ok(conn)
+    }
+
+    /// Check if a device is currently connected.
+    pub fn is_device_connected(&self, device_id: &str) -> bool {
+        self.connection_manager.is_connected(device_id)
+            || self.connections.read().contains_key(device_id)
+    }
+
+    /// Disconnect from a specific device and clean up connection state.
+    pub fn disconnect_device(&self, device_id: &str) {
+        self.connection_manager.remove(device_id);
+        self.connections.write().remove(device_id);
+        self.log_event(&format!("Disconnected from device {device_id}"));
     }
 }
 

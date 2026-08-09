@@ -28,6 +28,7 @@ pub struct QueuedTransfer {
 pub struct TransferQueueManager {
     queue: Vec<QueuedTransfer>,
     max_concurrent: usize,
+    active_count: usize,
 }
 
 impl TransferQueueManager {
@@ -35,11 +36,32 @@ impl TransferQueueManager {
         Self {
             queue: Vec::new(),
             max_concurrent,
+            active_count: 0,
         }
     }
 
     pub fn max_concurrent(&self) -> usize {
         self.max_concurrent
+    }
+
+    /// Check if a new transfer can start (under concurrent limit).
+    pub fn can_start(&self) -> bool {
+        self.active_count < self.max_concurrent
+    }
+
+    /// Mark a transfer as actively running (increments active count).
+    pub fn mark_started(&mut self) {
+        self.active_count += 1;
+    }
+
+    /// Mark a transfer as completed (decrements active count).
+    pub fn mark_completed(&mut self) {
+        self.active_count = self.active_count.saturating_sub(1);
+    }
+
+    /// Get the current number of active transfers.
+    pub fn active_count(&self) -> usize {
+        self.active_count
     }
 
     /// Enqueue a new transfer.
@@ -92,5 +114,60 @@ impl TransferQueueManager {
     /// Get current queued items.
     pub fn items(&self) -> &[QueuedTransfer] {
         &self.queue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transfer::types::{TransferDirection, TransferStatus};
+
+    fn make_record(name: &str) -> TransferRecord {
+        TransferRecord {
+            transfer_id: Uuid::new_v4(),
+            remote_device: name.to_string(),
+            direction: TransferDirection::Send,
+            status: TransferStatus::Pending,
+            total_size: 1000,
+            transferred_bytes: 0,
+            items: vec![],
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            finished_at: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn test_queue_concurrency_enforcement() {
+        let mut qm = TransferQueueManager::new(2);
+        assert!(qm.can_start());
+
+        qm.mark_started();
+        assert!(qm.can_start()); // 1 < 2
+
+        qm.mark_started();
+        assert!(!qm.can_start()); // 2 == 2
+
+        qm.mark_completed();
+        assert!(qm.can_start()); // 1 < 2
+    }
+
+    #[test]
+    fn test_queue_priority_ordering() {
+        let mut qm = TransferQueueManager::new(4);
+
+        qm.push(make_record("low"), Priority::Low);
+        qm.push(make_record("urgent"), Priority::Urgent);
+        qm.push(make_record("normal"), Priority::Normal);
+
+        let first = qm.pop_next().unwrap();
+        assert_eq!(first.priority, Priority::Urgent);
+
+        let second = qm.pop_next().unwrap();
+        assert_eq!(second.priority, Priority::Normal);
+
+        let third = qm.pop_next().unwrap();
+        assert_eq!(third.priority, Priority::Low);
     }
 }

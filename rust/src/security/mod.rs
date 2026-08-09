@@ -5,6 +5,7 @@
 pub mod crypto;
 pub mod path_validator;
 pub mod qr;
+pub mod session_cipher;
 pub mod types;
 pub mod verification;
 

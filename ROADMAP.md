@@ -11,8 +11,9 @@
 | **S4** | Data & Queue | ✅ Done | Clipboard sync, TransferQueueManager priority scheduling, RateLimiter bandwidth throttling |
 | **S5** | Analytics & Subnet | ✅ Done | TransferHistoryStore search, LifetimeStats analytics, SubnetScanner fallback discovery |
 | **S6** | Streaming | ✅ Done | StreamManager lifecycle integrated in UotEngine, stream start/stop APIs |
-| **S7** | Advanced & Docker | ✅ Done | TransportFallbackManager orchestrator, Docker multi-node simulation mesh |
-| **S8** | Validation & Docs | ✅ Done | 130 Rust tests (100% pass), 10 Flutter tests (100% pass), GAP_ANALYSIS, PRODUCTION_READINESS, TESTING |
+| **S7** | Advanced & Docker | ⚠️ Partial | TransportFallbackManager, Docker mesh, BLE/Wi-Fi/Hotspot data-structure stubs |
+| **S8** | Validation & Docs | ✅ Done | 128 Rust tests, 10 Flutter tests, documentation suite |
+| **S9** | Gap-Closure | ✅ Done | Wire encryption, replay protection, consent fix, queue enforcement, honest audit |
 
 ---
 
@@ -74,10 +75,10 @@
 - [x] `StreamManager` integrated into `UotEngine` (`start_stream`, `stop_stream`, `get_streams`)
 - [x] FFI streaming endpoints (`engine_start_stream`, `engine_stop_stream`)
 
-### S7 — Advanced Connectivity & Docker (Completed ✅)
-- [x] BLE GATT service UUID definitions and advertisement payload framing (`transport/ble.rs`)
-- [x] Wi-Fi Direct P2P Group negotiation structure (`transport/wifidirect.rs`)
-- [x] Temporary Access Point hotspot configuration helper (`transport/hotspot.rs`)
+### S7 — Advanced Connectivity & Docker (Partial ⚠️)
+- [x] BLE GATT service UUID definitions and advertisement payload framing (`transport/ble.rs`) — ⚠️ data structures only
+- [x] Wi-Fi Direct P2P Group negotiation structure (`transport/wifidirect.rs`) — ⚠️ data structures only
+- [x] Temporary Access Point hotspot configuration helper (`transport/hotspot.rs`) — ⚠️ config struct only
 - [x] `TransportFallbackManager` multi-transport selection (`transport/fallback.rs`)
 - [x] Multi-stage `Dockerfile` and 2-node isolated bridge `docker-compose.yml`
 
@@ -85,18 +86,35 @@
 - [x] 126 Rust unit tests + 2 integration tests (128 total, 100% pass)
 - [x] 10 Flutter widget tests (100% pass)
 - [x] Clippy lint clean (`cargo clippy -- -D warnings`)
-- [x] Updated documentation suite (`GAP_ANALYSIS.md`, `PRODUCTION_READINESS.md`, `TESTING.md`, `TODO.md`, `IMPLEMENTATION.md`, `CHANGELOG.md`)
+- [x] Updated documentation suite
+
+### S9 — Gap-Closure Security & Reliability (Completed ✅)
+- [x] **Wire Encryption (P0)**: AES-256-GCM integrated into all data frame transfers via `SessionCipher`
+- [x] **X25519 Key Exchange (P0)**: `WireMessage::KeyExchange` for automatic session key establishment
+- [x] **Replay Protection (P0)**: Monotonic nonce counter per session; replayed frames rejected
+- [x] **Consent Gating Fix (P0)**: Fixed frame-loss bug — first FileStart after acceptance now re-dispatched
+- [x] **Queue Enforcement (P1)**: `can_start()` / `mark_started()` / `mark_completed()` concurrency control
+- [x] **Honest Audit (P0)**: Evidence-based GAP_ANALYSIS.md rewrite
+- [x] 159 Rust Tests (100% Pass)
 
 ---
 
-## Future Hardware & Native OS Extensions
+## Future Hardware & Native OS Extensions (PLATFORM LIMITED)
 
-### Native Mobile Adapters
-- [x] Android: BLE GATT host adapter (`lib/src/platform/ble_adapter.dart`)
-- [x] Android: Wi-Fi Direct P2P Group Owner adapter (`lib/src/platform/wifi_direct_adapter.dart`)
-- [x] iOS: CoreBluetooth GATT peripheral/central adapter (`lib/src/platform/ble_adapter.dart`)
-- [x] iOS: Multipeer Connectivity framework integration (`lib/src/platform/wifi_direct_adapter.dart`)
+### Native Mobile Adapters — Pending (require native platform code)
+- [ ] Android: BLE GATT host adapter via Android NDK / platform channels
+- [ ] Android: Wi-Fi Direct P2P Group Owner via WifiP2pManager
+- [ ] iOS: CoreBluetooth GATT peripheral/central adapter
+- [ ] iOS: Multipeer Connectivity framework integration
 
-### Hardware Payload Pipelines
-- [x] Flutter camera package optical QR scanner UI (`lib/src/features/nearby/qr_scanner_dialog.dart`)
-- [x] Hardware H.264 / AAC video streaming encoder/decoder pipeline (`rust/src/streaming/pipeline.rs`)
+### Hardware Payload Pipelines — Pending (require platform encoder APIs)
+- [ ] Camera QR scanner via mobile_scanner plugin (currently simulated frames)
+- [ ] Hardware H.264/AAC video streaming encoder/decoder pipeline (currently data containers only)
+
+### Software Gaps — Pending
+- [ ] Real E2E loopback transfer test (actual file send/receive/SHA-256 verify)
+- [ ] Coverage tooling in CI (cargo-tarpaulin / lcov threshold enforcement)
+- [ ] Network recovery/reconnection with exponential backoff
+- [ ] Checkpoint resume after app restart
+- [ ] PIN enforcement before transfer acceptance in engine
+- [ ] Edge-case tests (zero-byte, Unicode filenames, >100MB files)

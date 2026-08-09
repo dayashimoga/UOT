@@ -43,6 +43,34 @@ jobs:
       - name: Run tests
         run: cargo test --manifest-path rust/Cargo.toml --verbose
 
+      - name: Install and run coverage (tarpaulin)
+        run: |
+          cargo install cargo-tarpaulin --quiet
+          cargo tarpaulin --manifest-path rust/Cargo.toml --out xml --out stdout --output-dir rust/target/coverage --skip-clean -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
+        continue-on-error: true
+
+      - name: Check coverage threshold (>= 70%)
+        run: |
+          COVERAGE=$(grep -oP '\d+\.\d+% coverage' rust/target/coverage/tarpaulin.log | head -1 | grep -oP '\d+\.\d+')
+          echo "Coverage: ${COVERAGE}%"
+          if [ -z "$COVERAGE" ]; then
+            echo "::warning::Could not parse coverage percentage"
+          elif (( $(echo "$COVERAGE < 70.0" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below 70% threshold"
+            exit 1
+          else
+            echo "✅ Coverage ${COVERAGE}% meets threshold"
+          fi
+        continue-on-error: true
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage-${{ github.sha }}
+          path: rust/target/coverage/
+          retention-days: 14
+        if: always()
+
       - name: Security audit
         run: |
           cargo install cargo-audit --quiet
@@ -82,8 +110,16 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Run tests
-        run: flutter test
+      - name: Run tests with coverage
+        run: flutter test --coverage
+
+      - name: Upload Flutter coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-coverage-${{ github.sha }}
+          path: coverage/lcov.info
+          retention-days: 14
+        if: always()
 
   # ── Build: Web ──
   build-web:

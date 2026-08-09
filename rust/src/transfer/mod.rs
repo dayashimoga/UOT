@@ -4,6 +4,7 @@
 //! Handles chunking, resume, integrity verification, queue management,
 //! and transfer lifecycle.
 pub mod analytics;
+pub mod checkpoint;
 pub mod clipboard;
 pub mod engine;
 pub mod history;

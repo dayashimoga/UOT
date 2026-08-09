@@ -61,15 +61,37 @@
 - [x] `StreamManager` session lifecycle (`streaming/manager.rs`)
 - [x] StreamManager integrated into UotEngine (`start_stream`, `stop_stream`, `get_streams`)
 - [x] Automated test & quality gate script (`scripts/coverage.ps1`)
-### Sprint 7 — Platform Adapters & Hardware Streaming (Completed ✅)
-- [x] Platform-native BLE GATT host adapter (`lib/src/platform/ble_adapter.dart`)
-- [x] Platform-native Wi-Fi Direct P2P Group Owner adapter (`lib/src/platform/wifi_direct_adapter.dart`)
-- [x] Mobile camera optical QR code scanner adapter & UI dialog (`lib/src/platform/camera_qr_adapter.dart`, `lib/src/features/nearby/qr_scanner_dialog.dart`)
-- [x] Live media payload H.264/AAC hardware codec streaming relay pipeline (`rust/src/streaming/pipeline.rs`)
+### Sprint 7 — Platform Adapters & Hardware Streaming (Partial ⚠️)
+- [x] Platform-native BLE GATT host adapter interface (`lib/src/platform/ble_adapter.dart`) — ⚠️ stub/interface only
+- [x] Platform-native Wi-Fi Direct P2P Group Owner adapter interface (`lib/src/platform/wifi_direct_adapter.dart`) — ⚠️ stub/interface only
+- [x] Mobile camera optical QR code scanner UI dialog (`lib/src/features/nearby/qr_scanner_dialog.dart`) — ⚠️ simulated frames only
+- [x] Live media payload H.264/AAC packet container types (`rust/src/streaming/pipeline.rs`) — ⚠️ data structures only
 - [x] 150 Rust Tests (100% Pass) & 14 Flutter Tests (100% Pass)
 
-## Future Roadmap (Platform & Hardware Extensions)
-- [x] Platform-native BLE GATT host adapters (`lib/src/platform/ble_adapter.dart`)
-- [x] Platform-native Wi-Fi Direct P2P Group Owner adapters (`lib/src/platform/wifi_direct_adapter.dart`)
-- [x] Camera QR code optical scanner integration (`lib/src/features/nearby/qr_scanner_dialog.dart`)
-- [x] Hardware H.264/AAC media payload codec pipeline for live streaming (`rust/src/streaming/pipeline.rs`)
+### Sprint 9 — Gap-Closure Security & Reliability (Completed ✅)
+- [x] Wire encryption: AES-256-GCM integrated into all data frame transfers (`rust/src/security/session_cipher.rs`)
+- [x] X25519 key exchange at connection start (`WireMessage::KeyExchange`)
+- [x] Nonce-counter replay protection on all encrypted frames
+- [x] Consent gating frame-loss bug fixed (FileStart re-dispatch after acceptance)
+- [x] Queue concurrency enforcement (`can_start()` / `mark_started()` / `mark_completed()`)
+- [x] Honest GAP_ANALYSIS.md rewrite with evidence-based audit
+- [x] 4 real E2E integration tests (encrypted transfer, zero-byte, Unicode, tamper detection)
+- [x] Coverage tooling: cargo-tarpaulin + Flutter --coverage in CI with artifact upload
+- [x] ConnectionManager integration with exponential backoff retry (`connect_with_retry()`)
+- [x] PlatformCapabilities module: honest runtime detection of available features
+- [x] CheckpointStore for persistent resume state (`transfer/checkpoint.rs`)
+- [x] PIN enforcement via `accept_transfer_with_pin()` with TrustManager verification
+- [x] Coverage threshold enforcement (70% gate in CI via tarpaulin)
+- [x] 170 Rust Tests (100% Pass)
+
+## Remaining Gaps (Deferred — Platform Limited)
+- [ ] Load/stress testing (>100MB files, thousands of files, concurrent transfers)
+- [ ] Multi-device real-hardware E2E (Android↔Windows, etc.)
+
+## Future Roadmap (Platform & Hardware Extensions — PLATFORM LIMITED)
+- [ ] Platform-native BLE GATT host adapters (Android NDK / iOS CoreBluetooth) — requires native code
+- [ ] Platform-native Wi-Fi Direct P2P Group Owner (WifiP2pManager) — requires Android native
+- [ ] Camera QR code optical scanner with native camera access — requires mobile_scanner plugin
+- [ ] Hardware H.264/AAC media codec pipeline for live streaming — requires platform encoder APIs
+- [ ] Hotspot creation via native API — requires platform-specific implementation
+

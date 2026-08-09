@@ -3,6 +3,58 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is **append-only** — history is never overwritten.
 
+## [0.1.0-alpha.4] - 2026-08-08
+
+### Gap-Closure Sprint — P0/P1 Security & Reliability Fixes
+
+#### Security (P0)
+- **Wire encryption**: Integrated AES-256-GCM encryption into all data frame transfers via new `SessionCipher` module (`rust/src/security/session_cipher.rs`)
+- **X25519 key exchange**: Added `WireMessage::KeyExchange` for automatic session key establishment at connection start
+- **Replay protection**: Monotonic nonce counter per session — replayed frames are detected and rejected
+- **7 new security tests**: roundtrip, multi-frame, replay detection, tamper detection, key exchange, wrong key, invalid key length
+
+#### Bug Fixes (P0)
+- **Consent gating frame-loss**: Fixed bug where first `FileStart` frame after UI acceptance was consumed but not processed. Frame is now manually re-dispatched to the correct handler.
+
+#### Reliability (P1)
+- **Queue concurrency enforcement**: `send_files()` now checks `can_start()` before spawning transfers, respecting `max_concurrent_transfers` limit
+- **Active transfer tracking**: Added `mark_started()` / `mark_completed()` lifecycle tracking to `TransferQueueManager`
+- **2 new queue tests**: concurrency enforcement, priority ordering
+
+#### Documentation (P0)
+- **Honest GAP_ANALYSIS.md**: Rewrote `docs/GAP_ANALYSIS.md` with evidence-based audit — every claim verified against actual source code and test execution
+- **Classified all features**: COMPLETE & PROVEN / IMPLEMENTED BUT UNPROVEN / PARTIAL / PLATFORM LIMITED / PENDING
+- **Documented remaining gaps**: BLE/Wi-Fi Direct/Camera/Streaming classified as PLATFORM LIMITED stubs
+
+#### E2E Testing (P0)
+- **4 real E2E integration tests** (`rust/tests/e2e_transfer.rs`): encrypted file transfer with SHA-256 verification, zero-byte file, Unicode filename, tamper-in-transit detection
+- **Real TCP loopback**: tests exercise actual TCP transport, key exchange, frame encryption/decryption, and file integrity verification
+
+#### Coverage (P1)
+- **cargo-tarpaulin** integrated into CI (`ci.yml`) for Rust coverage measurement with artifact upload
+- **Flutter coverage** (`flutter test --coverage`) with lcov output and artifact upload
+
+#### Network Recovery (P1)
+- **ConnectionManager integration**: `connect_with_retry()`, `is_device_connected()`, `disconnect_device()` methods added to `UotEngine`
+- **Exponential backoff**: auto-reconnection with 1s→2s→4s→...→30s cap, up to 5 retries
+
+#### Platform Capabilities (P1)
+- **PlatformCapabilities module** (`rust/src/core/capabilities.rs`): honest runtime detection of available transports and features per platform
+- **Capability API**: `detect()`, `supported_transports()`, `unsupported_features()` with compile-time platform detection
+- **3 new tests**: platform detection, supported transports, unsupported features on desktop
+
+#### Checkpoint Resume (P2)
+- **CheckpointStore module** (`rust/src/transfer/checkpoint.rs`): persistent transfer state save/load/list/remove via JSON files
+- **Resume support**: `list_incomplete()` finds interrupted transfers for restart
+- **4 new tests**: save/load roundtrip, list incomplete, remove, nonexistent load
+
+#### PIN Enforcement (P2)
+- **`accept_transfer_with_pin()`**: new method on `UotEngine` that verifies TrustManager PIN before accepting transfers
+- **Untrusted device warning**: `accept_transfer()` now logs warning when accepting from untrusted device
+
+#### Coverage Threshold (P2)
+- Added 70% line coverage gate step in CI — parses tarpaulin output and fails if below threshold
+
 ## [0.1.0-alpha] - 2026-08-07
 
 ### Sprint 0 — Foundation

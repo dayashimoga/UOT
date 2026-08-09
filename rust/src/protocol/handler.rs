@@ -66,6 +66,8 @@ pub enum WireMessage {
     Resume { transfer_id: String, offset: u64 },
     /// Clipboard/text data.
     ClipboardData { content_type: String, data: String },
+    /// X25519 public key exchange for session encryption.
+    KeyExchange { public_key: Vec<u8> },
 }
 
 /// Item info in an offer.
