@@ -1,0 +1,17 @@
+# Dockerfile for Flutter Code Formatting & Static Analysis
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    unzip \
+    xz-utils \
+    zip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/flutter/flutter.git -b 3.24.0 --depth 1 /sdks/flutter
+ENV PATH="/sdks/flutter/bin:${PATH}"
+
+RUN flutter config --no-analytics
+WORKDIR /app

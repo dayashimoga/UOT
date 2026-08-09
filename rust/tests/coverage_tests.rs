@@ -845,3 +845,433 @@ fn test_crypto_provider_key_pair_uniqueness() {
     assert_ne!(kp1.public_key, kp2.public_key);
     assert_ne!(kp1.private_key, kp2.private_key);
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// NEW COMPREHENSIVE COVERAGE TESTS (API, PERSISTENCE, TRANSPORT, PROTOCOL)
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_engine_api_full_suite() {
+    use rust_lib_uot_app::api::engine_api::*;
+
+    let init_res = engine_init();
+    assert!(init_res.starts_with("ok:") || init_res == "already_initialized");
+
+    let state = engine_state();
+    assert!(!state.is_empty());
+
+    let dev_id = engine_device_id();
+    assert!(!dev_id.is_empty());
+
+    let devices = engine_get_devices();
+    assert!(devices.starts_with('['));
+
+    let transfers = engine_get_transfers();
+    assert!(transfers.starts_with('['));
+
+    let send_res = engine_send_files("nonexistent-dev".to_string(), vec!["/tmp/fake.txt".to_string()]);
+    assert!(send_res.starts_with("error:"));
+
+    let pause_res = engine_pause_transfer("invalid-uuid".to_string());
+    assert!(pause_res.starts_with("error:"));
+
+    let resume_res = engine_resume_transfer("invalid-uuid".to_string());
+    assert!(resume_res.starts_with("error:"));
+
+    let cancel_res = engine_cancel_transfer("invalid-uuid".to_string());
+    assert!(cancel_res.starts_with("error:"));
+
+    let accept_res = engine_accept_transfer("invalid-uuid".to_string());
+    assert!(accept_res.starts_with("error:"));
+
+    let prog_res = engine_get_progress("invalid-uuid".to_string());
+    assert_eq!(prog_res, "null");
+
+    let name_res = engine_set_device_name("CustomAPIName".to_string());
+    assert_eq!(name_res, "ok");
+
+    let clip_res = engine_send_clipboard("nonexistent-dev".to_string(), "clipboard content".to_string());
+    assert!(clip_res.starts_with("error:"));
+
+    let events = engine_get_events(10);
+    assert!(events.starts_with('['));
+
+    let streams = engine_get_streams();
+    assert!(streams.starts_with('['));
+
+    let stream_id = engine_start_stream(
+        "Camera".to_string(),
+        "dev-1".to_string(),
+        "Device 1".to_string(),
+        42000,
+        true,
+    );
+    assert!(!stream_id.is_empty());
+
+    let stop_stream_res = engine_stop_stream(stream_id);
+    assert_eq!(stop_stream_res, "ok");
+
+    let settings = engine_load_settings();
+    assert!(settings.contains("device_name"));
+
+    let save_res = engine_save_settings(settings);
+    assert_eq!(save_res, "ok");
+
+    let save_err_res = engine_save_settings("invalid-json".to_string());
+    assert!(save_err_res.starts_with("error:"));
+
+    let pin = engine_generate_pin(300);
+    assert_eq!(pin.len(), 6);
+
+    let qr_json = engine_generate_qr_invitation(pin.clone());
+    assert!(qr_json.contains("pin"));
+
+    let parse_qr = engine_parse_qr_invitation(qr_json.clone());
+    assert!(parse_qr.contains("pin"));
+
+    let parse_qr_err = engine_parse_qr_invitation("invalid-qr-json".to_string());
+    assert!(parse_qr_err.starts_with("error:"));
+
+    let history = engine_search_history("".to_string());
+    assert!(history.starts_with('['));
+
+    let stats = engine_get_stats();
+    assert!(stats.contains("total_transfers"));
+
+    let scan = engine_subnet_scan();
+    assert!(scan.starts_with('['));
+
+    let verify_res = engine_verify_pin("dev-1".to_string(), "000000".to_string());
+    assert_eq!(verify_res, "invalid");
+
+    engine_stop();
+}
+
+#[test]
+fn test_user_settings_persistence() {
+    use rust_lib_uot_app::core::settings::UserSettings;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("settings.json");
+
+    let mut settings = UserSettings::load(&path);
+    assert_eq!(settings.theme_mode, "dark");
+
+    settings.device_name = "TestDeviceSettings".to_string();
+    settings.chunk_size_kb = 512;
+    settings.save(&path).unwrap();
+
+    let reloaded = UserSettings::load(&path);
+    assert_eq!(reloaded.device_name, "TestDeviceSettings");
+    assert_eq!(reloaded.chunk_size_kb, 512);
+
+    let def_path = UserSettings::default_path();
+    assert!(def_path.to_string_lossy().contains("settings.json"));
+}
+
+#[test]
+fn test_wifidirect_and_hotspot_config() {
+    use rust_lib_uot_app::transport::hotspot::{HotspotConfig, HotspotState};
+    use rust_lib_uot_app::transport::wifidirect::WifiDirectGroupInfo;
+
+    let group = WifiDirectGroupInfo::new_group("TestDevice", 42000);
+    assert!(group.ssid.contains("DIRECT-UOT-TestDevice"));
+    assert_eq!(group.port, 42000);
+
+    let json = group.to_json().unwrap();
+    let parsed = WifiDirectGroupInfo::from_json(&json).unwrap();
+    assert_eq!(parsed.ssid, group.ssid);
+
+    let hs = HotspotConfig::create_temp("TestDevice", 42000);
+    assert_eq!(hs.ssid, "UOT-TestDevice");
+    assert_eq!(hs.state, HotspotState::Disabled);
+
+    let hs_json = serde_json::to_string(&hs).unwrap();
+    let hs_parsed: HotspotConfig = serde_json::from_str(&hs_json).unwrap();
+    assert_eq!(hs_parsed.ssid, hs.ssid);
+}
+
+#[test]
+fn test_ble_advertisement_and_constants() {
+    use rust_lib_uot_app::transport::ble::{
+        BleAdvertisement, UOT_BLE_CHAR_CONTROL, UOT_BLE_CHAR_DATA, UOT_BLE_SERVICE_UUID,
+    };
+
+    assert!(!UOT_BLE_SERVICE_UUID.is_empty());
+    assert!(!UOT_BLE_CHAR_CONTROL.is_empty());
+    assert!(!UOT_BLE_CHAR_DATA.is_empty());
+
+    let adv = BleAdvertisement {
+        device_name: "Phone".to_string(),
+        device_hash: "abc12345".to_string(),
+        wifi_ip: Some("192.168.1.50".to_string()),
+        port: 42000,
+    };
+
+    let encoded = adv.encode();
+    assert!(!encoded.is_empty());
+
+    let decoded = BleAdvertisement::decode(&encoded).unwrap();
+    assert_eq!(decoded.device_name, "Phone");
+    assert_eq!(decoded.wifi_ip, Some("192.168.1.50".to_string()));
+}
+
+#[test]
+fn test_lifetime_stats_persistence() {
+    use rust_lib_uot_app::transfer::analytics::LifetimeStats;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("stats.json");
+
+    let mut stats = LifetimeStats::load(&path);
+    assert_eq!(stats.total_transfers, 0);
+
+    stats.record_success(1024, true, 50000);
+    stats.record_success(2048, false, 80000);
+    stats.record_failure();
+
+    assert_eq!(stats.total_transfers, 3);
+    assert_eq!(stats.successful_transfers, 2);
+    assert_eq!(stats.failed_transfers, 1);
+    assert_eq!(stats.total_bytes_sent, 1024);
+    assert_eq!(stats.total_bytes_received, 2048);
+    assert_eq!(stats.peak_speed_bytes_per_sec, 80000);
+
+    stats.save(&path).unwrap();
+    let reloaded = LifetimeStats::load(&path);
+    assert_eq!(reloaded.total_transfers, 3);
+
+    let def_path = LifetimeStats::default_path();
+    assert!(def_path.to_string_lossy().contains("stats.json"));
+}
+
+#[test]
+fn test_transfer_history_store_persistence() {
+    use rust_lib_uot_app::transfer::history::TransferHistoryStore;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("history.json");
+
+    let mut store = TransferHistoryStore::load(&path);
+    assert!(store.records.is_empty());
+
+    let rec1 = TransferRecord {
+        transfer_id: uuid::Uuid::new_v4(),
+        direction: TransferDirection::Send,
+        status: TransferStatus::Completed,
+        remote_device: "PixelPhone".to_string(),
+        items: vec![TransferItemRecord {
+            item_id: uuid::Uuid::new_v4(),
+            name: "photo.jpg".to_string(),
+            relative_path: "photo.jpg".to_string(),
+            size: 2048,
+            transferred_bytes: 2048,
+            status: TransferStatus::Completed,
+            hash: None,
+        }],
+        total_size: 2048,
+        transferred_bytes: 2048,
+        created_at: chrono::Utc::now(),
+        started_at: None,
+        finished_at: None,
+        error: None,
+    };
+
+    store.upsert(rec1.clone());
+    store.save(&path).unwrap();
+
+    let mut store2 = TransferHistoryStore::load(&path);
+    assert_eq!(store2.records.len(), 1);
+
+    // Upsert update
+    let mut rec1_updated = rec1.clone();
+    rec1_updated.transferred_bytes = 2048;
+    store2.upsert(rec1_updated);
+    assert_eq!(store2.records.len(), 1);
+
+    // Query tests
+    let q_pixel = store2.query("Pixel", None);
+    assert_eq!(q_pixel.len(), 1);
+
+    let q_photo = store2.query("photo", Some(TransferStatus::Completed));
+    assert_eq!(q_photo.len(), 1);
+
+    let q_failed = store2.query("", Some(TransferStatus::Failed));
+    assert!(q_failed.is_empty());
+
+    let def_path = TransferHistoryStore::default_path();
+    assert!(def_path.to_string_lossy().contains("history.json"));
+}
+
+#[test]
+fn test_stream_manager_full_lifecycle_ext() {
+    let mgr = StreamManager::new();
+    let session_id = mgr.start_session(
+        StreamType::Camera,
+        "remote-dev-123",
+        "Remote Camera",
+        42000,
+        true,
+    );
+
+    assert_eq!(mgr.active_sessions().len(), 1);
+
+    mgr.update_state(&session_id, StreamState::Streaming);
+    mgr.update_stats(&session_id, 1048576, 30.0);
+
+    let session = mgr.get_session(&session_id).unwrap();
+    assert_eq!(session.state, StreamState::Streaming);
+    assert_eq!(session.bytes_streamed, 1048576);
+    assert_eq!(session.duration_secs, 30.0);
+
+    mgr.stop_session(&session_id);
+    let session_stopping = mgr.get_session(&session_id).unwrap();
+    assert_eq!(session_stopping.state, StreamState::Stopping);
+
+    mgr.remove_session(&session_id);
+    assert!(mgr.active_sessions().is_empty());
+
+    let def_mgr = StreamManager::default();
+    assert!(def_mgr.active_sessions().is_empty());
+}
+
+#[tokio::test]
+async fn test_protocol_handler_messaging_and_chunks() {
+    use rust_lib_uot_app::protocol::handler::*;
+    use rust_lib_uot_app::transport::tcp::*;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let client_fut = tokio::spawn(async move {
+        let stream = connect(addr).await.unwrap();
+        TcpConnection::new(stream).unwrap()
+    });
+
+    let (server_stream, _) = listener.accept().await.unwrap();
+    let server_conn = TcpConnection::new(server_stream).unwrap();
+    let client_conn = client_fut.await.unwrap();
+
+    // 1. WireMessage hello exchange
+    let msg = WireMessage::Hello {
+        device_id: "dev-1".to_string(),
+        device_name: "Phone".to_string(),
+        device_type: "Mobile".to_string(),
+        version: "1.0.0".to_string(),
+        capabilities: vec!["wifi".to_string()],
+    };
+
+    send_message(&client_conn, &msg).await.unwrap();
+    let received = recv_message(&server_conn).await.unwrap();
+
+    match received {
+        WireMessage::Hello { device_id, .. } => assert_eq!(device_id, "dev-1"),
+        _ => panic!("Expected Hello wire message"),
+    }
+
+    // 2. Data chunk exchange
+    let payload = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
+    send_data_chunk(&client_conn, 1024, 0x12345678, &payload).await.unwrap();
+
+    let (offset, crc32, data) = recv_data_chunk(&server_conn).await.unwrap();
+    assert_eq!(offset, 1024);
+    assert_eq!(crc32, 0x12345678);
+    assert_eq!(data, payload);
+
+    // 3. Ping frame auto response test
+    server_conn
+        .send_frame(Frame {
+            frame_type: FrameType::Ping,
+            payload: vec![],
+        })
+        .await
+        .unwrap();
+
+    // Also send a control message right after ping
+    server_conn
+        .send_frame(Frame {
+            frame_type: FrameType::Control,
+            payload: serde_json::to_vec(&WireMessage::Pause {
+                transfer_id: "tx-1".to_string(),
+            })
+            .unwrap(),
+        })
+        .await
+        .unwrap();
+
+    let msg_after_ping = recv_message(&client_conn).await.unwrap();
+    match msg_after_ping {
+        WireMessage::Pause { transfer_id } => assert_eq!(transfer_id, "tx-1"),
+        _ => panic!("Expected Pause wire message"),
+    }
+}
+
+#[tokio::test]
+async fn test_uot_engine_extended_coverage() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+
+    // Pin accept error handling
+    let pin_err = engine.accept_transfer_with_pin("tx-1", "dev-1", "000000").await;
+    assert!(pin_err.is_err());
+
+    // Clipboard device not found error
+    let clip_err = engine.send_clipboard("nonexistent-dev", "hello".to_string()).await;
+    assert!(clip_err.is_err());
+
+    // Connect with retry invalid address/connection error
+    let dummy_addr = "127.0.0.1:59999".parse().unwrap();
+    let conn_err = engine.connect_with_retry("dev-1", dummy_addr).await;
+    assert!(conn_err.is_err());
+
+    // Device connection state check & disconnect
+    assert!(!engine.is_device_connected("dev-1"));
+    engine.disconnect_device("dev-1");
+
+    // Transport strategy selection
+    engine.set_transport_strategy(TransportSelectionStrategy::PreferOffline);
+    let selected = engine.select_best_transport(&[(TransportId::TcpLan, TransportState::Connected)]);
+    assert_eq!(selected, Some(TransportId::TcpLan));
+
+    // History and stats getters
+    let hist = engine.get_transfer_history("", None);
+    assert!(hist.is_empty());
+
+    let stats = engine.get_lifetime_stats();
+    assert_eq!(stats.total_transfers, 0);
+
+    // Stream lifecycle on engine
+    let stream_id = engine.start_stream(StreamType::Video, "dev-1", "Dev 1", 42000, true);
+    assert!(!stream_id.is_empty());
+    assert_eq!(engine.get_streams().len(), 1);
+    engine.stop_stream(&stream_id);
+}
+
+#[test]
+fn test_simple_api_suite() {
+    use rust_lib_uot_app::api::simple::{greet, init_app};
+
+    let greeting = greet("Tester".to_string());
+    assert_eq!(greeting, "Hello, Tester!");
+
+    init_app();
+}
+
+#[test]
+fn test_api_types_device_info() {
+    use rust_lib_uot_app::api::types::DeviceInfo;
+
+    let dev = DeviceInfo {
+        id: "dev-100".to_string(),
+        name: "TestPhone".to_string(),
+        device_type: "mobile".to_string(),
+        is_trusted: true,
+        signal: Some(95),
+    };
+
+    let json = serde_json::to_string(&dev).unwrap();
+    let parsed: DeviceInfo = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.id, "dev-100");
+    assert_eq!(parsed.signal, Some(95));
+}
+

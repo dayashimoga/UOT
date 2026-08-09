@@ -31,7 +31,8 @@ UOT is a cross-platform offline-first file transfer system built with **Rust (co
 - Web release build.
 
 ## Verification & Status
-- **Rust Test Suite**: 174 tests passing (`cargo test --manifest-path rust/Cargo.toml`)
+- **Rust Test Suite**: 325 tests passing across unit, integration, and coverage suites (`cargo test --manifest-path rust/Cargo.toml`)
+- **Rust Line Coverage**: >90% enforced via `cargo-tarpaulin` CI pipeline
 - **Flutter Test Suite**: 14 tests passing (`flutter test --coverage`)
 - **Clippy Lint**: Clean (`cargo clippy --manifest-path rust/Cargo.toml -- -D warnings`)
 - **Analyzer**: Clean (`flutter analyze`) — 0 errors, 0 warnings
