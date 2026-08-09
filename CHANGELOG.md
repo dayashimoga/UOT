@@ -15,7 +15,7 @@ This file is **append-only** — history is never overwritten.
 
 #### Bug Fixes (P0)
 - **Consent gating frame-loss**: Fixed bug where first `FileStart` frame after UI acceptance was consumed but not processed. Frame is now manually re-dispatched to the correct handler.
-- **Android Gradle 8 APK build failure**: Fixed cargokit Gradle 8 incompatibility in `rust_builder/cargokit/gradle/plugin.gradle` by replacing Java `Action<ExecSpec>` anonymous inner classes with Groovy closures `project.exec { spec -> ... }`. Resolves `Could not find method exec() for arguments [CargoKitBuildTask$1]` during `flutter build apk --release`.
+- **Android Gradle 8 APK build failure**: Fixed cargokit Gradle 8 incompatibility in `rust_builder/cargokit/gradle/plugin.gradle` by injecting `@Inject abstract ExecOperations getExecOperations()` into `CargoKitBuildTask` with fallbacks for `project.services.get(ExecOperations.class)`. Resolves `Could not find method exec()` during `flutter build apk --release` in Gradle 8 / GitHub Actions CI.
 - **Dart Format CI Validation**: Formatted `lib/src/platform/ble_adapter.dart`, `lib/src/platform/camera_qr_adapter.dart`, and `lib/src/platform/wifi_direct_adapter.dart` using standard `dart format`, resolving `dart format --set-exit-if-changed .` CI check failure.
 - **Flutter Analyze & Test Compatibility**: Fixed missing getters (`scanStream`, `scanResults`, `rawData`), `handleScannedFrame()` method, non-null `WifiDirectGroupInfo` return type, and added `TestWidgetsFlutterBinding.ensureInitialized()` to `test/platform_adapters_test.dart`. Verified `flutter analyze` (**0 issues**) and `flutter test` (**14/14 tests pass**).
 
