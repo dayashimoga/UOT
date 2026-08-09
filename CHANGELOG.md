@@ -278,3 +278,6 @@ This file is **append-only** — history is never overwritten.
 
 
 
+
+### Fixed
+- Fixed GitHub Actions Windows CI build by removing CMAKE_GENERATOR environment override, allowing Flutter to properly auto-detect Visual Studio 2022.
