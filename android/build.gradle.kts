@@ -1,3 +1,13 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("org.codehaus.groovy:groovy-xml:3.0.19")
+    }
+}
+
 allprojects {
     repositories {
         google()
@@ -19,11 +29,13 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 subprojects {
-    afterEvaluate {
-        if (project.extensions.findByName("android") != null) {
-            val android = project.extensions.findByName("android") as com.android.build.gradle.BaseExtension
-            android.compileSdkVersion(36)
-        }
+    plugins.withId("com.android.library") {
+        val android = project.extensions.findByName("android") as? com.android.build.gradle.BaseExtension
+        android?.compileSdkVersion(36)
+    }
+    plugins.withId("com.android.application") {
+        val android = project.extensions.findByName("android") as? com.android.build.gradle.BaseExtension
+        android?.compileSdkVersion(36)
     }
 }
 
