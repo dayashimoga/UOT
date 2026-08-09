@@ -26,6 +26,18 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>UOT uses the local network to discover nearby devices and transfer files securely.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_uot._tcp</string>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>UOT uses Bluetooth Low Energy to discover nearby transfer targets.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>UOT advertises via Bluetooth Low Energy to allow nearby devices to pair.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>UOT uses the camera to scan QR codes for device pairing.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

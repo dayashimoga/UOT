@@ -9,7 +9,7 @@ import 'src/rust/frb_generated.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     await RustLib.init();
   } catch (e, stackTrace) {
