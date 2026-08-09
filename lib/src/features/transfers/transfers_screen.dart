@@ -294,7 +294,7 @@ class _EmptyState extends StatelessWidget {
             child: Icon(
               icon,
               size: 40,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              color: colorScheme.onSurfaceVariant.withOpacity(0.5),
             ),
           ),
           const SizedBox(height: 16),
@@ -449,7 +449,7 @@ class _HistoryTransferCard extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: statusColor.withValues(alpha: 0.15),
+            color: statusColor.withOpacity(0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(transfer.statusIcon, color: statusColor, size: 20),

@@ -300,7 +300,7 @@ class _EmptyIncoming extends StatelessWidget {
             Icon(
               Icons.inbox_rounded,
               size: 48,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+              color: colorScheme.onSurfaceVariant.withOpacity(0.4),
             ),
             const SizedBox(height: 12),
             Text(
@@ -313,7 +313,7 @@ class _EmptyIncoming extends StatelessWidget {
             Text(
               'Incoming transfer requests will appear here',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                color: colorScheme.onSurfaceVariant.withOpacity(0.7),
               ),
             ),
           ],

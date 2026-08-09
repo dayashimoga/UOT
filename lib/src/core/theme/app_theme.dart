@@ -89,19 +89,19 @@ class UotTheme {
         ),
         iconTheme: IconThemeData(color: UotColors.textPrimary),
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: UotColors.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(
-            color: UotColors.surfaceElevated.withValues(alpha: 0.5),
+            color: UotColors.surfaceElevated.withOpacity(0.5),
           ),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: UotColors.surface,
-        indicatorColor: UotColors.accent.withValues(alpha: 0.15),
+        indicatorColor: UotColors.accent.withOpacity(0.15),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return const TextStyle(
@@ -125,7 +125,7 @@ class UotTheme {
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: UotColors.surface,
-        indicatorColor: UotColors.accent.withValues(alpha: 0.15),
+        indicatorColor: UotColors.accent.withOpacity(0.15),
         selectedIconTheme: const IconThemeData(color: UotColors.accent),
         unselectedIconTheme: const IconThemeData(color: UotColors.textTertiary),
         selectedLabelTextStyle: const TextStyle(
@@ -180,7 +180,7 @@ class UotTheme {
       ),
       iconTheme: const IconThemeData(color: UotColors.textSecondary, size: 24),
       dividerTheme: DividerThemeData(
-        color: UotColors.surfaceElevated.withValues(alpha: 0.5),
+        color: UotColors.surfaceElevated.withOpacity(0.5),
         thickness: 1,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -207,7 +207,7 @@ class UotTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: UotColors.surfaceLight,
-        selectedColor: UotColors.accent.withValues(alpha: 0.15),
+        selectedColor: UotColors.accent.withOpacity(0.15),
         labelStyle: const TextStyle(color: UotColors.textSecondary),
         side: BorderSide.none,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -254,7 +254,7 @@ class UotTheme {
         ),
         iconTheme: IconThemeData(color: UotColors.lightTextPrimary),
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: UotColors.lightSurface,
         elevation: 0,
         shape: RoundedRectangleBorder(

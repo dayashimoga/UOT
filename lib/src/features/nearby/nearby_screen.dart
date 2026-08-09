@@ -266,16 +266,14 @@ class _EngineStatusCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: isRunning
-                            ? colorScheme.primary.withValues(
-                                alpha: 0.5 + (pulseController.value * 0.5),
+                            ? colorScheme.primary.withOpacity(
+                                0.5 + (pulseController.value * 0.5),
                               )
                             : colorScheme.error,
                         boxShadow: isRunning && isScanning
                             ? [
                                 BoxShadow(
-                                  color: colorScheme.primary.withValues(
-                                    alpha: 0.3,
-                                  ),
+                                  color: colorScheme.primary.withOpacity(0.3),
                                   blurRadius: 8 * pulseController.value,
                                   spreadRadius: 2 * pulseController.value,
                                 ),
@@ -353,8 +351,8 @@ class _ScanningIndicator extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: colorScheme.primary.withValues(
-                          alpha: 0.1 * (1 - pulseController.value),
+                        color: colorScheme.primary.withOpacity(
+                          0.1 * (1 - pulseController.value),
                         ),
                         width: 2,
                       ),
@@ -366,8 +364,8 @@ class _ScanningIndicator extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: colorScheme.primary.withValues(
-                          alpha: 0.2 * (1 - pulseController.value),
+                        color: colorScheme.primary.withOpacity(
+                          0.2 * (1 - pulseController.value),
                         ),
                         width: 2,
                       ),
@@ -377,9 +375,8 @@ class _ScanningIndicator extends StatelessWidget {
                 Icon(
                   Icons.radar_rounded,
                   size: 64,
-                  color: colorScheme.primary.withValues(
-                    alpha:
-                        isScanning ? 0.3 + (pulseController.value * 0.7) : 0.3,
+                  color: colorScheme.primary.withOpacity(
+                    isScanning ? 0.3 + (pulseController.value * 0.7) : 0.3,
                   ),
                 ),
               ],
@@ -400,7 +397,7 @@ class _ScanningIndicator extends StatelessWidget {
         Text(
           'Make sure devices are on the same Wi-Fi network',
           style: theme.textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            color: colorScheme.onSurfaceVariant.withOpacity(0.7),
           ),
           textAlign: TextAlign.center,
         ),
@@ -499,7 +496,7 @@ class _SendBottomSheet extends StatelessWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -634,7 +631,7 @@ class _SendOption extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
+            color: color.withOpacity(0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: color),

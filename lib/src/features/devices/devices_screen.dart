@@ -64,9 +64,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
                           Icon(
                             Icons.devices_rounded,
                             size: 48,
-                            color: colorScheme.onSurfaceVariant.withValues(
-                              alpha: 0.4,
-                            ),
+                            color:
+                                colorScheme.onSurfaceVariant.withOpacity(0.4),
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -79,9 +78,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
                           Text(
                             'Devices you pair with will appear here.\nTrusted devices can auto-accept transfers.',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant.withValues(
-                                alpha: 0.7,
-                              ),
+                              color:
+                                  colorScheme.onSurfaceVariant.withOpacity(0.7),
                             ),
                             textAlign: TextAlign.center,
                           ),
