@@ -21,7 +21,10 @@ This file is **append-only** — history is never overwritten.
   - Corrected `pubspec.yaml` SDK constraints (`>=3.0.0 <4.0.0`) and `flutter_lints` (`^5.0.0`).
   - Injected `@Inject abstract ExecOperations getExecOperations()` into cargokit `CargoKitBuildTask` for Gradle 8 compatibility.
   - **Verified locally via Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `✓ Built build/app/outputs/flutter-apk/app-release.apk (44.2MB)`.
-- **Dart Format CI Validation**: Formatted `lib/src/platform/ble_adapter.dart`, `lib/src/platform/camera_qr_adapter.dart`, and `lib/src/platform/wifi_direct_adapter.dart` using standard `dart format`, resolving `dart format --set-exit-if-changed .` CI check failure.
+- **Dart Format & Inline-Class CI Validation**:
+  - Added `// @dart=3.3` language version header to `lib/src/rust/frb_generated.web.dart` to enable `extension type` (`inline-class`) language feature parsing during `dart format`.
+  - Updated SDK environment constraint to `'>=3.3.0 <4.0.0'` in `pubspec.yaml`.
+  - Formatted all Dart source files using `dart format`, resolving `dart format --set-exit-if-changed .` exit code 65 failure. Verified with `dart format --set-exit-if-changed /sd` (0 diffs, exit code 0).
 - **Flutter Analyze & Test Compatibility**: Fixed missing getters (`scanStream`, `scanResults`, `rawData`), `handleScannedFrame()` method, non-null `WifiDirectGroupInfo` return type, and added `TestWidgetsFlutterBinding.ensureInitialized()` to `test/platform_adapters_test.dart`. Verified `flutter analyze` (**0 issues**) and `flutter test` (**14/14 tests pass**).
 
 #### Reliability (P1)
