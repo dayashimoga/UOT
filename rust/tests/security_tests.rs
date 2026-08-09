@@ -20,7 +20,7 @@ fn test_malformed_json_wire_message() {
         "[]",
         "{}",
         "{\"type\": \"nonexistent_type\"}",
-        "{\"type\": \"hello\"}",                       // missing required fields
+        "{\"type\": \"hello\"}", // missing required fields
         "{\"type\": \"offer\", \"items\": \"wrong\"}", // wrong type for items
         "{{{{",
         "\x00\x01\x02\x03",
@@ -77,7 +77,9 @@ fn test_zero_byte_file_in_offer() {
     }"#;
     let msg: WireMessage = serde_json::from_str(json).unwrap();
     match msg {
-        WireMessage::Offer { items, total_size, .. } => {
+        WireMessage::Offer {
+            items, total_size, ..
+        } => {
             assert_eq!(items[0].size, 0);
             assert_eq!(total_size, 0);
         }
@@ -145,7 +147,10 @@ fn test_nonce_reuse_produces_different_ciphertext_with_different_data() {
 
     let ct1 = provider.encrypt(&key, b"message_one", &nonce).unwrap();
     let ct2 = provider.encrypt(&key, b"message_two", &nonce).unwrap();
-    assert_ne!(ct1, ct2, "Different plaintexts must produce different ciphertexts");
+    assert_ne!(
+        ct1, ct2,
+        "Different plaintexts must produce different ciphertexts"
+    );
 }
 
 #[test]
@@ -207,18 +212,26 @@ fn test_path_traversal_with_backslash() {
 fn test_all_windows_reserved_names() {
     let v = StrictPathValidator::default();
     let reserved = [
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
     for name in &reserved {
-        assert!(v.validate_filename(name).is_err(), "Should reject reserved: {name}");
+        assert!(
+            v.validate_filename(name).is_err(),
+            "Should reject reserved: {name}"
+        );
         // Also test with extension
         let with_ext = format!("{name}.txt");
-        assert!(v.validate_filename(&with_ext).is_err(), "Should reject reserved with ext: {with_ext}");
+        assert!(
+            v.validate_filename(&with_ext).is_err(),
+            "Should reject reserved with ext: {with_ext}"
+        );
         // Test lowercase
         let lower = name.to_lowercase();
-        assert!(v.validate_filename(&lower).is_err(), "Should reject lowercase reserved: {lower}");
+        assert!(
+            v.validate_filename(&lower).is_err(),
+            "Should reject lowercase reserved: {lower}"
+        );
     }
 }
 
@@ -273,7 +286,9 @@ fn test_duplicate_filenames_in_offer() {
 
 #[test]
 fn test_checkpoint_save_load_roundtrip() {
-    use rust_lib_uot_app::transfer::checkpoint::{CheckpointStore, ItemCheckpoint, TransferCheckpoint};
+    use rust_lib_uot_app::transfer::checkpoint::{
+        CheckpointStore, ItemCheckpoint, TransferCheckpoint,
+    };
     use uuid::Uuid;
 
     let dir = tempfile::tempdir().unwrap();

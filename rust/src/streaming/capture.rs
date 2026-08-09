@@ -71,25 +71,37 @@ impl Default for CaptureConfig {
 impl CaptureConfig {
     pub fn audio_only() -> Self {
         Self {
-            width: 0, height: 0, fps: 0,
-            sample_rate: 48000, channels: 1,
-            video_bitrate: 0, audio_bitrate: 128_000,
+            width: 0,
+            height: 0,
+            fps: 0,
+            sample_rate: 48000,
+            channels: 1,
+            video_bitrate: 0,
+            audio_bitrate: 128_000,
         }
     }
 
     pub fn video_only_720p() -> Self {
         Self {
-            width: 1280, height: 720, fps: 30,
-            sample_rate: 0, channels: 0,
-            video_bitrate: 2_000_000, audio_bitrate: 0,
+            width: 1280,
+            height: 720,
+            fps: 30,
+            sample_rate: 0,
+            channels: 0,
+            video_bitrate: 2_000_000,
+            audio_bitrate: 0,
         }
     }
 
     pub fn video_only_1080p() -> Self {
         Self {
-            width: 1920, height: 1080, fps: 30,
-            sample_rate: 0, channels: 0,
-            video_bitrate: 4_000_000, audio_bitrate: 0,
+            width: 1920,
+            height: 1080,
+            fps: 30,
+            sample_rate: 0,
+            channels: 0,
+            video_bitrate: 4_000_000,
+            audio_bitrate: 0,
         }
     }
 }
@@ -157,12 +169,26 @@ impl AvSyncBuffer {
 
     /// Push a video frame.
     pub fn push_video(&mut self, pts_us: u64, data: Vec<u8>) {
-        self.video_frames.insert(pts_us, SyncFrame { pts_us, is_video: true, data });
+        self.video_frames.insert(
+            pts_us,
+            SyncFrame {
+                pts_us,
+                is_video: true,
+                data,
+            },
+        );
     }
 
     /// Push an audio frame.
     pub fn push_audio(&mut self, pts_us: u64, data: Vec<u8>) {
-        self.audio_frames.insert(pts_us, SyncFrame { pts_us, is_video: false, data });
+        self.audio_frames.insert(
+            pts_us,
+            SyncFrame {
+                pts_us,
+                is_video: false,
+                data,
+            },
+        );
     }
 
     /// Pop the next synchronized output pair.
@@ -171,8 +197,16 @@ impl AvSyncBuffer {
     /// Drops frames that are too far out of sync.
     pub fn pop_synced(&mut self) -> Option<SyncedOutput> {
         // Get earliest video frame
-        let video_entry = self.video_frames.iter().next().map(|(&k, v)| (k, v.clone()));
-        let audio_entry = self.audio_frames.iter().next().map(|(&k, v)| (k, v.clone()));
+        let video_entry = self
+            .video_frames
+            .iter()
+            .next()
+            .map(|(&k, v)| (k, v.clone()));
+        let audio_entry = self
+            .audio_frames
+            .iter()
+            .next()
+            .map(|(&k, v)| (k, v.clone()));
 
         match (video_entry, audio_entry) {
             (Some((v_pts, video)), Some((a_pts, audio))) => {
@@ -184,28 +218,48 @@ impl AvSyncBuffer {
                     self.audio_frames.remove(&a_pts);
                     self.frames_synced += 2;
                     self.playback_pos_us = v_pts.max(a_pts);
-                    Some(SyncedOutput { video: Some(video), audio: Some(audio), drift_us: drift })
+                    Some(SyncedOutput {
+                        video: Some(video),
+                        audio: Some(audio),
+                        drift_us: drift,
+                    })
                 } else if drift > 0 {
                     // Audio is ahead — emit audio only, drop video later
                     self.audio_frames.remove(&a_pts);
                     self.frames_synced += 1;
-                    Some(SyncedOutput { video: None, audio: Some(audio), drift_us: drift })
+                    Some(SyncedOutput {
+                        video: None,
+                        audio: Some(audio),
+                        drift_us: drift,
+                    })
                 } else {
                     // Video is ahead — emit video only, drop audio later
                     self.video_frames.remove(&v_pts);
                     self.frames_synced += 1;
-                    Some(SyncedOutput { video: Some(video), audio: None, drift_us: drift })
+                    Some(SyncedOutput {
+                        video: Some(video),
+                        audio: None,
+                        drift_us: drift,
+                    })
                 }
             }
             (Some((v_pts, video)), None) => {
                 self.video_frames.remove(&v_pts);
                 self.frames_synced += 1;
-                Some(SyncedOutput { video: Some(video), audio: None, drift_us: 0 })
+                Some(SyncedOutput {
+                    video: Some(video),
+                    audio: None,
+                    drift_us: 0,
+                })
             }
             (None, Some((a_pts, audio))) => {
                 self.audio_frames.remove(&a_pts);
                 self.frames_synced += 1;
-                Some(SyncedOutput { video: None, audio: Some(audio), drift_us: 0 })
+                Some(SyncedOutput {
+                    video: None,
+                    audio: Some(audio),
+                    drift_us: 0,
+                })
             }
             (None, None) => None,
         }
@@ -213,12 +267,20 @@ impl AvSyncBuffer {
 
     /// Drop frames older than the given PTS threshold.
     pub fn drop_old_frames(&mut self, threshold_us: u64) {
-        let old_video: Vec<u64> = self.video_frames.range(..threshold_us).map(|(&k, _)| k).collect();
+        let old_video: Vec<u64> = self
+            .video_frames
+            .range(..threshold_us)
+            .map(|(&k, _)| k)
+            .collect();
         for k in old_video {
             self.video_frames.remove(&k);
             self.frames_dropped += 1;
         }
-        let old_audio: Vec<u64> = self.audio_frames.range(..threshold_us).map(|(&k, _)| k).collect();
+        let old_audio: Vec<u64> = self
+            .audio_frames
+            .range(..threshold_us)
+            .map(|(&k, _)| k)
+            .collect();
         for k in old_audio {
             self.audio_frames.remove(&k);
             self.frames_dropped += 1;

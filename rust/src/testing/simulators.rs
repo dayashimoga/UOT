@@ -117,8 +117,14 @@ impl BleAdapter for FakeBleAdapter {
             return Err(TransportError::Connection("BLE unavailable".into()));
         }
         self.connected_devices.write().push(device_id.to_string());
-        self.rx_buffers.write().entry(device_id.to_string()).or_default();
-        self.tx_buffers.write().entry(device_id.to_string()).or_default();
+        self.rx_buffers
+            .write()
+            .entry(device_id.to_string())
+            .or_default();
+        self.tx_buffers
+            .write()
+            .entry(device_id.to_string())
+            .or_default();
         Ok(())
     }
 
@@ -128,7 +134,11 @@ impl BleAdapter for FakeBleAdapter {
     }
 
     async fn send_data(&self, device_id: &str, data: &[u8]) -> Result<(), TransportError> {
-        if !self.connected_devices.read().contains(&device_id.to_string()) {
+        if !self
+            .connected_devices
+            .read()
+            .contains(&device_id.to_string())
+        {
             return Err(TransportError::Connection("Not connected".into()));
         }
         // Fragment by MTU
@@ -205,14 +215,18 @@ impl FakeWifiDirectAdapter {
 impl WifiDirectAdapter for FakeWifiDirectAdapter {
     async fn discover_peers(&self) -> Result<Vec<WifiDirectPeer>, TransportError> {
         if !self.available {
-            return Err(TransportError::Connection("Wi-Fi Direct unavailable".into()));
+            return Err(TransportError::Connection(
+                "Wi-Fi Direct unavailable".into(),
+            ));
         }
         Ok(self.peers.read().clone())
     }
 
     async fn create_group(&self) -> Result<WifiDirectPeer, TransportError> {
         if !self.available {
-            return Err(TransportError::Connection("Wi-Fi Direct unavailable".into()));
+            return Err(TransportError::Connection(
+                "Wi-Fi Direct unavailable".into(),
+            ));
         }
         let go = WifiDirectPeer {
             device_id: "self".to_string(),
@@ -226,9 +240,16 @@ impl WifiDirectAdapter for FakeWifiDirectAdapter {
 
     async fn connect_peer(&self, device_id: &str) -> Result<WifiDirectPeer, TransportError> {
         if self.fail_on_connect {
-            return Err(TransportError::Connection("Simulated connection failure".into()));
+            return Err(TransportError::Connection(
+                "Simulated connection failure".into(),
+            ));
         }
-        let peer = self.peers.read().iter().find(|p| p.device_id == device_id).cloned()
+        let peer = self
+            .peers
+            .read()
+            .iter()
+            .find(|p| p.device_id == device_id)
+            .cloned()
             .ok_or_else(|| TransportError::Connection("Peer not found".into()))?;
         *self.connected.write() = Some(peer.clone());
         Ok(peer)
@@ -259,7 +280,8 @@ pub struct FountainEncoder {
 impl FountainEncoder {
     /// Create encoder from raw data, splitting into `block_size` chunks.
     pub fn new(data: &[u8], block_size: usize) -> Self {
-        let blocks: Vec<Vec<u8>> = data.chunks(block_size)
+        let blocks: Vec<Vec<u8>> = data
+            .chunks(block_size)
             .map(|c| {
                 let mut block = c.to_vec();
                 block.resize(block_size, 0); // Pad to block_size
@@ -267,7 +289,12 @@ impl FountainEncoder {
             })
             .collect();
         let total_blocks = blocks.len();
-        Self { blocks, block_size, total_blocks, frame_count: 0 }
+        Self {
+            blocks,
+            block_size,
+            total_blocks,
+            frame_count: 0,
+        }
     }
 
     /// Generate the next fountain-encoded frame.
@@ -344,7 +371,9 @@ impl FountainDecoder {
         }
         // For degree > 1: XOR out known blocks to recover unknown
         else {
-            let unknown: Vec<usize> = frame.indices.iter()
+            let unknown: Vec<usize> = frame
+                .indices
+                .iter()
                 .filter(|&&i| i < self.total_blocks && self.decoded[i].is_none())
                 .copied()
                 .collect();
@@ -406,7 +435,13 @@ pub struct SyntheticVideoSource {
 
 impl SyntheticVideoSource {
     pub fn new(width: u32, height: u32, fps: u32, max_frames: u64) -> Self {
-        Self { width, height, fps, frame_count: 0, max_frames }
+        Self {
+            width,
+            height,
+            fps,
+            frame_count: 0,
+            max_frames,
+        }
     }
 }
 
@@ -425,12 +460,24 @@ impl VideoSource for SyntheticVideoSource {
         data.resize(self.width as usize * self.height as usize, pattern);
 
         self.frame_count += 1;
-        Some(VideoFrame { pts_us: pts, width: self.width, height: self.height, data, is_keyframe })
+        Some(VideoFrame {
+            pts_us: pts,
+            width: self.width,
+            height: self.height,
+            data,
+            is_keyframe,
+        })
     }
 
-    fn width(&self) -> u32 { self.width }
-    fn height(&self) -> u32 { self.height }
-    fn fps(&self) -> u32 { self.fps }
+    fn width(&self) -> u32 {
+        self.width
+    }
+    fn height(&self) -> u32 {
+        self.height
+    }
+    fn fps(&self) -> u32 {
+        self.fps
+    }
 }
 
 /// Deterministic synthetic audio source generating sine wave samples.
@@ -445,7 +492,10 @@ pub struct SyntheticAudioSource {
 impl SyntheticAudioSource {
     pub fn new(sample_rate: u32, channels: u16, max_frames: u64) -> Self {
         Self {
-            sample_rate, channels, frame_count: 0, max_frames,
+            sample_rate,
+            channels,
+            frame_count: 0,
+            max_frames,
             samples_per_frame: (sample_rate / 50) as usize, // 20ms frames
         }
     }
@@ -461,18 +511,28 @@ impl AudioSource for SyntheticAudioSource {
 
         let mut data = Vec::with_capacity(self.samples_per_frame * 2);
         for i in 0..self.samples_per_frame {
-            let t = (self.frame_count as f64 * self.samples_per_frame as f64 + i as f64) / self.sample_rate as f64;
+            let t = (self.frame_count as f64 * self.samples_per_frame as f64 + i as f64)
+                / self.sample_rate as f64;
             let sample = (t * 440.0 * 2.0 * std::f64::consts::PI).sin();
             let s16 = (sample * 32000.0) as i16;
             data.extend_from_slice(&s16.to_le_bytes());
         }
 
         self.frame_count += 1;
-        Some(AudioFrame { pts_us: pts, sample_rate: self.sample_rate, channels: self.channels, data })
+        Some(AudioFrame {
+            pts_us: pts,
+            sample_rate: self.sample_rate,
+            channels: self.channels,
+            data,
+        })
     }
 
-    fn sample_rate(&self) -> u32 { self.sample_rate }
-    fn channels(&self) -> u16 { self.channels }
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+    fn channels(&self) -> u16 {
+        self.channels
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -487,7 +547,10 @@ pub struct FakeCameraAdapter {
 
 impl FakeCameraAdapter {
     pub fn new(available: bool) -> Self {
-        Self { available, frames: RwLock::new(VecDeque::new()) }
+        Self {
+            available,
+            frames: RwLock::new(VecDeque::new()),
+        }
     }
 
     /// Inject a QR frame result.
@@ -621,8 +684,10 @@ mod tests {
     async fn test_wifi_direct_connection_failure() {
         let wfd = FakeWifiDirectAdapter::with_failure(true);
         wfd.inject_peer(WifiDirectPeer {
-            device_id: "peer-1".into(), device_name: "X".into(),
-            is_group_owner: false, ip_address: None,
+            device_id: "peer-1".into(),
+            device_name: "X".into(),
+            is_group_owner: false,
+            ip_address: None,
         });
         assert!(wfd.connect_peer("peer-1").await.is_err());
     }
@@ -692,7 +757,9 @@ mod tests {
         for _ in 0..(total * 5) {
             let frame = encoder.next_frame();
             decoder.process_frame(&frame);
-            if decoder.is_complete() { break; }
+            if decoder.is_complete() {
+                break;
+            }
         }
 
         let result = decoder.reconstruct(original.len()).unwrap();
@@ -713,7 +780,9 @@ mod tests {
         let mut keyframes = 0;
         while let Some(frame) = src.next_frame().await {
             count += 1;
-            if frame.is_keyframe { keyframes += 1; }
+            if frame.is_keyframe {
+                keyframes += 1;
+            }
             assert_eq!(frame.width, 320);
             assert_eq!(frame.height, 240);
         }

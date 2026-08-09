@@ -97,14 +97,15 @@ pub fn run_virtual_transfer(
     let mut cipher_b = SessionCipher::from_key_exchange(&priv_b, &pub_a).unwrap();
 
     // Phase 2: Offer
-    let offer_items: Vec<OfferItemInfo> = files.iter().map(|(name, data)| {
-        OfferItemInfo {
+    let offer_items: Vec<OfferItemInfo> = files
+        .iter()
+        .map(|(name, data)| OfferItemInfo {
             name: name.to_string(),
             relative_path: name.to_string(),
             size: data.len() as u64,
             is_directory: false,
-        }
-    }).collect();
+        })
+        .collect();
     let total_size: u64 = files.iter().map(|(_, d)| d.len() as u64).sum();
 
     let offer_msg = WireMessage::Offer {
@@ -151,7 +152,9 @@ pub fn run_virtual_transfer(
             file_size: data.len() as u64,
             relative_path: name.to_string(),
         };
-        let enc = cipher_a.encrypt_frame(&serde_json::to_vec(&start_msg).unwrap()).unwrap();
+        let enc = cipher_a
+            .encrypt_frame(&serde_json::to_vec(&start_msg).unwrap())
+            .unwrap();
         let _ = cipher_b.decrypt_frame(&enc).unwrap();
 
         // Data chunks
@@ -171,7 +174,9 @@ pub fn run_virtual_transfer(
             item_index: idx as u32,
             sha256: file_hash.clone(),
         };
-        let enc = cipher_a.encrypt_frame(&serde_json::to_vec(&end_msg).unwrap()).unwrap();
+        let enc = cipher_a
+            .encrypt_frame(&serde_json::to_vec(&end_msg).unwrap())
+            .unwrap();
         let _ = cipher_b.decrypt_frame(&enc).unwrap();
 
         // Verify SHA-256
@@ -198,7 +203,9 @@ pub fn run_virtual_transfer(
         transfer_id: transfer_id.to_string(),
         success: true,
     };
-    let enc = cipher_a.encrypt_frame(&serde_json::to_vec(&complete_msg).unwrap()).unwrap();
+    let enc = cipher_a
+        .encrypt_frame(&serde_json::to_vec(&complete_msg).unwrap())
+        .unwrap();
     let _ = cipher_b.decrypt_frame(&enc).unwrap();
 
     assert!(session.is_complete());
@@ -295,7 +302,9 @@ pub fn run_virtual_transfer_with_resume(
             chunk_idx += 1;
         }
         all_received_data.push((name.to_string(), received_data));
-        if failed { break; }
+        if failed {
+            break;
+        }
     }
 
     // Verify checkpoint was saved
@@ -340,7 +349,10 @@ pub fn run_virtual_transfer_with_resume(
         // Verify SHA-256
         let expected_hash = VirtualUotNode::sha256(data);
         let actual_hash = VirtualUotNode::sha256(&received_data);
-        assert_eq!(expected_hash, actual_hash, "SHA-256 mismatch after resume for {name}");
+        assert_eq!(
+            expected_hash, actual_hash,
+            "SHA-256 mismatch after resume for {name}"
+        );
 
         if let Some(idx) = existing_idx {
             all_received_data[idx].1 = received_data;
@@ -354,10 +366,18 @@ pub fn run_virtual_transfer_with_resume(
     // Clean up checkpoint
     sender.checkpoint_store.remove(&transfer_id).ok();
 
-    let received_files: Vec<ReceivedFile> = all_received_data.into_iter().map(|(name, data)| {
-        let sha = VirtualUotNode::sha256(&data);
-        ReceivedFile { name: name.clone(), relative_path: name, data, sha256: sha }
-    }).collect();
+    let received_files: Vec<ReceivedFile> = all_received_data
+        .into_iter()
+        .map(|(name, data)| {
+            let sha = VirtualUotNode::sha256(&data);
+            ReceivedFile {
+                name: name.clone(),
+                relative_path: name,
+                data,
+                sha256: sha,
+            }
+        })
+        .collect();
 
     TransferResult {
         transfer_id,
@@ -387,9 +407,11 @@ mod tests {
         let sender = VirtualUotNode::new("Sender");
         let receiver = VirtualUotNode::new("Receiver");
 
-        let result = run_virtual_transfer(&sender, &receiver, vec![
-            ("hello.txt", b"Hello, World!".to_vec()),
-        ]);
+        let result = run_virtual_transfer(
+            &sender,
+            &receiver,
+            vec![("hello.txt", b"Hello, World!".to_vec())],
+        );
 
         assert!(result.success);
         assert_eq!(result.files_transferred, 1);
@@ -402,11 +424,15 @@ mod tests {
         let sender = VirtualUotNode::new("Sender");
         let receiver = VirtualUotNode::new("Receiver");
 
-        let result = run_virtual_transfer(&sender, &receiver, vec![
-            ("file1.txt", b"Content One".to_vec()),
-            ("file2.txt", b"Content Two".to_vec()),
-            ("file3.bin", vec![0xDE, 0xAD, 0xBE, 0xEF]),
-        ]);
+        let result = run_virtual_transfer(
+            &sender,
+            &receiver,
+            vec![
+                ("file1.txt", b"Content One".to_vec()),
+                ("file2.txt", b"Content Two".to_vec()),
+                ("file3.bin", vec![0xDE, 0xAD, 0xBE, 0xEF]),
+            ],
+        );
 
         assert!(result.success);
         assert_eq!(result.files_transferred, 3);
@@ -417,9 +443,7 @@ mod tests {
     fn test_two_node_zero_byte_file() {
         let sender = VirtualUotNode::new("S");
         let receiver = VirtualUotNode::new("R");
-        let result = run_virtual_transfer(&sender, &receiver, vec![
-            ("empty.txt", vec![]),
-        ]);
+        let result = run_virtual_transfer(&sender, &receiver, vec![("empty.txt", vec![])]);
         assert!(result.success);
         assert!(result.received_files[0].data.is_empty());
     }
@@ -428,11 +452,15 @@ mod tests {
     fn test_two_node_unicode_filenames() {
         let sender = VirtualUotNode::new("送信者");
         let receiver = VirtualUotNode::new("受信者");
-        let result = run_virtual_transfer(&sender, &receiver, vec![
-            ("文件.txt", b"Chinese filename".to_vec()),
-            ("ファイル.txt", b"Japanese filename".to_vec()),
-            ("émojis_🎉.pdf", b"Emoji filename".to_vec()),
-        ]);
+        let result = run_virtual_transfer(
+            &sender,
+            &receiver,
+            vec![
+                ("文件.txt", b"Chinese filename".to_vec()),
+                ("ファイル.txt", b"Japanese filename".to_vec()),
+                ("émojis_🎉.pdf", b"Emoji filename".to_vec()),
+            ],
+        );
         assert!(result.success);
         assert_eq!(result.files_transferred, 3);
     }
@@ -443,9 +471,8 @@ mod tests {
         let receiver = VirtualUotNode::new("Receiver");
         let large_data = vec![0xABu8; 100 * 1024 * 1024]; // 100 MB
 
-        let result = run_virtual_transfer(&sender, &receiver, vec![
-            ("large.bin", large_data.clone()),
-        ]);
+        let result =
+            run_virtual_transfer(&sender, &receiver, vec![("large.bin", large_data.clone())]);
 
         assert!(result.success);
         assert_eq!(result.bytes_transferred, 100 * 1024 * 1024);
@@ -480,7 +507,8 @@ mod tests {
         let data = vec![0x42u8; 1024 * 1024]; // 1 MB
 
         let result = run_virtual_transfer_with_resume(
-            &sender, &receiver,
+            &sender,
+            &receiver,
             vec![("resume_test.bin", data.clone())],
             0.5, // Fail at 50%
         );
@@ -500,7 +528,8 @@ mod tests {
         let data = vec![0xEE; 512 * 1024]; // 512 KB
 
         let result = run_virtual_transfer_with_resume(
-            &sender, &receiver,
+            &sender,
+            &receiver,
             vec![("early_fail.bin", data.clone())],
             0.1,
         );

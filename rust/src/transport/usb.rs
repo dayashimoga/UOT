@@ -67,10 +67,10 @@ impl UsbTransport {
             tx_buffer: RwLock::new(VecDeque::new()),
             rx_buffer: RwLock::new(VecDeque::new()),
             max_packet_size: match mode {
-                UsbMode::Bulk => 512 * 1024,         // 512 KB
-                UsbMode::AndroidAccessory => 16384,   // 16 KB
-                UsbMode::Serial => 4096,              // 4 KB
-                UsbMode::Mtp => 0,                    // N/A
+                UsbMode::Bulk => 512 * 1024,        // 512 KB
+                UsbMode::AndroidAccessory => 16384, // 16 KB
+                UsbMode::Serial => 4096,            // 4 KB
+                UsbMode::Mtp => 0,                  // N/A
             },
         }
     }
@@ -85,7 +85,12 @@ impl UsbTransport {
             max_payload_size: 512 * 1024,
             supports_streaming: true,
             supports_discovery: true,
-            platforms: vec!["android".into(), "windows".into(), "macos".into(), "linux".into()],
+            platforms: vec![
+                "android".into(),
+                "windows".into(),
+                "macos".into(),
+                "linux".into(),
+            ],
         }
     }
 
@@ -100,7 +105,9 @@ impl UsbTransport {
     /// Connect to a USB device.
     pub fn connect(&self, device: UsbDevice) -> Result<(), TransportError> {
         if self.mode == UsbMode::Mtp {
-            return Err(TransportError::Connection("MTP mode does not support direct data transfer".into()));
+            return Err(TransportError::Connection(
+                "MTP mode does not support direct data transfer".into(),
+            ));
         }
         log::info!("USB connecting to {} ({})", device.device_name, device.mode);
         *self.connected_device.write() = Some(device);
@@ -117,13 +124,17 @@ impl UsbTransport {
     /// Send a frame over USB.
     pub fn send_frame(&self, frame: Frame) -> Result<(), TransportError> {
         if *self.state.read() != TransportState::Connected {
-            return Err(TransportError::SendFailed { reason: "Not connected".into() });
+            return Err(TransportError::SendFailed {
+                reason: "Not connected".into(),
+            });
         }
         let encoded = frame.encode();
         // Fragment if needed
         if self.max_packet_size > 0 && encoded.len() > self.max_packet_size {
             for chunk in encoded.chunks(self.max_packet_size) {
-                self.tx_buffer.write().push_back(Frame::data(chunk.to_vec()));
+                self.tx_buffer
+                    .write()
+                    .push_back(Frame::data(chunk.to_vec()));
             }
         } else {
             self.tx_buffer.write().push_back(frame);
@@ -134,8 +145,12 @@ impl UsbTransport {
 
     /// Receive a frame from USB.
     pub fn recv_frame(&self) -> Result<Frame, TransportError> {
-        self.rx_buffer.write().pop_front()
-            .ok_or(TransportError::ReceiveFailed { reason: "No USB data".into() })
+        self.rx_buffer
+            .write()
+            .pop_front()
+            .ok_or(TransportError::ReceiveFailed {
+                reason: "No USB data".into(),
+            })
     }
 
     /// Inject a received frame (for testing).
@@ -173,7 +188,10 @@ mod tests {
     fn test_usb_modes() {
         assert_eq!(format!("{}", UsbMode::Bulk), "USB Bulk");
         assert_eq!(format!("{}", UsbMode::Serial), "USB Serial");
-        assert_eq!(format!("{}", UsbMode::AndroidAccessory), "Android Accessory");
+        assert_eq!(
+            format!("{}", UsbMode::AndroidAccessory),
+            "Android Accessory"
+        );
         assert_eq!(format!("{}", UsbMode::Mtp), "MTP");
     }
 
@@ -218,7 +236,8 @@ mod tests {
     fn test_usb_mtp_no_transfer() {
         let transport = UsbTransport::new(UsbMode::Mtp);
         let device = UsbDevice {
-            vendor_id: 0, product_id: 0,
+            vendor_id: 0,
+            product_id: 0,
             device_name: "Phone".into(),
             serial_number: None,
             mode: UsbMode::Mtp,
@@ -236,8 +255,10 @@ mod tests {
     fn test_usb_fragmentation() {
         let transport = UsbTransport::new(UsbMode::Serial); // 4 KB max
         let device = UsbDevice {
-            vendor_id: 0, product_id: 0,
-            device_name: "Serial".into(), serial_number: None,
+            vendor_id: 0,
+            product_id: 0,
+            device_name: "Serial".into(),
+            serial_number: None,
             mode: UsbMode::Serial,
         };
         transport.connect(device).unwrap();

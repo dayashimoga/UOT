@@ -94,8 +94,12 @@ impl WebRtcTransport {
             supports_streaming: true,
             supports_discovery: false,
             platforms: vec![
-                "android".into(), "ios".into(), "windows".into(),
-                "macos".into(), "linux".into(), "web".into(),
+                "android".into(),
+                "ios".into(),
+                "windows".into(),
+                "macos".into(),
+                "linux".into(),
+                "web".into(),
             ],
         }
     }
@@ -117,7 +121,10 @@ impl WebRtcTransport {
     }
 
     /// Create an SDP answer (callee side).
-    pub fn create_answer(&self, remote_offer: &SessionDescription) -> Result<SessionDescription, TransportError> {
+    pub fn create_answer(
+        &self,
+        remote_offer: &SessionDescription,
+    ) -> Result<SessionDescription, TransportError> {
         if remote_offer.sdp_type != "offer" {
             return Err(TransportError::Protocol("Expected offer SDP".into()));
         }
@@ -174,12 +181,18 @@ impl WebRtcTransport {
     /// Send a frame via the data channel.
     pub fn send_frame(&self, frame: Frame) -> Result<(), TransportError> {
         if *self.state.read() != WebRtcState::Connected {
-            return Err(TransportError::SendFailed { reason: "Not connected".into() });
+            return Err(TransportError::SendFailed {
+                reason: "Not connected".into(),
+            });
         }
         let encoded = frame.encode();
         if encoded.len() > self.max_message_size {
             return Err(TransportError::SendFailed {
-                reason: format!("Message too large: {} > {}", encoded.len(), self.max_message_size),
+                reason: format!(
+                    "Message too large: {} > {}",
+                    encoded.len(),
+                    self.max_message_size
+                ),
             });
         }
         self.tx_buffer.write().push_back(frame);
@@ -190,8 +203,12 @@ impl WebRtcTransport {
 
     /// Receive a frame from the data channel.
     pub fn recv_frame(&self) -> Result<Frame, TransportError> {
-        self.rx_buffer.write().pop_front()
-            .ok_or(TransportError::ReceiveFailed { reason: "No data".into() })
+        self.rx_buffer
+            .write()
+            .pop_front()
+            .ok_or(TransportError::ReceiveFailed {
+                reason: "No data".into(),
+            })
     }
 
     /// Inject a received frame (for testing / simulation).
@@ -220,7 +237,9 @@ impl WebRtcTransport {
 }
 
 impl Default for WebRtcTransport {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

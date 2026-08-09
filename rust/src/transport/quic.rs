@@ -47,8 +47,11 @@ impl QuicTransport {
             supports_streaming: true,
             supports_discovery: false,
             platforms: vec![
-                "android".into(), "ios".into(), "windows".into(),
-                "macos".into(), "linux".into(),
+                "android".into(),
+                "ios".into(),
+                "windows".into(),
+                "macos".into(),
+                "linux".into(),
             ],
         }
     }
@@ -83,15 +86,15 @@ impl QuicTransport {
 
         let server_config = quinn::ServerConfig::with_crypto(Arc::new(
             quinn::crypto::rustls::QuicServerConfig::try_from(server_crypto)
-                .map_err(|e| TransportError::Connection(format!("QUIC config: {e}")))?
+                .map_err(|e| TransportError::Connection(format!("QUIC config: {e}")))?,
         ));
 
-        let endpoint = quinn::Endpoint::server(
-            server_config,
-            format!("0.0.0.0:{port}").parse().unwrap(),
-        ).map_err(|e| TransportError::Connection(format!("Bind: {e}")))?;
+        let endpoint =
+            quinn::Endpoint::server(server_config, format!("0.0.0.0:{port}").parse().unwrap())
+                .map_err(|e| TransportError::Connection(format!("Bind: {e}")))?;
 
-        let addr = endpoint.local_addr()
+        let addr = endpoint
+            .local_addr()
             .map_err(|e| TransportError::Connection(format!("Addr: {e}")))?;
 
         *self.local_addr.write() = Some(addr);
@@ -113,7 +116,7 @@ impl QuicTransport {
 
         let client_config = quinn::ClientConfig::new(Arc::new(
             quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto)
-                .map_err(|e| TransportError::Connection(format!("QUIC client: {e}")))?
+                .map_err(|e| TransportError::Connection(format!("QUIC client: {e}")))?,
         ));
 
         let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap())
@@ -122,10 +125,13 @@ impl QuicTransport {
 
         *self.state.write() = TransportState::Connecting;
 
-        let connection = endpoint.connect(addr, "uot.local")
+        let connection = endpoint
+            .connect(addr, "uot.local")
             .map_err(|e| TransportError::Connection(format!("Connect: {e}")))?
             .await
-            .map_err(|e| TransportError::ConnectionFailed { reason: format!("QUIC: {e}") })?;
+            .map_err(|e| TransportError::ConnectionFailed {
+                reason: format!("QUIC: {e}"),
+            })?;
 
         *self.state.write() = TransportState::Connected;
         log::info!("QUIC connected to {addr}");
@@ -150,42 +156,66 @@ pub struct QuicConnection {
 impl QuicConnection {
     /// Open a bidirectional stream and send a frame.
     pub async fn send_frame(&self, frame: Frame) -> Result<(), TransportError> {
-        let (mut send, _recv) = self.connection.open_bi()
-            .await
-            .map_err(|e| TransportError::SendFailed { reason: format!("Stream: {e}") })?;
+        let (mut send, _recv) =
+            self.connection
+                .open_bi()
+                .await
+                .map_err(|e| TransportError::SendFailed {
+                    reason: format!("Stream: {e}"),
+                })?;
 
         let encoded = frame.encode();
-        send.write_all(&encoded).await
-            .map_err(|e| TransportError::SendFailed { reason: format!("Write: {e}") })?;
-        send.finish()
-            .map_err(|e| TransportError::SendFailed { reason: format!("Finish: {e}") })?;
+        send.write_all(&encoded)
+            .await
+            .map_err(|e| TransportError::SendFailed {
+                reason: format!("Write: {e}"),
+            })?;
+        send.finish().map_err(|e| TransportError::SendFailed {
+            reason: format!("Finish: {e}"),
+        })?;
 
         Ok(())
     }
 
     /// Accept a bidirectional stream and read a frame.
     pub async fn recv_frame(&self) -> Result<Frame, TransportError> {
-        let (_send, mut recv) = self.connection.accept_bi()
-            .await
-            .map_err(|e| TransportError::ReceiveFailed { reason: format!("Accept: {e}") })?;
+        let (_send, mut recv) =
+            self.connection
+                .accept_bi()
+                .await
+                .map_err(|e| TransportError::ReceiveFailed {
+                    reason: format!("Accept: {e}"),
+                })?;
 
         // Read length prefix (4 bytes)
         let mut len_buf = [0u8; 4];
-        recv.read_exact(&mut len_buf).await
-            .map_err(|e| TransportError::ReceiveFailed { reason: format!("Read len: {e}") })?;
+        recv.read_exact(&mut len_buf)
+            .await
+            .map_err(|e| TransportError::ReceiveFailed {
+                reason: format!("Read len: {e}"),
+            })?;
         let payload_len = u32::from_be_bytes(len_buf) as usize;
 
         // Read type + payload
         let mut type_buf = [0u8; 1];
-        recv.read_exact(&mut type_buf).await
-            .map_err(|e| TransportError::ReceiveFailed { reason: format!("Read type: {e}") })?;
+        recv.read_exact(&mut type_buf)
+            .await
+            .map_err(|e| TransportError::ReceiveFailed {
+                reason: format!("Read type: {e}"),
+            })?;
         let frame_type = FrameType::try_from(type_buf[0])?;
 
         let mut payload = vec![0u8; payload_len];
-        recv.read_exact(&mut payload).await
-            .map_err(|e| TransportError::ReceiveFailed { reason: format!("Read payload: {e}") })?;
+        recv.read_exact(&mut payload)
+            .await
+            .map_err(|e| TransportError::ReceiveFailed {
+                reason: format!("Read payload: {e}"),
+            })?;
 
-        Ok(Frame { frame_type, payload })
+        Ok(Frame {
+            frame_type,
+            payload,
+        })
     }
 
     /// Close the connection.
@@ -205,23 +235,29 @@ struct SkipVerification;
 
 impl rustls::client::danger::ServerCertVerifier for SkipVerification {
     fn verify_server_cert(
-        &self, _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
         _intermediates: &[rustls::pki_types::CertificateDer<'_>],
         _server_name: &rustls::pki_types::ServerName<'_>,
-        _ocsp_response: &[u8], _now: rustls::pki_types::UnixTime,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
     ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
         Ok(rustls::client::danger::ServerCertVerified::assertion())
     }
 
     fn verify_tls12_signature(
-        &self, _message: &[u8], _cert: &rustls::pki_types::CertificateDer<'_>,
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
         _dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
         Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
     }
 
     fn verify_tls13_signature(
-        &self, _message: &[u8], _cert: &rustls::pki_types::CertificateDer<'_>,
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
         _dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
         Ok(rustls::client::danger::HandshakeSignatureValid::assertion())

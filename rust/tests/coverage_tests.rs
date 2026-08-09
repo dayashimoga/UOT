@@ -120,10 +120,16 @@ fn test_engine_transport_selection() {
         (TransportId::BluetoothLe, TransportState::Connected),
         (TransportId::TcpLan, TransportState::Connected),
     ];
-    assert_eq!(engine.select_best_transport(&candidates), Some(TransportId::TcpLan));
+    assert_eq!(
+        engine.select_best_transport(&candidates),
+        Some(TransportId::TcpLan)
+    );
 
     engine.set_transport_strategy(TransportSelectionStrategy::PreferOffline);
-    assert_eq!(engine.select_best_transport(&candidates), Some(TransportId::BluetoothLe));
+    assert_eq!(
+        engine.select_best_transport(&candidates),
+        Some(TransportId::BluetoothLe)
+    );
 }
 
 #[test]
@@ -162,7 +168,9 @@ async fn test_engine_cancel_nonexistent_transfer() {
 async fn test_engine_cancel_valid_uuid_not_found() {
     let config = AppConfig::default();
     let (engine, _rx) = UotEngine::new(config);
-    let result = engine.cancel_transfer("00000000-0000-0000-0000-000000000001").await;
+    let result = engine
+        .cancel_transfer("00000000-0000-0000-0000-000000000001")
+        .await;
     assert!(result.is_err());
 }
 
@@ -172,8 +180,12 @@ fn test_engine_pause_resume_nonexistent() {
     let (engine, _rx) = UotEngine::new(config);
     assert!(engine.pause_transfer("invalid").is_err());
     assert!(engine.resume_transfer("invalid").is_err());
-    assert!(engine.pause_transfer("00000000-0000-0000-0000-000000000001").is_err());
-    assert!(engine.resume_transfer("00000000-0000-0000-0000-000000000001").is_err());
+    assert!(engine
+        .pause_transfer("00000000-0000-0000-0000-000000000001")
+        .is_err());
+    assert!(engine
+        .resume_transfer("00000000-0000-0000-0000-000000000001")
+        .is_err());
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -568,7 +580,10 @@ fn test_fallback_wifi_direct_preference() {
         (TransportId::WifiDirect, TransportState::Connected),
         (TransportId::BluetoothLe, TransportState::Connected),
     ];
-    assert_eq!(mgr.select_best_transport(&candidates), Some(TransportId::WifiDirect));
+    assert_eq!(
+        mgr.select_best_transport(&candidates),
+        Some(TransportId::WifiDirect)
+    );
 }
 
 #[test]
@@ -644,7 +659,12 @@ fn test_wire_message_hello_roundtrip() {
     let json = serde_json::to_string(&msg).unwrap();
     let parsed: WireMessage = serde_json::from_str(&json).unwrap();
     match parsed {
-        WireMessage::Hello { device_id, device_name, capabilities, .. } => {
+        WireMessage::Hello {
+            device_id,
+            device_name,
+            capabilities,
+            ..
+        } => {
             assert_eq!(device_id, "dev-1");
             assert_eq!(device_name, "My Phone");
             assert_eq!(capabilities.len(), 2);
@@ -783,8 +803,6 @@ fn test_transfer_record_serialization() {
 // ═══════════════════════════════════════════════════════════════════
 // VERSION TESTS
 // ═══════════════════════════════════════════════════════════════════
-
-
 
 // ═══════════════════════════════════════════════════════════════════
 // SECURITY TESTS (ADDITIONAL)

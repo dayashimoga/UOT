@@ -126,7 +126,9 @@ impl FaultNetwork {
     pub async fn process_packet(&self, data: Vec<u8>) -> Vec<Option<Vec<u8>>> {
         let config = self.config.read().clone();
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
-        let transferred = self.bytes_transferred.fetch_add(data.len() as u64, Ordering::Relaxed);
+        let transferred = self
+            .bytes_transferred
+            .fetch_add(data.len() as u64, Ordering::Relaxed);
 
         // Check disconnect threshold
         if config.disconnect_after_bytes > 0 && transferred >= config.disconnect_after_bytes {
@@ -168,7 +170,9 @@ impl FaultNetwork {
 
         // Corruption
         let mut payload = data;
-        if config.corruption_probability > 0.0 && rng.random::<f64>() < config.corruption_probability {
+        if config.corruption_probability > 0.0
+            && rng.random::<f64>() < config.corruption_probability
+        {
             if !payload.is_empty() {
                 let idx = rng.random_range(0..payload.len());
                 payload[idx] ^= 0xFF;
@@ -177,7 +181,8 @@ impl FaultNetwork {
         }
 
         // Duplication
-        if config.duplicate_probability > 0.0 && rng.random::<f64>() < config.duplicate_probability {
+        if config.duplicate_probability > 0.0 && rng.random::<f64>() < config.duplicate_probability
+        {
             results.push(Some(payload.clone()));
             self.packets_duplicated.fetch_add(1, Ordering::Relaxed);
         }
@@ -186,7 +191,11 @@ impl FaultNetwork {
 
         // Bandwidth limiting
         if config.bandwidth_limit > 0 {
-            let byte_count = results.iter().flatten().map(|p| p.len() as u64).sum::<u64>();
+            let byte_count = results
+                .iter()
+                .flatten()
+                .map(|p| p.len() as u64)
+                .sum::<u64>();
             let delay_us = (byte_count * 1_000_000) / config.bandwidth_limit;
             if delay_us > 0 {
                 tokio::time::sleep(std::time::Duration::from_micros(delay_us)).await;

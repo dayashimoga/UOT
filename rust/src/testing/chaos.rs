@@ -5,7 +5,9 @@
 
 use crate::testing::adapters::TransferSession;
 use crate::testing::fault_network::{FaultConfig, FaultNetwork};
-use crate::testing::virtual_node::{run_virtual_transfer, run_virtual_transfer_with_resume, VirtualUotNode};
+use crate::testing::virtual_node::{
+    run_virtual_transfer, run_virtual_transfer_with_resume, VirtualUotNode,
+};
 
 /// Chaos test result.
 #[derive(Debug)]
@@ -38,9 +40,7 @@ pub fn run_all_chaos_tests() -> Vec<ChaosResult> {
 fn chaos_clean_transfer() -> ChaosResult {
     let s = VirtualUotNode::new("Chaos-S");
     let r = VirtualUotNode::new("Chaos-R");
-    let result = run_virtual_transfer(&s, &r, vec![
-        ("test.txt", b"Chaos test data".to_vec()),
-    ]);
+    let result = run_virtual_transfer(&s, &r, vec![("test.txt", b"Chaos test data".to_vec())]);
     ChaosResult {
         scenario: "Clean single file".into(),
         passed: result.success,
@@ -70,18 +70,25 @@ fn chaos_multi_file_batch() -> ChaosResult {
         sha256_verified: true,
         retries: 0,
         bytes_transferred: result.bytes_transferred,
-        details: format!("{} files, {} chunks", result.files_transferred, result.chunks_verified),
+        details: format!(
+            "{} files, {} chunks",
+            result.files_transferred, result.chunks_verified
+        ),
     }
 }
 
 fn chaos_zero_byte_files() -> ChaosResult {
     let s = VirtualUotNode::new("S");
     let r = VirtualUotNode::new("R");
-    let result = run_virtual_transfer(&s, &r, vec![
-        ("empty1.txt", vec![]),
-        ("empty2.dat", vec![]),
-        ("notempty.txt", b"has content".to_vec()),
-    ]);
+    let result = run_virtual_transfer(
+        &s,
+        &r,
+        vec![
+            ("empty1.txt", vec![]),
+            ("empty2.dat", vec![]),
+            ("notempty.txt", b"has content".to_vec()),
+        ],
+    );
     ChaosResult {
         scenario: "Zero-byte files mixed".into(),
         passed: result.success && result.received_files[0].data.is_empty(),
@@ -96,12 +103,16 @@ fn chaos_zero_byte_files() -> ChaosResult {
 fn chaos_unicode_filenames() -> ChaosResult {
     let s = VirtualUotNode::new("S");
     let r = VirtualUotNode::new("R");
-    let result = run_virtual_transfer(&s, &r, vec![
-        ("日本語.txt", b"Japanese".to_vec()),
-        ("한국어.txt", b"Korean".to_vec()),
-        ("العربية.txt", b"Arabic".to_vec()),
-        ("🎉🚀💾.bin", vec![0xFF; 100]),
-    ]);
+    let result = run_virtual_transfer(
+        &s,
+        &r,
+        vec![
+            ("日本語.txt", b"Japanese".to_vec()),
+            ("한국어.txt", b"Korean".to_vec()),
+            ("العربية.txt", b"Arabic".to_vec()),
+            ("🎉🚀💾.bin", vec![0xFF; 100]),
+        ],
+    );
     ChaosResult {
         scenario: "Unicode filenames (CJK, Arabic, Emoji)".into(),
         passed: result.success && result.files_transferred == 4,
@@ -211,10 +222,14 @@ fn chaos_many_small_files() -> ChaosResult {
 fn chaos_duplicate_filenames() -> ChaosResult {
     let s = VirtualUotNode::new("S");
     let r = VirtualUotNode::new("R");
-    let result = run_virtual_transfer(&s, &r, vec![
-        ("file.txt", b"Version 1".to_vec()),
-        ("file.txt", b"Version 2".to_vec()),
-    ]);
+    let result = run_virtual_transfer(
+        &s,
+        &r,
+        vec![
+            ("file.txt", b"Version 1".to_vec()),
+            ("file.txt", b"Version 2".to_vec()),
+        ],
+    );
     ChaosResult {
         scenario: "Duplicate filenames".into(),
         passed: result.success && result.files_transferred == 2,
