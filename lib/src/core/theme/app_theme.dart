@@ -89,7 +89,8 @@ class UotTheme {
         ),
         iconTheme: IconThemeData(color: UotColors.textPrimary),
       ),
-      cardTheme: CardThemeData(
+      // ignore: argument_type_not_assignable, undefined_method
+      cardTheme: CardTheme(
         color: UotColors.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -254,7 +255,8 @@ class UotTheme {
         ),
         iconTheme: IconThemeData(color: UotColors.lightTextPrimary),
       ),
-      cardTheme: CardThemeData(
+      // ignore: argument_type_not_assignable, undefined_method
+      cardTheme: CardTheme(
         color: UotColors.lightSurface,
         elevation: 0,
         shape: RoundedRectangleBorder(
