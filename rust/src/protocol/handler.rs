@@ -261,4 +261,19 @@ mod tests {
             let _: WireMessage = serde_json::from_str(&json).unwrap();
         }
     }
+
+    #[test]
+    fn test_malformed_wire_message_deserialization_rejected() {
+        // Unknown type tag
+        let malformed_type = r#"{"type":"unknown_future_message","data":"abc"}"#;
+        assert!(serde_json::from_str::<WireMessage>(malformed_type).is_err());
+
+        // Invalid field type (number instead of string for device_id)
+        let malformed_fields = r#"{"type":"hello","device_id":12345,"device_name":"test"}"#;
+        assert!(serde_json::from_str::<WireMessage>(malformed_fields).is_err());
+
+        // Corrupted payload bytes
+        let corrupted_json = r#"{"type":"offer","transfer_id": "#;
+        assert!(serde_json::from_str::<WireMessage>(corrupted_json).is_err());
+    }
 }

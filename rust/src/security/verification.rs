@@ -159,3 +159,51 @@ impl Default for TrustManager {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_verification_pin_lifecycle() {
+        let pin = VerificationPin::generate(300);
+        assert_eq!(pin.pin.len(), 6);
+        assert!(pin.pin.chars().all(|c| c.is_ascii_digit()));
+        assert!(!pin.is_expired());
+        assert!(pin.verify(&pin.pin));
+        assert!(!pin.verify("000000") || pin.pin == "000000");
+        assert!(!pin.verify("1234567"));
+    }
+
+    #[test]
+    fn test_trust_manager_pin_flow_and_single_use() {
+        let mut tm = TrustManager::new();
+        let pin = tm.generate_pin(300).to_string();
+
+        // Wrong PIN attempt fails
+        assert!(tm.verify_pin("device-1", "000000").is_none());
+
+        // Correct PIN attempt succeeds and produces session token
+        let token = tm.verify_pin("device-1", &pin);
+        assert!(token.is_some());
+        let token_str = token.unwrap();
+        assert!(tm.validate_session(&token_str));
+
+        // Second attempt with same PIN fails because PIN was consumed (single-use)
+        assert!(tm.verify_pin("device-1", &pin).is_none());
+    }
+
+    #[test]
+    fn test_trust_manager_device_trust_and_revoke() {
+        let mut tm = TrustManager::new();
+        assert!(!tm.is_trusted("dev-A"));
+
+        tm.trust_device("dev-A", "Alice Phone");
+        assert!(tm.is_trusted("dev-A"));
+        assert_eq!(tm.trusted_devices().len(), 1);
+
+        tm.revoke_trust("dev-A");
+        assert!(!tm.is_trusted("dev-A"));
+        assert!(tm.trusted_devices().is_empty());
+    }
+}
