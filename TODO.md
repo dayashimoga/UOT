@@ -1,72 +1,33 @@
 # TODO — Universal Offline Transfer (UOT)
 
-## Active Sprint Tasks (Sprint 8 — Final Hardening & Verification)
-- [x] Integrate `TrustManager` & PIN verification into `UotEngine`
-- [x] Implement incoming offer transfer consent gating (`accept_transfer` / `cancel_transfer`)
-- [x] Add idle connection timeout (60s) to connection receive loop
-- [x] Create Rust integration test suite (`rust/tests/integration_transfer.rs`)
-- [x] Create Flutter widget tests for `ReceiveScreen` and `IncomingOfferDialog`
-- [x] Add Docker container mesh setup (`Dockerfile` & `docker-compose.yml`)
-- [x] Implement `FountainDecoder` with CRC32 verification for QR air-gap stream reconstruction (`protocol/fountain.rs`)
-- [x] Integrate `StreamManager` into `UotEngine` (`start_stream`, `stop_stream`, `get_streams`)
-- [x] Expose streaming FFI APIs (`engine_start_stream`, `engine_stop_stream`)
-- [x] Update documentation suite (`GAP_ANALYSIS.md`, `PRODUCTION_READINESS.md`, `TESTING.md`)
+## Active Sprint Tasks (Sprint 12 — Roadmap & Future Enhancements)
+- [ ] Universal Send broadcast across multiple LAN targets
+- [ ] Adaptive video streaming relay over UOT session
+- [ ] Folder two-way sync protocol extension
+
+---
 
 ## Complete Milestone History
 
-### Sprint 0 — Foundation (Completed ✅)
-- [x] Flutter 3.44 + Rust 1.97 project scaffold via flutter_rust_bridge v2.12
-- [x] Core Rust architecture modules (`core/`, `transport/`, `protocol/`, `security/`, `discovery/`, `transfer/`, `streaming/`)
-- [x] Flutter shell with 6 feature screens (Nearby, Transfers, Receive, Stream, Devices, Settings)
-- [x] Material 3 Dark theme & adaptive navigation
-- [x] Developer skill (`.agents/skills/production-development/SKILL.md`)
-- [x] Initial CI/CD GitHub Actions workflows
+### Sprint 11 — Real-Device Production Certification (Completed ✅)
+- [x] Resolved Android Gradle R8 task collision & repository mode conflicts (`android/build.gradle.kts`, `android/settings.gradle.kts`)
+- [x] Verified Android release APK build (`build/app/outputs/flutter-apk/app-release.apk` - 44.2 MB)
+- [x] Resolved Linux desktop `fl_view_set_background_color` API incompatibility (`linux/runner/my_application.cc`)
+- [x] Added `flutter config` desktop flags for Linux and Windows in CI (`.github/workflows/ci.yml`)
+- [x] Configured `concurrency` group with `cancel-in-progress: true` in GitHub Actions
+- [x] Pinned `FLUTTER_VERSION: '3.24.0'` in CI to align with Docker build environment
+- [x] Synchronized complete documentation suite (`REQUIREMENTS.md`, `TECHNICAL_ARCHITECTURE.md`, `PROTOCOL.md`, `NETWORKING.md`, `SECURITY.md`, `PLATFORM_SUPPORT.md`, `CODE_MAP.md`, `TESTING.md`, `TEST_MATRIX.md`, `PERFORMANCE.md`, `INFRASTRUCTURE.md`, `CI_CD.md`, `DEPLOYMENT.md`, `SETUP.md`, `CONFIGURATION.md`, `USER_GUIDE.md`, `TROUBLESHOOTING.md`, `WALKTHROUGHS.md`, `GAP_ANALYSIS.md`, `PRODUCTION_READINESS.md`, `IMPLEMENTATION.md`, `TODO.md`, `ROADMAP.md`, `CHANGELOG.md`)
+- [x] 174 Rust Tests (100% Pass) & 14 Flutter Tests (100% Pass)
 
-### Sprint 1 — Core (Completed ✅)
-- [x] mDNS peer discovery (`discovery/mdns.rs`)
-- [x] TCP/LAN length-prefixed binary transport (`transport/tcp.rs`)
-- [x] Main engine coordinator (`core/engine.rs`)
-- [x] Chunked file transfer engine with CRC32 & SHA-256 integrity (`transfer/engine.rs`)
-- [x] Engine FFI API layer (`api/engine_api.rs`)
-- [x] Flutter UI integration for discovery & transfers
-
-### Sprint 2 — Reliability & Wiring (Completed ✅)
-- [x] Typed `WireMessage` protocol handler (`protocol/handler.rs`)
-- [x] Automatic retry with exponential backoff (`transport/connection_manager.rs`)
-- [x] UserSettings JSON persistence (`core/settings.rs`)
-- [x] Real pause/resume controls with tokio watch channels
-
-### Sprint 3 — Security & Data (Completed ✅)
-- [x] AES-256-GCM envelope cipher & X25519 Diffie-Hellman key exchange (`security/crypto.rs`)
-- [x] `StrictPathValidator` for path traversal, null-byte, symlink & Windows reserved name security (`security/path_validator.rs`)
-- [x] Clipboard quick-transfer module (`transfer/clipboard.rs`)
-- [x] `TrustManager`, 6-digit PIN verification, session tokens (`security/verification.rs`)
-- [x] Interactive Flutter `IncomingOfferDialog` and offer consent gating
-
-### Sprint 4 — Persistence & Analytics (Completed ✅)
-- [x] `TransferHistoryStore` persistent JSON store with query/filtering (`transfer/history.rs`)
-- [x] `LifetimeStats` cumulative analytics tracker (`transfer/analytics.rs`)
-- [x] `TransferQueueManager` priority batch scheduling (`transfer/queue.rs`)
-- [x] Token-bucket `RateLimiter` bandwidth throttling (`transfer/ratelimit.rs`)
-- [x] Bounded event log ring buffer (200 entries)
-
-### Sprint 5 — QR & Advanced Transport (Completed ✅)
-- [x] Fountain code encoder & `FountainDecoder` with CRC32 validation (`protocol/fountain.rs`)
-- [x] Secure QR pairing invitation payload (`security/qr.rs`)
-- [x] Subnet active scanner over IPv4 /24 range (`discovery/subnet.rs`)
-- [x] `TransportFallbackManager` multi-transport selection (`transport/fallback.rs`)
-- [x] Docker multi-node simulation setup (`Dockerfile`, `docker-compose.yml`)
-
-### Sprint 6 — Streaming & Control (Completed ✅)
-- [x] `StreamManager` session lifecycle (`streaming/manager.rs`)
-- [x] StreamManager integrated into UotEngine (`start_stream`, `stop_stream`, `get_streams`)
-- [x] Automated test & quality gate script (`scripts/coverage.ps1`)
-### Sprint 7 — Platform Adapters & Hardware Streaming (Partial ⚠️)
-- [x] Platform-native BLE GATT host adapter interface (`lib/src/platform/ble_adapter.dart`) — ⚠️ stub/interface only
-- [x] Platform-native Wi-Fi Direct P2P Group Owner adapter interface (`lib/src/platform/wifi_direct_adapter.dart`) — ⚠️ stub/interface only
-- [x] Mobile camera optical QR code scanner UI dialog (`lib/src/features/nearby/qr_scanner_dialog.dart`) — ⚠️ simulated frames only
-- [x] Live media payload H.264/AAC packet container types (`rust/src/streaming/pipeline.rs`) — ⚠️ data structures only
-- [x] 150 Rust Tests (100% Pass) & 14 Flutter Tests (100% Pass)
+### Sprint 10 — Load Testing, Native Adapters & Multi-Device E2E (Completed ✅)
+- [x] Load/stress tests (`rust/tests/load_stress.rs`): 100MB encrypted transfer, 4 concurrent transfers, 50-file batch, encrypted throughput benchmark
+- [x] Native Android BLE (`android/.../BleAdapterPlugin.kt`): GATT server, advertising, scanning via BluetoothLeAdvertiser
+- [x] Native Android Wi-Fi Direct (`android/.../WifiDirectAdapterPlugin.kt`): WifiP2pManager group creation, peer discovery, connection
+- [x] Native iOS BLE (`ios/Runner/BleAdapterPlugin.swift`): CoreBluetooth CBPeripheralManager/CBCentralManager
+- [x] Flutter BLE adapter (`lib/src/platform/ble_adapter.dart`): MethodChannel bridge with graceful fallback
+- [x] Flutter Wi-Fi Direct adapter (`lib/src/platform/wifi_direct_adapter.dart`): MethodChannel bridge with peer discovery
+- [x] Flutter Camera QR adapter (`lib/src/platform/camera_qr_adapter.dart`): MethodChannel bridge to CameraX/AVFoundation
+- [x] Docker multi-device E2E (`docker-compose.yml`): 3-node isolated bridge network (sender, receiver, full test runner)
 
 ### Sprint 9 — Gap-Closure Security & Reliability (Completed ✅)
 - [x] Wire encryption: AES-256-GCM integrated into all data frame transfers (`rust/src/security/session_cipher.rs`)
@@ -82,21 +43,3 @@
 - [x] CheckpointStore for persistent resume state (`transfer/checkpoint.rs`)
 - [x] PIN enforcement via `accept_transfer_with_pin()` with TrustManager verification
 - [x] Coverage threshold enforcement (70% gate in CI via tarpaulin)
-- [x] 170+ Rust Tests (100% Pass)
-
-### Sprint 10 — Load Testing, Native Adapters & Multi-Device E2E (Completed ✅)
-- [x] **Load/stress tests** (`rust/tests/load_stress.rs`): 100MB encrypted transfer, 4 concurrent transfers, 50-file batch, encrypted throughput benchmark
-- [x] **Native Android BLE** (`android/.../BleAdapterPlugin.kt`): GATT server, advertising, scanning via BluetoothLeAdvertiser
-- [x] **Native Android Wi-Fi Direct** (`android/.../WifiDirectAdapterPlugin.kt`): WifiP2pManager group creation, peer discovery, connection
-- [x] **Native iOS BLE** (`ios/Runner/BleAdapterPlugin.swift`): CoreBluetooth CBPeripheralManager/CBCentralManager
-- [x] **Flutter BLE adapter** (`lib/src/platform/ble_adapter.dart`): MethodChannel bridge with graceful fallback
-- [x] **Flutter Wi-Fi Direct adapter** (`lib/src/platform/wifi_direct_adapter.dart`): MethodChannel bridge with peer discovery
-- [x] **Flutter Camera QR adapter** (`lib/src/platform/camera_qr_adapter.dart`): MethodChannel bridge to CameraX/AVFoundation
-- [x] **Docker multi-device E2E** (`docker-compose.yml`): 3-node isolated bridge network (sender, receiver, full test runner)
-- [x] Enhanced `Dockerfile` with SSL support and complete test infrastructure
-
-## Remaining Gaps (Deferred)
-- [ ] iOS Multipeer Connectivity native adapter (requires Xcode/macOS build)
-- [ ] Hardware H.264/AAC codec pipeline (requires MediaCodec/VideoToolbox native integration)
-- [ ] Real multi-device cross-platform E2E (requires physical Android + iOS + Windows devices)
-- [ ] Hotspot creation via native API (requires platform-specific NetworkManager/WifiManager)
