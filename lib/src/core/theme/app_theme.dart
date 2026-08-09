@@ -89,7 +89,7 @@ class UotTheme {
         ),
         iconTheme: IconThemeData(color: UotColors.textPrimary),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: UotColors.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -254,7 +254,7 @@ class UotTheme {
         ),
         iconTheme: IconThemeData(color: UotColors.lightTextPrimary),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: UotColors.lightSurface,
         elevation: 0,
         shape: RoundedRectangleBorder(
