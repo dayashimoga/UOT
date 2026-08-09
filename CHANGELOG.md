@@ -21,10 +21,9 @@ This file is **append-only** — history is never overwritten.
   - Corrected `pubspec.yaml` SDK constraints (`>=3.0.0 <4.0.0`) and `flutter_lints` (`^5.0.0`).
   - Injected `@Inject abstract ExecOperations getExecOperations()` into cargokit `CargoKitBuildTask` for Gradle 8 compatibility.
   - **Verified locally via Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `✓ Built build/app/outputs/flutter-apk/app-release.apk (44.2MB)`.
-- **Flutter Analyzer & Deprecation Validation**:
-  - Used `CardThemeData` in `app_theme.dart` to match `ThemeData.cardTheme` parameter type across Flutter SDK versions.
-  - Added `errors: deprecated_member_use: ignore` in `analysis_options.yaml` for cross-version Flutter SDK (3.24 ↔ 3.27+) compatibility.
-  - **Verified inside Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `flutter analyze` (`No issues found!`).
+- **CI Duplicate Build Prevention**:
+  - Configured `concurrency` group (`${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}`) with `cancel-in-progress: true` in `.github/workflows/ci.yml`.
+  - Scoped `pull_request` types (`opened`, `synchronize`, `reopened`) to prevent duplicate parallel runs when pushing code.
 - **Flutter Analyze & Test Compatibility**: Fixed missing getters (`scanStream`, `scanResults`, `rawData`), `handleScannedFrame()` method, non-null `WifiDirectGroupInfo` return type, and added `TestWidgetsFlutterBinding.ensureInitialized()` to `test/platform_adapters_test.dart`. Verified `flutter analyze` (**0 issues**) and `flutter test` (**14/14 tests pass**).
 
 #### Reliability (P1)
