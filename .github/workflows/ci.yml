@@ -99,7 +99,9 @@ jobs:
         run: cargo install flutter_rust_bridge_codegen
 
       - name: Generate FRB bindings
-        run: flutter_rust_bridge_codegen generate
+        run: |
+          flutter_rust_bridge_codegen generate
+          dart format lib/src/rust
 
       - name: Get dependencies
         run: flutter pub get
