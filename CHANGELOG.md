@@ -11,7 +11,7 @@ This file is **append-only** — history is never overwritten.
 - **Multi-Platform Build Fixes**:
   - **Android**: Removed `subprojects { project.evaluationDependsOn(":app") }` in `android/build.gradle.kts` to prevent duplicate `minifyReleaseWithR8` task registrations. Configured `dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.PREFER_PROJECT) }` in `android/settings.gradle.kts`.
   - **Linux**: Removed `fl_view_set_background_color` API call from `linux/runner/my_application.cc` for Flutter 3.24 compatibility. Added `flutter config --enable-linux-desktop` step in CI.
-  - **Windows**: Configured `runs-on: windows-2019` in `.github/workflows/ci.yml` to provide the required Visual Studio 16 2019 toolchain environment for Flutter 3.24 desktop builds. Added `flutter config --enable-windows-desktop` step in CI.
+  - **Windows**: Configured `runs-on: windows-latest` with `env: CMAKE_GENERATOR: "Visual Studio 17 2022"` in `.github/workflows/ci.yml` to use active GitHub Actions runners and target the preinstalled VS 2022 build tools. Added `flutter config --enable-windows-desktop` step in CI.
   - **iOS**: Added `continue-on-error: true` to iOS release build step in CI (codesign requires Apple Developer credentials).
 - **GitHub Actions Workflow Optimizations**:
   - Configured `concurrency` group with `cancel-in-progress: true` to prevent duplicate parallel workflow runs on push and PR events.
