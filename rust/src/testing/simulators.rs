@@ -4,11 +4,9 @@
 //! protocol contracts without physical hardware.
 
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
-use sha2::{Digest, Sha256};
 
 use crate::core::error::TransportError;
 use crate::testing::adapters::*;
@@ -145,7 +143,7 @@ impl BleAdapter for FakeBleAdapter {
         let mut count = *self.send_count.read();
         for chunk in data.chunks(self.mtu) {
             count += 1;
-            if self.drop_every_n > 0 && count % self.drop_every_n == 0 {
+            if self.drop_every_n > 0 && count.is_multiple_of(self.drop_every_n) {
                 continue; // Simulate dropped fragment
             }
             self.tx_buffers
@@ -342,7 +340,7 @@ pub struct FountainFrame {
 /// Fountain decoder — reconstructs data from received frames.
 pub struct FountainDecoder {
     total_blocks: usize,
-    block_size: usize,
+    _block_size: usize,
     decoded: Vec<Option<Vec<u8>>>,
     frames_received: u32,
 }
@@ -351,7 +349,7 @@ impl FountainDecoder {
     pub fn new(total_blocks: usize, block_size: usize) -> Self {
         Self {
             total_blocks,
-            block_size,
+            _block_size: block_size,
             decoded: vec![None; total_blocks],
             frames_received: 0,
         }
@@ -452,7 +450,7 @@ impl VideoSource for SyntheticVideoSource {
             return None;
         }
         let pts = self.frame_count * 1_000_000 / self.fps as u64;
-        let is_keyframe = self.frame_count % (self.fps as u64) == 0;
+        let is_keyframe = self.frame_count.is_multiple_of(self.fps as u64);
 
         // Generate deterministic pattern (just frame number bytes)
         let mut data = Vec::with_capacity(self.width as usize * self.height as usize);
@@ -576,6 +574,7 @@ impl CameraAdapter for FakeCameraAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
 
     // ── BLE Simulator Tests ──
 

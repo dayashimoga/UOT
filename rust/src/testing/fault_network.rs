@@ -172,12 +172,11 @@ impl FaultNetwork {
         let mut payload = data;
         if config.corruption_probability > 0.0
             && rng.random::<f64>() < config.corruption_probability
+            && !payload.is_empty()
         {
-            if !payload.is_empty() {
-                let idx = rng.random_range(0..payload.len());
-                payload[idx] ^= 0xFF;
-                self.packets_corrupted.fetch_add(1, Ordering::Relaxed);
-            }
+            let idx = rng.random_range(0..payload.len());
+            payload[idx] ^= 0xFF;
+            self.packets_corrupted.fetch_add(1, Ordering::Relaxed);
         }
 
         // Duplication
@@ -196,9 +195,10 @@ impl FaultNetwork {
                 .flatten()
                 .map(|p| p.len() as u64)
                 .sum::<u64>();
-            let delay_us = (byte_count * 1_000_000) / config.bandwidth_limit;
-            if delay_us > 0 {
-                tokio::time::sleep(std::time::Duration::from_micros(delay_us)).await;
+            if let Some(delay_us) = (byte_count * 1_000_000).checked_div(config.bandwidth_limit) {
+                if delay_us > 0 {
+                    tokio::time::sleep(std::time::Duration::from_micros(delay_us)).await;
+                }
             }
         }
 

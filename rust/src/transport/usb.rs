@@ -4,7 +4,6 @@
 //! Uses a length-prefixed framing protocol over the serial/bulk endpoint.
 
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 use parking_lot::RwLock;
 

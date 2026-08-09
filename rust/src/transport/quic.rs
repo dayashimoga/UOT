@@ -7,7 +7,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::core::error::TransportError;
 use crate::transport::tcp::{Frame, FrameType};
@@ -34,7 +33,15 @@ impl QuicTransport {
             endpoint: RwLock::new(None),
         }
     }
+}
 
+impl Default for QuicTransport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl QuicTransport {
     /// Get transport capabilities.
     pub fn capabilities() -> TransportCapabilities {
         TransportCapabilities {

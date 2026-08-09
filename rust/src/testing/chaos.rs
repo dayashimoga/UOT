@@ -3,8 +3,6 @@
 //! Repeatable CI-ready chaos tests combining fault injection,
 //! transport migration, restart simulation, and integrity verification.
 
-use crate::testing::adapters::TransferSession;
-use crate::testing::fault_network::{FaultConfig, FaultNetwork};
 use crate::testing::virtual_node::{
     run_virtual_transfer, run_virtual_transfer_with_resume, VirtualUotNode,
 };
@@ -23,18 +21,18 @@ pub struct ChaosResult {
 
 /// Run all chaos scenarios and return results.
 pub fn run_all_chaos_tests() -> Vec<ChaosResult> {
-    let mut results = Vec::new();
-    results.push(chaos_clean_transfer());
-    results.push(chaos_multi_file_batch());
-    results.push(chaos_zero_byte_files());
-    results.push(chaos_unicode_filenames());
-    results.push(chaos_checkpoint_resume_50());
-    results.push(chaos_checkpoint_resume_10());
-    results.push(chaos_transport_migration());
-    results.push(chaos_large_file());
-    results.push(chaos_many_small_files());
-    results.push(chaos_duplicate_filenames());
-    results
+    vec![
+        chaos_clean_transfer(),
+        chaos_multi_file_batch(),
+        chaos_zero_byte_files(),
+        chaos_unicode_filenames(),
+        chaos_checkpoint_resume_50(),
+        chaos_checkpoint_resume_10(),
+        chaos_transport_migration(),
+        chaos_large_file(),
+        chaos_many_small_files(),
+        chaos_duplicate_filenames(),
+    ]
 }
 
 fn chaos_clean_transfer() -> ChaosResult {

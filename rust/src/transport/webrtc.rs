@@ -5,13 +5,12 @@
 //! DTLS-SRTP for security. Data channels provide reliable/ordered delivery.
 
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 use parking_lot::RwLock;
 
 use crate::core::error::TransportError;
 use crate::transport::tcp::Frame;
-use crate::transport::types::{TransportCapabilities, TransportState, TransportStats};
+use crate::transport::types::{TransportCapabilities, TransportStats};
 
 /// ICE candidate for NAT traversal.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -61,7 +60,7 @@ pub struct WebRtcTransport {
     /// Incoming data buffer (received frames).
     rx_buffer: RwLock<VecDeque<Frame>>,
     /// Data channel label.
-    channel_label: String,
+    _channel_label: String,
     /// Maximum data channel message size.
     max_message_size: usize,
 }
@@ -77,7 +76,7 @@ impl WebRtcTransport {
             remote_sdp: RwLock::new(None),
             tx_buffer: RwLock::new(VecDeque::new()),
             rx_buffer: RwLock::new(VecDeque::new()),
-            channel_label: "uot-data".to_string(),
+            _channel_label: "uot-data".to_string(),
             max_message_size: 256 * 1024, // 256 KB
         }
     }

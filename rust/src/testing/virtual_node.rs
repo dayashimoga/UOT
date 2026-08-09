@@ -54,9 +54,11 @@ impl VirtualUotNode {
         std::fs::create_dir_all(&storage_dir).ok();
 
         let checkpoint_dir = storage_dir.join("checkpoints");
-        let mut config = AppConfig::default();
-        config.device_name = name.to_string();
-        config.device_id = Uuid::new_v4().to_string();
+        let config = AppConfig {
+            device_name: name.to_string(),
+            device_id: Uuid::new_v4().to_string(),
+            ..Default::default()
+        };
 
         Self {
             node_id: config.device_id.clone(),
@@ -134,8 +136,8 @@ pub fn run_virtual_transfer(
     session.total_bytes = total_size;
     let mut total_chunks = 0u32;
 
-    for (name, data) in &files {
-        let file_chunks = (data.len() + chunk_size - 1) / chunk_size;
+    for (_name, data) in &files {
+        let file_chunks = data.len().div_ceil(chunk_size);
         total_chunks += file_chunks as u32;
     }
     session.total_chunks = total_chunks;
@@ -254,7 +256,7 @@ pub fn run_virtual_transfer_with_resume(
     let total_size: u64 = files.iter().map(|(_, d)| d.len() as u64).sum();
     let mut total_chunks = 0u32;
     for (_, data) in &files {
-        total_chunks += ((data.len() + chunk_size - 1) / chunk_size) as u32;
+        total_chunks += data.len().div_ceil(chunk_size) as u32;
     }
 
     let fail_at_chunk = (total_chunks as f64 * fail_at_percent) as u32;
