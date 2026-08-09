@@ -82,16 +82,21 @@
 - [x] CheckpointStore for persistent resume state (`transfer/checkpoint.rs`)
 - [x] PIN enforcement via `accept_transfer_with_pin()` with TrustManager verification
 - [x] Coverage threshold enforcement (70% gate in CI via tarpaulin)
-- [x] 170 Rust Tests (100% Pass)
+- [x] 170+ Rust Tests (100% Pass)
 
-## Remaining Gaps (Deferred — Platform Limited)
-- [ ] Load/stress testing (>100MB files, thousands of files, concurrent transfers)
-- [ ] Multi-device real-hardware E2E (Android↔Windows, etc.)
+### Sprint 10 — Load Testing, Native Adapters & Multi-Device E2E (Completed ✅)
+- [x] **Load/stress tests** (`rust/tests/load_stress.rs`): 100MB encrypted transfer, 4 concurrent transfers, 50-file batch, encrypted throughput benchmark
+- [x] **Native Android BLE** (`android/.../BleAdapterPlugin.kt`): GATT server, advertising, scanning via BluetoothLeAdvertiser
+- [x] **Native Android Wi-Fi Direct** (`android/.../WifiDirectAdapterPlugin.kt`): WifiP2pManager group creation, peer discovery, connection
+- [x] **Native iOS BLE** (`ios/Runner/BleAdapterPlugin.swift`): CoreBluetooth CBPeripheralManager/CBCentralManager
+- [x] **Flutter BLE adapter** (`lib/src/platform/ble_adapter.dart`): MethodChannel bridge with graceful fallback
+- [x] **Flutter Wi-Fi Direct adapter** (`lib/src/platform/wifi_direct_adapter.dart`): MethodChannel bridge with peer discovery
+- [x] **Flutter Camera QR adapter** (`lib/src/platform/camera_qr_adapter.dart`): MethodChannel bridge to CameraX/AVFoundation
+- [x] **Docker multi-device E2E** (`docker-compose.yml`): 3-node isolated bridge network (sender, receiver, full test runner)
+- [x] Enhanced `Dockerfile` with SSL support and complete test infrastructure
 
-## Future Roadmap (Platform & Hardware Extensions — PLATFORM LIMITED)
-- [ ] Platform-native BLE GATT host adapters (Android NDK / iOS CoreBluetooth) — requires native code
-- [ ] Platform-native Wi-Fi Direct P2P Group Owner (WifiP2pManager) — requires Android native
-- [ ] Camera QR code optical scanner with native camera access — requires mobile_scanner plugin
-- [ ] Hardware H.264/AAC media codec pipeline for live streaming — requires platform encoder APIs
-- [ ] Hotspot creation via native API — requires platform-specific implementation
-
+## Remaining Gaps (Deferred)
+- [ ] iOS Multipeer Connectivity native adapter (requires Xcode/macOS build)
+- [ ] Hardware H.264/AAC codec pipeline (requires MediaCodec/VideoToolbox native integration)
+- [ ] Real multi-device cross-platform E2E (requires physical Android + iOS + Windows devices)
+- [ ] Hotspot creation via native API (requires platform-specific NetworkManager/WifiManager)
