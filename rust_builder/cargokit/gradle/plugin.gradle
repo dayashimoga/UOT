@@ -1,8 +1,10 @@
 /// This is copied from Cargokit (which is the official way to use it currently)
 /// Details: https://fzyzcjy.github.io/flutter_rust_bridge/manual/integrate/builtin
 
+import javax.inject.Inject
 import java.nio.file.Paths
 import org.apache.tools.ant.taskdefs.condition.Os
+import org.gradle.process.ExecOperations
 
 CargoKitPlugin.file = buildscript.sourceFile
 
@@ -14,6 +16,9 @@ class CargoKitExtension {
 }
 
 abstract class CargoKitBuildTask extends DefaultTask {
+
+    @Inject
+    abstract ExecOperations getExecOperations()
 
     @Input
     String buildMode
@@ -59,13 +64,25 @@ abstract class CargoKitBuildTask extends DefaultTask {
 
         def rootProjectDir = project.rootProject.projectDir
 
+        def runExec = { Closure closure ->
+            try {
+                getExecOperations().exec(closure)
+            } catch (Throwable t1) {
+                try {
+                    project.services.get(ExecOperations.class).exec(closure)
+                } catch (Throwable t2) {
+                    project.exec(closure)
+                }
+            }
+        }
+
         if (!Os.isFamily(Os.FAMILY_WINDOWS)) {
-            project.exec { spec ->
+            runExec { spec ->
                 spec.commandLine('chmod', '+x', path)
             }
         }
 
-        project.exec { spec ->
+        runExec { spec ->
             spec.executable(path)
             spec.args("build-gradle")
             spec.environment("CARGOKIT_ROOT_PROJECT_DIR", rootProjectDir)
