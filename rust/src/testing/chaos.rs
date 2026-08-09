@@ -242,6 +242,7 @@ fn chaos_duplicate_filenames() -> ChaosResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::fault_network::{FaultConfig, FaultNetwork};
 
     #[test]
     fn test_all_chaos_scenarios_pass() {
