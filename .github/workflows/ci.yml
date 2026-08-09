@@ -52,17 +52,17 @@ jobs:
         run: |
           mkdir -p rust/target/coverage
           cargo install cargo-tarpaulin --quiet
-          cargo tarpaulin --manifest-path rust/Cargo.toml --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*load_stress*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
+          cargo tarpaulin --manifest-path rust/Cargo.toml --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*frb_generated*" --exclude-files "*load_stress*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
 
 
-      - name: Check coverage threshold (>= 70%)
+      - name: Check coverage threshold (>= 90%)
         run: |
           COVERAGE=$(grep -oP '\d+\.\d+% coverage' rust/target/coverage/tarpaulin.log | head -1 | grep -oP '\d+\.\d+')
           echo "Coverage: ${COVERAGE}%"
           if [ -z "$COVERAGE" ]; then
             echo "::warning::Could not parse coverage percentage"
-          elif (( $(echo "$COVERAGE < 70.0" | bc -l) )); then
-            echo "::error::Coverage ${COVERAGE}% is below 70% threshold"
+          elif (( $(echo "$COVERAGE < 90.0" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below 90% threshold"
             exit 1
           else
             echo "✅ Coverage ${COVERAGE}% meets threshold"

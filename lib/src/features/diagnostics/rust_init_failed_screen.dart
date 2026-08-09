@@ -81,7 +81,7 @@ class RustInitFailedScreen extends StatelessWidget {
                 const SizedBox(height: 24),
                 // Error details card
                 Card(
-                  color: colorScheme.errorContainer.withValues(alpha: 0.3),
+                  color: colorScheme.errorContainer.withOpacity(0.3),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
