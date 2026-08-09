@@ -25,10 +25,10 @@ class QrScanResult {
   String get rawData => data;
 
   factory QrScanResult.fromJson(Map<String, dynamic> json) => QrScanResult(
-    data: json['data'] as String? ?? json['rawData'] as String? ?? '',
-    format: json['format'] as String? ?? 'QR_CODE',
-    scannedAt: DateTime.now(),
-  );
+        data: json['data'] as String? ?? json['rawData'] as String? ?? '',
+        format: json['format'] as String? ?? 'QR_CODE',
+        scannedAt: DateTime.now(),
+      );
 }
 
 /// Camera permission state.

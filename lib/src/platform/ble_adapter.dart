@@ -38,11 +38,11 @@ class BleAdvertisementPayload {
   });
 
   Map<String, dynamic> toJson() => {
-    'device_name': deviceName,
-    'device_hash': deviceHash,
-    'wifi_ip': wifiIp,
-    'port': port,
-  };
+        'device_name': deviceName,
+        'device_hash': deviceHash,
+        'wifi_ip': wifiIp,
+        'port': port,
+      };
 
   factory BleAdvertisementPayload.fromJson(Map<String, dynamic> json) =>
       BleAdvertisementPayload(

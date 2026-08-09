@@ -47,8 +47,8 @@ class _AppRouterState extends State<AppRouter> {
       NavDestination.stream => const StreamScreen(),
       NavDestination.devices => const DevicesScreen(),
       NavDestination.settings => SettingsScreen(
-        onToggleTheme: widget.onToggleTheme,
-      ),
+          onToggleTheme: widget.onToggleTheme,
+        ),
     };
   }
 

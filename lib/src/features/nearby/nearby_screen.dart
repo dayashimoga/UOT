@@ -33,8 +33,7 @@ class DeviceInfo {
       deviceName: json['device_name'] ?? 'Unknown',
       deviceType: json['device_type'] ?? 'Unknown',
       address: json['address'],
-      capabilities:
-          (json['capabilities'] as List<dynamic>?)
+      capabilities: (json['capabilities'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
@@ -294,8 +293,8 @@ class _EngineStatusCard extends StatelessWidget {
                       Text(
                         isRunning
                             ? (isScanning
-                                  ? 'Scanning for devices…'
-                                  : 'Discovery paused')
+                                ? 'Scanning for devices…'
+                                : 'Discovery paused')
                             : 'Engine starting…',
                         style: theme.textTheme.titleMedium,
                       ),
@@ -379,9 +378,8 @@ class _ScanningIndicator extends StatelessWidget {
                   Icons.radar_rounded,
                   size: 64,
                   color: colorScheme.primary.withValues(
-                    alpha: isScanning
-                        ? 0.3 + (pulseController.value * 0.7)
-                        : 0.3,
+                    alpha:
+                        isScanning ? 0.3 + (pulseController.value * 0.7) : 0.3,
                   ),
                 ),
               ],

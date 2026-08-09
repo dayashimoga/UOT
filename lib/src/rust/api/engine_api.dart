@@ -32,37 +32,34 @@ String engineGetTransfers() =>
 Future<String> engineSendFiles({
   required String deviceId,
   required List<String> filePaths,
-}) => RustLib.instance.api.crateApiEngineApiEngineSendFiles(
-  deviceId: deviceId,
-  filePaths: filePaths,
-);
+}) =>
+    RustLib.instance.api.crateApiEngineApiEngineSendFiles(
+      deviceId: deviceId,
+      filePaths: filePaths,
+    );
 
 /// Stop the engine.
 Future<void> engineStop() => RustLib.instance.api.crateApiEngineApiEngineStop();
 
 /// Pause a transfer.
-Future<String> enginePauseTransfer({required String transferId}) => RustLib
-    .instance
-    .api
-    .crateApiEngineApiEnginePauseTransfer(transferId: transferId);
+Future<String> enginePauseTransfer({required String transferId}) =>
+    RustLib.instance.api
+        .crateApiEngineApiEnginePauseTransfer(transferId: transferId);
 
 /// Resume a transfer.
-Future<String> engineResumeTransfer({required String transferId}) => RustLib
-    .instance
-    .api
-    .crateApiEngineApiEngineResumeTransfer(transferId: transferId);
+Future<String> engineResumeTransfer({required String transferId}) =>
+    RustLib.instance.api
+        .crateApiEngineApiEngineResumeTransfer(transferId: transferId);
 
 /// Cancel a transfer.
-Future<String> engineCancelTransfer({required String transferId}) => RustLib
-    .instance
-    .api
-    .crateApiEngineApiEngineCancelTransfer(transferId: transferId);
+Future<String> engineCancelTransfer({required String transferId}) =>
+    RustLib.instance.api
+        .crateApiEngineApiEngineCancelTransfer(transferId: transferId);
 
 /// Accept an incoming transfer.
-Future<String> engineAcceptTransfer({required String transferId}) => RustLib
-    .instance
-    .api
-    .crateApiEngineApiEngineAcceptTransfer(transferId: transferId);
+Future<String> engineAcceptTransfer({required String transferId}) =>
+    RustLib.instance.api
+        .crateApiEngineApiEngineAcceptTransfer(transferId: transferId);
 
 /// Get transfer progress as JSON.
 String engineGetProgress({required String transferId}) => RustLib.instance.api
@@ -76,10 +73,11 @@ Future<String> engineSetDeviceName({required String name}) =>
 Future<String> engineSendClipboard({
   required String deviceId,
   required String text,
-}) => RustLib.instance.api.crateApiEngineApiEngineSendClipboard(
-  deviceId: deviceId,
-  text: text,
-);
+}) =>
+    RustLib.instance.api.crateApiEngineApiEngineSendClipboard(
+      deviceId: deviceId,
+      text: text,
+    );
 
 /// Get event log (latest N events as JSON).
 String engineGetEvents({required int limit}) =>

@@ -40,13 +40,13 @@ class WifiDirectGroupInfo {
   });
 
   Map<String, dynamic> toJson() => {
-    'ssid': ssid,
-    'passphrase': passphrase,
-    'frequency_mhz': frequencyMhz,
-    'group_owner_ip': groupOwnerIp,
-    'port': port,
-    'is_group_owner': isGroupOwner,
-  };
+        'ssid': ssid,
+        'passphrase': passphrase,
+        'frequency_mhz': frequencyMhz,
+        'group_owner_ip': groupOwnerIp,
+        'port': port,
+        'is_group_owner': isGroupOwner,
+      };
 
   factory WifiDirectGroupInfo.fromJson(Map<String, dynamic> json) =>
       WifiDirectGroupInfo(
@@ -74,11 +74,11 @@ class WifiDirectPeer {
   });
 
   factory WifiDirectPeer.fromJson(Map<String, dynamic> json) => WifiDirectPeer(
-    deviceId: json['device_id'] as String,
-    deviceName: json['device_name'] as String? ?? 'Unknown',
-    deviceAddress: json['device_address'] as String,
-    isGroupOwner: json['is_group_owner'] as bool? ?? false,
-  );
+        deviceId: json['device_id'] as String,
+        deviceName: json['device_name'] as String? ?? 'Unknown',
+        deviceAddress: json['device_address'] as String,
+        isGroupOwner: json['is_group_owner'] as bool? ?? false,
+      );
 }
 
 /// Production Wi-Fi Direct adapter with native platform channel bridge.
