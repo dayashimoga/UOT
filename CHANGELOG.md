@@ -15,7 +15,12 @@ This file is **append-only** — history is never overwritten.
 
 #### Bug Fixes (P0)
 - **Consent gating frame-loss**: Fixed bug where first `FileStart` frame after UI acceptance was consumed but not processed. Frame is now manually re-dispatched to the correct handler.
-- **Android Gradle 8 & Android API 36 APK build failure**: Fixed cargokit Gradle 8 incompatibility in `rust_builder/cargokit/gradle/plugin.gradle` by injecting `@Inject abstract ExecOperations getExecOperations()` into `CargoKitBuildTask`. Set `compileSdk = 36` in `android/app/build.gradle.kts` and forced `compileSdkVersion(36)` across subprojects in `android/build.gradle.kts` to satisfy `:file_picker` & `:flutter_plugin_android_lifecycle` AAR metadata requirements during `flutter build apk --release`.
+- **Android APK Release Build Failure (Gradle 8, API 36, Groovy XML)**:
+  - Fixed `Cannot run Project.afterEvaluate(Action) when project is already evaluated` in `android/build.gradle.kts` by using `plugins.withId("com.android.library")` and `plugins.withId("com.android.application")` for setting `compileSdkVersion(36)`.
+  - Added `org.codehaus.groovy:groovy-xml:3.0.19` to `buildscript.dependencies` in `android/build.gradle.kts` to resolve `groovy.xml.QName` missing class error.
+  - Corrected `pubspec.yaml` SDK constraints (`>=3.0.0 <4.0.0`) and `flutter_lints` (`^5.0.0`).
+  - Injected `@Inject abstract ExecOperations getExecOperations()` into cargokit `CargoKitBuildTask` for Gradle 8 compatibility.
+  - **Verified locally via Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `✓ Built build/app/outputs/flutter-apk/app-release.apk (44.2MB)`.
 - **Dart Format CI Validation**: Formatted `lib/src/platform/ble_adapter.dart`, `lib/src/platform/camera_qr_adapter.dart`, and `lib/src/platform/wifi_direct_adapter.dart` using standard `dart format`, resolving `dart format --set-exit-if-changed .` CI check failure.
 - **Flutter Analyze & Test Compatibility**: Fixed missing getters (`scanStream`, `scanResults`, `rawData`), `handleScannedFrame()` method, non-null `WifiDirectGroupInfo` return type, and added `TestWidgetsFlutterBinding.ensureInitialized()` to `test/platform_adapters_test.dart`. Verified `flutter analyze` (**0 issues**) and `flutter test` (**14/14 tests pass**).
 
