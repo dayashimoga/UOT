@@ -41,13 +41,13 @@ class WifiDirectGroupInfo {
   });
 
   Map<String, dynamic> toJson() => {
-        'ssid': ssid,
-        'passphrase': passphrase,
-        'frequency_mhz': frequencyMhz,
-        'group_owner_ip': groupOwnerIp,
-        'port': port,
-        'is_group_owner': isGroupOwner,
-      };
+    'ssid': ssid,
+    'passphrase': passphrase,
+    'frequency_mhz': frequencyMhz,
+    'group_owner_ip': groupOwnerIp,
+    'port': port,
+    'is_group_owner': isGroupOwner,
+  };
 
   factory WifiDirectGroupInfo.fromJson(Map<String, dynamic> json) =>
       WifiDirectGroupInfo(
@@ -74,23 +74,25 @@ class WifiDirectPeer {
     this.isGroupOwner = false,
   });
 
-  factory WifiDirectPeer.fromJson(Map<String, dynamic> json) =>
-      WifiDirectPeer(
-        deviceId: json['device_id'] as String,
-        deviceName: json['device_name'] as String? ?? 'Unknown',
-        deviceAddress: json['device_address'] as String,
-        isGroupOwner: json['is_group_owner'] as bool? ?? false,
-      );
+  factory WifiDirectPeer.fromJson(Map<String, dynamic> json) => WifiDirectPeer(
+    deviceId: json['device_id'] as String,
+    deviceName: json['device_name'] as String? ?? 'Unknown',
+    deviceAddress: json['device_address'] as String,
+    isGroupOwner: json['is_group_owner'] as bool? ?? false,
+  );
 }
 
 /// Production Wi-Fi Direct adapter with native platform channel bridge.
 class WifiDirectAdapter {
-  static const MethodChannel _channel =
-      MethodChannel('com.uot.wifidirect/adapter');
-  static const EventChannel _stateChannel =
-      EventChannel('com.uot.wifidirect/state_stream');
-  static const EventChannel _peerChannel =
-      EventChannel('com.uot.wifidirect/peer_stream');
+  static const MethodChannel _channel = MethodChannel(
+    'com.uot.wifidirect/adapter',
+  );
+  static const EventChannel _stateChannel = EventChannel(
+    'com.uot.wifidirect/state_stream',
+  );
+  static const EventChannel _peerChannel = EventChannel(
+    'com.uot.wifidirect/peer_stream',
+  );
 
   final _stateController = StreamController<WifiDirectGroupState>.broadcast();
   final _peerController = StreamController<WifiDirectPeer>.broadcast();
@@ -114,14 +116,11 @@ class WifiDirectAdapter {
         return false;
       }
 
-      final result =
-          await _channel.invokeMethod<Map>('initialize');
+      final result = await _channel.invokeMethod<Map>('initialize');
       _isSupported = result?['supported'] == true;
 
       if (_isSupported) {
-        _stateChannel
-            .receiveBroadcastStream()
-            .listen(_handleNativeStateChange);
+        _stateChannel.receiveBroadcastStream().listen(_handleNativeStateChange);
       }
 
       debugPrint('[WifiDirect] Initialized: supported=$_isSupported');
@@ -152,7 +151,8 @@ class WifiDirectAdapter {
 
       if (result != null) {
         _activeGroup = WifiDirectGroupInfo.fromJson(
-            Map<String, dynamic>.from(result));
+          Map<String, dynamic>.from(result),
+        );
         _currentState = WifiDirectGroupState.groupCreated;
         _stateController.add(_currentState);
         return _activeGroup;
@@ -167,8 +167,9 @@ class WifiDirectAdapter {
   }
 
   /// Discover nearby Wi-Fi Direct peers.
-  Future<bool> discoverPeers(
-      {Duration timeout = const Duration(seconds: 15)}) async {
+  Future<bool> discoverPeers({
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
     if (!_isSupported) return false;
     try {
       _currentState = WifiDirectGroupState.discoveringPeers;
@@ -180,8 +181,9 @@ class WifiDirectAdapter {
 
       _peerChannel.receiveBroadcastStream().listen((event) {
         if (event is Map) {
-          final peer =
-              WifiDirectPeer.fromJson(Map<String, dynamic>.from(event));
+          final peer = WifiDirectPeer.fromJson(
+            Map<String, dynamic>.from(event),
+          );
           _peerController.add(peer);
         }
       });

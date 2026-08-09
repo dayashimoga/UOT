@@ -38,11 +38,11 @@ class BleAdvertisementPayload {
   });
 
   Map<String, dynamic> toJson() => {
-        'device_name': deviceName,
-        'device_hash': deviceHash,
-        'wifi_ip': wifiIp,
-        'port': port,
-      };
+    'device_name': deviceName,
+    'device_hash': deviceHash,
+    'wifi_ip': wifiIp,
+    'port': port,
+  };
 
   factory BleAdvertisementPayload.fromJson(Map<String, dynamic> json) =>
       BleAdvertisementPayload(
@@ -71,7 +71,8 @@ class BleDiscoveredDevice {
     BleAdvertisementPayload? payload;
     if (json['payload'] != null) {
       payload = BleAdvertisementPayload.fromJson(
-          json['payload'] as Map<String, dynamic>);
+        json['payload'] as Map<String, dynamic>,
+      );
     }
     return BleDiscoveredDevice(
       id: json['id'] as String,
@@ -89,10 +90,12 @@ class BleGattAdapter {
   static const String charDataUuid = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E';
 
   static const MethodChannel _channel = MethodChannel('com.uot.ble/adapter');
-  static const EventChannel _stateChannel =
-      EventChannel('com.uot.ble/state_stream');
-  static const EventChannel _scanChannel =
-      EventChannel('com.uot.ble/scan_stream');
+  static const EventChannel _stateChannel = EventChannel(
+    'com.uot.ble/state_stream',
+  );
+  static const EventChannel _scanChannel = EventChannel(
+    'com.uot.ble/scan_stream',
+  );
 
   final _stateController = StreamController<BleState>.broadcast();
   final _discoveredController =
@@ -130,9 +133,7 @@ class BleGattAdapter {
         _stateController.add(_currentState);
 
         // Listen for native state changes
-        _stateChannel
-            .receiveBroadcastStream()
-            .listen(_handleNativeStateChange);
+        _stateChannel.receiveBroadcastStream().listen(_handleNativeStateChange);
       } else {
         _currentState = BleState.unsupported;
         _stateController.add(_currentState);
@@ -185,7 +186,9 @@ class BleGattAdapter {
   }
 
   /// Start scanning for nearby UOT BLE devices.
-  Future<bool> startScanning({Duration timeout = const Duration(seconds: 10)}) async {
+  Future<bool> startScanning({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
     if (!_isSupported) return false;
     try {
       _currentState = BleState.scanning;
@@ -199,7 +202,8 @@ class BleGattAdapter {
       _scanChannel.receiveBroadcastStream().listen((event) {
         if (event is Map) {
           final device = BleDiscoveredDevice.fromJson(
-              Map<String, dynamic>.from(event));
+            Map<String, dynamic>.from(event),
+          );
           _discoveredController.add(device);
         }
       });

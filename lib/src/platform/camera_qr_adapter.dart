@@ -24,26 +24,23 @@ class QrScanResult {
   });
 
   factory QrScanResult.fromJson(Map<String, dynamic> json) => QrScanResult(
-        data: json['data'] as String,
-        format: json['format'] as String? ?? 'QR_CODE',
-        scannedAt: DateTime.now(),
-      );
+    data: json['data'] as String,
+    format: json['format'] as String? ?? 'QR_CODE',
+    scannedAt: DateTime.now(),
+  );
 }
 
 /// Camera permission state.
-enum CameraPermissionState {
-  unknown,
-  granted,
-  denied,
-  restricted,
-}
+enum CameraPermissionState { unknown, granted, denied, restricted }
 
 /// Camera QR scanner adapter with native platform bridge.
 class CameraQrAdapter {
-  static const MethodChannel _channel =
-      MethodChannel('com.uot.camera/qr_scanner');
-  static const EventChannel _scanStream =
-      EventChannel('com.uot.camera/qr_stream');
+  static const MethodChannel _channel = MethodChannel(
+    'com.uot.camera/qr_scanner',
+  );
+  static const EventChannel _scanStream = EventChannel(
+    'com.uot.camera/qr_stream',
+  );
 
   final _resultController = StreamController<QrScanResult>.broadcast();
   bool _isSupported = false;
@@ -79,8 +76,7 @@ class CameraQrAdapter {
   Future<CameraPermissionState> requestPermission() async {
     if (!_isSupported) return CameraPermissionState.denied;
     try {
-      final result =
-          await _channel.invokeMethod<String>('requestPermission');
+      final result = await _channel.invokeMethod<String>('requestPermission');
       switch (result) {
         case 'granted':
           return CameraPermissionState.granted;
@@ -108,7 +104,8 @@ class CameraQrAdapter {
           (event) {
             if (event is Map) {
               final qr = QrScanResult.fromJson(
-                  Map<String, dynamic>.from(event));
+                Map<String, dynamic>.from(event),
+              );
               _resultController.add(qr);
             }
           },
