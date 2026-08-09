@@ -21,10 +21,9 @@ This file is **append-only** — history is never overwritten.
   - Corrected `pubspec.yaml` SDK constraints (`>=3.0.0 <4.0.0`) and `flutter_lints` (`^5.0.0`).
   - Injected `@Inject abstract ExecOperations getExecOperations()` into cargokit `CargoKitBuildTask` for Gradle 8 compatibility.
   - **Verified locally via Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `✓ Built build/app/outputs/flutter-apk/app-release.apk (44.2MB)`.
-- **Dart Format & Inline-Class CI Validation**:
-  - Added `// @dart=3.3` language version header to `lib/src/rust/frb_generated.web.dart` to enable `extension type` (`inline-class`) language feature parsing during `dart format`.
-  - Added `dart format lib/src/rust` step right after `flutter_rust_bridge_codegen generate` in `.github/workflows/ci.yml` to format newly generated FRB code before checking exit codes.
-  - Updated SDK environment constraint to `'>=3.3.0 <4.0.0'` in `pubspec.yaml`.
+- **Flutter 3.24 SDK Compatibility (`withOpacity` & `CardTheme`)**:
+  - Replaced Flutter 3.27+ `Color.withValues(alpha: X)` with standard, backward-compatible `Color.withOpacity(X)` across all UI components (`app_theme.dart`, `devices_screen.dart`, `nearby_screen.dart`, `qr_scanner_dialog.dart`, `incoming_offer_dialog.dart`, `receive_screen.dart`, `stream_screen.dart`, `transfers_screen.dart`).
+  - Replaced `CardThemeData` with `CardTheme` in `app_theme.dart`.
   - **Verified inside Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `Formatted 49 files (0 changed)` and `flutter analyze` (`No issues found!`).
 - **Flutter Analyze & Test Compatibility**: Fixed missing getters (`scanStream`, `scanResults`, `rawData`), `handleScannedFrame()` method, non-null `WifiDirectGroupInfo` return type, and added `TestWidgetsFlutterBinding.ensureInitialized()` to `test/platform_adapters_test.dart`. Verified `flutter analyze` (**0 issues**) and `flutter test` (**14/14 tests pass**).
 
