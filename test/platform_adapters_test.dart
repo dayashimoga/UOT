@@ -8,6 +8,8 @@ import 'package:uot_app/src/platform/camera_qr_adapter.dart';
 import 'package:uot_app/src/platform/wifi_direct_adapter.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('BleGattAdapter', () {
     test('initializes and advertises payload', () async {
       final adapter = BleGattAdapter();
