@@ -8,8 +8,11 @@ pub mod ble;
 pub mod connection_manager;
 pub mod fallback;
 pub mod hotspot;
+pub mod quic;
 pub mod tcp;
 pub mod types;
+pub mod usb;
+pub mod webrtc;
 pub mod wifidirect;
 
 use crate::core::error::TransportError;

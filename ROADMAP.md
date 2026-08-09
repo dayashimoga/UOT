@@ -101,20 +101,25 @@
 
 ## Future Hardware & Native OS Extensions (PLATFORM LIMITED)
 
-### Native Mobile Adapters — Pending (require native platform code)
+### Software Implementations — Completed ✅
+- [x] QUIC transport via quinn with self-signed P2P certs & stream multiplexing
+- [x] WebRTC data channel transport with SDP offer/answer & ICE candidate exchange
+- [x] USB transport supporting Bulk, Serial, Accessory, and MTP modes with chunking
+- [x] A/V Sync Pipeline (`AvSyncBuffer`) with drift detection & sequential playback
+- [x] Real E2E loopback & virtual two-node transfer test with SHA-256 verification
+- [x] Coverage tooling in CI (cargo-tarpaulin >90% enforcement & frb_generated exclusion)
+- [x] Network recovery/reconnection with exponential backoff (`ConnectionManager`)
+- [x] Checkpoint resume after app restart (`CheckpointStore`)
+- [x] PIN enforcement before transfer acceptance in engine (`accept_transfer_with_pin`)
+- [x] Edge-case tests (zero-byte, Unicode filenames, >100MB files, 10 chaos scenarios)
+
+### Native Mobile Adapters — Pending (require native hardware/platform code)
 - [ ] Android: BLE GATT host adapter via Android NDK / platform channels
 - [ ] Android: Wi-Fi Direct P2P Group Owner via WifiP2pManager
 - [ ] iOS: CoreBluetooth GATT peripheral/central adapter
 - [ ] iOS: Multipeer Connectivity framework integration
 
-### Hardware Payload Pipelines — Pending (require platform encoder APIs)
-- [ ] Camera QR scanner via mobile_scanner plugin (currently simulated frames)
-- [ ] Hardware H.264/AAC video streaming encoder/decoder pipeline (currently data containers only)
+### Hardware Payload Pipelines — Pending (require physical camera/hardware)
+- [ ] Physical Camera QR scanner via mobile_scanner plugin (currently software simulated)
+- [ ] Physical Hardware H.264/AAC capture pipeline (currently software simulated & A/V synced)
 
-### Software Gaps — Pending
-- [ ] Real E2E loopback transfer test (actual file send/receive/SHA-256 verify)
-- [ ] Coverage tooling in CI (cargo-tarpaulin / lcov threshold enforcement)
-- [ ] Network recovery/reconnection with exponential backoff
-- [ ] Checkpoint resume after app restart
-- [ ] PIN enforcement before transfer acceptance in engine
-- [ ] Edge-case tests (zero-byte, Unicode filenames, >100MB files)

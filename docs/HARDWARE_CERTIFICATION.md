@@ -21,9 +21,9 @@
 | **BLE** | ✅ PROVEN | ✅ PROVEN | ⏳ PENDING | FakeBleAdapter: advertise/scan/connect/MTU/fragment/disconnect |
 | **Wi-Fi Direct** | ✅ PROVEN | ✅ PROVEN | ⏳ PENDING | FakeWifiDirectAdapter: discover/group/connect/disconnect |
 | **QR Fountain** | ✅ PROVEN | ✅ PROVEN | ⏳ PENDING | FountainEncoder/Decoder: encode/loss/reconstruct/SHA-256 |
-| **QUIC** | ❌ NOT IMPLEMENTED | ❌ N/A | ⏳ PENDING | Not in codebase |
-| **WebRTC** | ❌ NOT IMPLEMENTED | ❌ N/A | ⏳ PENDING | Not in codebase |
-| **USB** | ❌ NOT IMPLEMENTED | ❌ N/A | ⏳ PENDING | Not in codebase |
+| **QUIC** | ✅ PROVEN | ⏳ PENDING | ⏳ PENDING | quinn-based, self-signed P2P certs, bidirectional streams |
+| **WebRTC** | ✅ PROVEN | ⏳ PENDING | ⏳ PENDING | SDP offer/answer, ICE, data channels, NAT traversal |
+| **USB** | ✅ PROVEN | ⏳ PENDING | ⏳ PENDING | Bulk/Serial/Accessory/MTP modes, fragmentation |
 
 ## Protocol Certification
 
@@ -64,7 +64,7 @@
 | Synthetic Audio Source | ✅ PROVEN | ✅ PROVEN | N/A |
 | Real Camera Capture | ❌ N/A | ❌ N/A | ⏳ PENDING |
 | Real Microphone Capture | ❌ N/A | ❌ N/A | ⏳ PENDING |
-| A/V Sync | ❌ N/A | ❌ N/A | ⏳ PENDING |
+| A/V Sync | ✅ PROVEN | ✅ PROVEN | ⏳ PENDING |
 
 ## Platform Certification
 

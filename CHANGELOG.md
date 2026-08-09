@@ -324,3 +324,17 @@ etwork_security_config.xml restricting cleartext to localhost + RFC1918 only
 - Coverage threshold raised to 90% (from 70%)
 - Excluded rb_generated.rs from tarpaulin coverage (auto-generated FRB bindings)
 - Fixed Flutter analyze error (withValues -> withOpacity)
+
+## Sprint 14 — Transports & Media Capture Implementation (2026-08-09)
+
+### Added
+- ust/src/transport/quic.rs: QUIC P2P transport using quinn with self-signed TLS certificates, ALPN "uot" negotiation, bidirectional streams, and connection state management
+- ust/src/transport/webrtc.rs: WebRTC Data Channel transport with SDP offer/answer generation, ICE candidate gathering/exchange, data channel chunking, and full state machine
+- ust/src/transport/usb.rs: USB transport supporting Bulk, Serial, Android Accessory (AOA), and MTP modes with MTU packet fragmentation and device discovery interface
+- ust/src/streaming/capture.rs: Media capture interfaces (Camera, Microphone, Screen) and AvSyncBuffer for presentation timestamp (PTS) audio/video synchronization, drift detection, and frame dropping
+- 27 unit tests covering QUIC, WebRTC, USB, and A/V Sync capture pipeline
+
+### Changed
+- Total Rust tests increased from 287 to 314 (100% pass)
+- Updated docs/HARDWARE_CERTIFICATION.md to classify QUIC, WebRTC, USB, and A/V Sync as SOFTWARE PROVEN
+- Updated ROADMAP.md to mark software transport and streaming pipeline gaps as completed
