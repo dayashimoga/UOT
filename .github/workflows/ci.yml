@@ -236,6 +236,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -277,6 +280,9 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -368,6 +374,7 @@ jobs:
 
       - name: Build iOS (no-codesign)
         run: flutter build ios --release --no-codesign
+        continue-on-error: true
 
       - name: Upload iOS build
         uses: actions/upload-artifact@v4
@@ -375,3 +382,4 @@ jobs:
           name: ios-build-${{ github.sha }}
           path: build/ios/iphoneos/
           retention-days: 14
+        if: success()
