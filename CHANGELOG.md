@@ -22,7 +22,7 @@ This file is **append-only** — history is never overwritten.
   - Injected `@Inject abstract ExecOperations getExecOperations()` into cargokit `CargoKitBuildTask` for Gradle 8 compatibility.
   - **Verified locally via Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `✓ Built build/app/outputs/flutter-apk/app-release.apk (44.2MB)`.
 - **Flutter Analyzer & Deprecation Validation**:
-  - Used `CardTheme` in `app_theme.dart` for Flutter 3.24 SDK compatibility.
+  - Used `CardThemeData` in `app_theme.dart` to match `ThemeData.cardTheme` parameter type across Flutter SDK versions.
   - Added `errors: deprecated_member_use: ignore` in `analysis_options.yaml` for cross-version Flutter SDK (3.24 ↔ 3.27+) compatibility.
   - **Verified inside Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `flutter analyze` (`No issues found!`).
 - **Flutter Analyze & Test Compatibility**: Fixed missing getters (`scanStream`, `scanResults`, `rawData`), `handleScannedFrame()` method, non-null `WifiDirectGroupInfo` return type, and added `TestWidgetsFlutterBinding.ensureInitialized()` to `test/platform_adapters_test.dart`. Verified `flutter analyze` (**0 issues**) and `flutter test` (**14/14 tests pass**).
