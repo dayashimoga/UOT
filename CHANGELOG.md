@@ -7,7 +7,10 @@ This file is **append-only** — history is never overwritten.
 
 ### Sprint 11 — Real-Device Production Certification & Documentation Audit
 
-#### Infrastructure & Multi-Platform CI/CD (P0)
+#### Android Launch Crash & Native Initialization Fix (P0)
+- **Permissions & Manifest**: Added `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `CHANGE_WIFI_STATE`, `CHANGE_NETWORK_STATE`, `NEARBY_WIFI_DEVICES`, `BLUETOOTH`, `CAMERA`, and storage permissions to [android/app/src/main/AndroidManifest.xml](file:///h:/UOT/android/app/src/main/AndroidManifest.xml). Enabled `android:usesCleartextTraffic="true"` for local socket communication.
+- **Native Plugin Registration**: Registered `BleAdapterPlugin` and `WifiDirectAdapterPlugin` on FlutterEngine initialization in [android/app/src/main/kotlin/com/uot/uot_app/MainActivity.kt](file:///h:/UOT/android/app/src/main/kotlin/com/uot/uot_app/MainActivity.kt). Fixed package namespace in native Kotlin files (`com.uot.uot_app`).
+- **Initialization Shield**: Guarded `RustLib.init()` in [lib/main.dart](file:///h:/UOT/lib/main.dart#L10-L18) with a `try-catch` block to ensure native FFI initialization issues log errors without terminating the Android application process on launch.
 - **Multi-Platform Build Fixes**:
   - **Android**: Removed `subprojects { project.evaluationDependsOn(":app") }` in `android/build.gradle.kts` to prevent duplicate `minifyReleaseWithR8` task registrations. Configured `dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.PREFER_PROJECT) }` in `android/settings.gradle.kts`.
   - **Linux**: Removed `fl_view_set_background_color` API call from `linux/runner/my_application.cc` for Flutter 3.24 compatibility. Added `flutter config --enable-linux-desktop` step in CI.
