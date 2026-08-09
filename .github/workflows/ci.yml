@@ -50,8 +50,9 @@ jobs:
 
       - name: Install and run coverage (tarpaulin)
         run: |
+          mkdir -p rust/target/coverage
           cargo install cargo-tarpaulin --quiet
-          cargo tarpaulin --manifest-path rust/Cargo.toml --out xml --out stdout --output-dir rust/target/coverage --skip-clean -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
+          cargo tarpaulin --manifest-path rust/Cargo.toml --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*load_stress*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
         continue-on-error: true
 
       - name: Check coverage threshold (>= 70%)
