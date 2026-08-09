@@ -303,3 +303,8 @@ etwork_security_config.xml restricting cleartext to localhost + RFC1918 only
 - docs/TRANSPORT_MATRIX.md: Honest transport implementation status (TCP=COMPLETE, BLE/Wi-Fi Direct/QUIC/WebRTC=NOT IMPLEMENTED)
 - lib/src/features/diagnostics/rust_init_failed_screen.dart: Engine init failure diagnostic screen
 - ndroid/app/src/main/res/xml/network_security_config.xml: LAN-only cleartext policy
+
+### Added (Sprint 12 continued)
+- ust/tests/security_tests.rs: 19 new tests — malformed JSON, hostile path traversal, crypto byte-tampering, truncated ciphertext, Unicode filenames, zero-byte files, frame type injection, checkpoint save/load/remove roundtrip, checkpoint list_incomplete
+- docs/IMPLEMENTATION.md: Complete module status with honest assessment
+- docs/PERFORMANCE.md: Actual benchmark numbers (100MB=228Mbps, encrypted throughput=267Mbps)
