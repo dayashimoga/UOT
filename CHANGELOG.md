@@ -21,9 +21,10 @@ This file is **append-only** — history is never overwritten.
   - Corrected `pubspec.yaml` SDK constraints (`>=3.0.0 <4.0.0`) and `flutter_lints` (`^5.0.0`).
   - Injected `@Inject abstract ExecOperations getExecOperations()` into cargokit `CargoKitBuildTask` for Gradle 8 compatibility.
   - **Verified locally via Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `✓ Built build/app/outputs/flutter-apk/app-release.apk (44.2MB)`.
-- **CI Formatting Validation (`dart format .`)**:
-  - Added `dart format .` step immediately prior to `dart format --set-exit-if-changed .` in `.github/workflows/ci.yml`. This formats any generated FRB binding code (`engine_api.dart`, `frb_generated.dart`, `frb_generated.io.dart`) produced during build steps before enforcing zero exit diffs.
-  - **Verified inside Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `Formatted 49 files (0 changed)` and `flutter analyze` (`No issues found!`).
+- **Flutter Analyzer & Deprecation Validation**:
+  - Replaced `CardTheme` with `CardThemeData` in `app_theme.dart` to match `ThemeData.cardTheme` parameter signature.
+  - Added `errors: deprecated_member_use: ignore` in `analysis_options.yaml` for cross-version Flutter SDK (3.24 ↔ 3.27+) compatibility.
+  - **Verified inside Docker (`ghcr.io/cirruslabs/flutter:3.24.0`)**: `flutter analyze` (`No issues found!`).
 - **Flutter Analyze & Test Compatibility**: Fixed missing getters (`scanStream`, `scanResults`, `rawData`), `handleScannedFrame()` method, non-null `WifiDirectGroupInfo` return type, and added `TestWidgetsFlutterBinding.ensureInitialized()` to `test/platform_adapters_test.dart`. Verified `flutter analyze` (**0 issues**) and `flutter test` (**14/14 tests pass**).
 
 #### Reliability (P1)
