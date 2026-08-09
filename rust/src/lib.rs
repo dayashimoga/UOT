@@ -4,6 +4,7 @@ pub mod discovery;
 pub mod protocol;
 pub mod security;
 pub mod streaming;
+pub mod testing;
 pub mod transfer;
 pub mod transport;
 

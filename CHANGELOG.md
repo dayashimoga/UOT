@@ -308,3 +308,19 @@ etwork_security_config.xml restricting cleartext to localhost + RFC1918 only
 - ust/tests/security_tests.rs: 19 new tests — malformed JSON, hostile path traversal, crypto byte-tampering, truncated ciphertext, Unicode filenames, zero-byte files, frame type injection, checkpoint save/load/remove roundtrip, checkpoint list_incomplete
 - docs/IMPLEMENTATION.md: Complete module status with honest assessment
 - docs/PERFORMANCE.md: Actual benchmark numbers (100MB=228Mbps, encrypted throughput=267Mbps)
+
+## Sprint 13 — Hardware-Free Validation Lab (2026-08-09)
+
+### Added
+- ust/src/testing/ module: complete hardware-free validation infrastructure
+- ust/src/testing/adapters.rs: Hardware abstraction traits (TransportAdapter, BleAdapter, WifiDirectAdapter, CameraAdapter, VideoSource, AudioSource) + universal TransferSession model with transport migration
+- ust/src/testing/fault_network.rs: Deterministic fault injection (packet loss, latency, jitter, bandwidth limit, corruption, disconnect/reconnect)
+- ust/src/testing/simulators.rs: FakeBleAdapter (advertise/scan/connect/MTU/fragment), FakeWifiDirectAdapter (discover/group/connect), FountainEncoder/Decoder (QR fountain code), SyntheticVideoSource, SyntheticAudioSource, FakeCameraAdapter
+- ust/src/testing/virtual_node.rs: Two-node E2E harness with full encrypted protocol flow + checkpoint/resume simulation
+- ust/src/testing/chaos.rs: 10 chaos test scenarios (clean, multi-file, zero-byte, Unicode, resume, migration, large, batch, duplicates)
+- docs/HARDWARE_CERTIFICATION.md: Certification matrix (SOFTWARE PROVEN / EMULATOR PROVEN / HARDWARE PENDING / HARDWARE PROVEN)
+
+### Changed
+- Coverage threshold raised to 90% (from 70%)
+- Excluded rb_generated.rs from tarpaulin coverage (auto-generated FRB bindings)
+- Fixed Flutter analyze error (withValues -> withOpacity)
