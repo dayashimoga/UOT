@@ -16,6 +16,7 @@ This file is **append-only** — history is never overwritten.
 #### Bug Fixes (P0)
 - **Consent gating frame-loss**: Fixed bug where first `FileStart` frame after UI acceptance was consumed but not processed. Frame is now manually re-dispatched to the correct handler.
 - **Android Gradle 8 APK build failure**: Fixed cargokit Gradle 8 incompatibility in `rust_builder/cargokit/gradle/plugin.gradle` by replacing Java `Action<ExecSpec>` anonymous inner classes with Groovy closures `project.exec { spec -> ... }`. Resolves `Could not find method exec() for arguments [CargoKitBuildTask$1]` during `flutter build apk --release`.
+- **Dart Format CI Validation**: Formatted `lib/src/platform/ble_adapter.dart`, `lib/src/platform/camera_qr_adapter.dart`, and `lib/src/platform/wifi_direct_adapter.dart` using standard `dart format`, resolving `dart format --set-exit-if-changed .` CI check failure.
 
 #### Reliability (P1)
 - **Queue concurrency enforcement**: `send_files()` now checks `can_start()` before spawning transfers, respecting `max_concurrent_transfers` limit
