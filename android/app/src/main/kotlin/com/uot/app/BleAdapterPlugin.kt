@@ -1,4 +1,4 @@
-package com.uot.app
+package com.uot.uot_app
 
 import android.bluetooth.*
 import android.bluetooth.le.*

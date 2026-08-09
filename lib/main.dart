@@ -9,7 +9,13 @@ import 'src/rust/frb_generated.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await RustLib.init();
+  
+  try {
+    await RustLib.init();
+  } catch (e, stackTrace) {
+    debugPrint('UOT RustLib initialization error: $e\n$stackTrace');
+  }
+
   runApp(const UotApp());
 }
 
