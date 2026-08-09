@@ -1,13 +1,27 @@
-# TODO — Universal Offline Transfer (UOT)
-
-## Active Sprint Tasks (Sprint 12 — Roadmap & Future Enhancements)
-- [ ] Universal Send broadcast across multiple LAN targets
-- [ ] Adaptive video streaming relay over UOT session
-- [ ] Folder two-way sync protocol extension
+## Active Sprint Tasks (Sprint 13 — Real-Device E2E & Coverage)
+- [ ] Validate Android APK launch on physical device
+- [ ] Validate Windows release .exe launch
+- [ ] Perform real-device file transfer (Android↔Windows or Android↔Android)
+- [ ] Implement BLE GATT client/server (currently data structures only)
+- [ ] Implement Wi-Fi Direct P2P connection (currently data structures only)
+- [ ] Reach >90% Rust test coverage
+- [ ] Reach >90% Flutter test coverage
+- [ ] Add hostile-peer/fuzz security tests
 
 ---
 
 ## Complete Milestone History
+
+### Sprint 12 — Production Blocker & Certification Fix (Completed ✅)
+- [x] Android crash fix: diagnostic recovery screen (`RustInitFailedScreen`) on `RustLib.init()` failure
+- [x] Android: guarded Kotlin plugin registration with `hasSystemFeature()` checks
+- [x] Android: `network_security_config.xml` restricts cleartext to LAN only (replaces blanket `usesCleartextTraffic`)
+- [x] Windows CI: pinned `windows-2022` runner, added `flutter clean`/`flutter doctor -v`/artifact validation
+- [x] CI: coverage enforcement now mandatory (removed `continue-on-error: true`)
+- [x] **Platform Truth Audit**: corrected documentation crypto from "Noise XX / ChaCha20-Poly1305" to actual AES-256-GCM + X25519
+- [x] Created `docs/TRANSPORT_MATRIX.md` with honest transport status
+- [x] Rewrote `docs/PLATFORM_SUPPORT.md`, `docs/PRODUCTION_READINESS.md`, `docs/GAP_ANALYSIS.md`, `docs/SECURITY.md`, `docs/PROTOCOL.md`
+- [x] 178 Rust Tests (100% Pass) & 14 Flutter Tests (100% Pass)
 
 ### Sprint 11 — Real-Device Production Certification (Completed ✅)
 - [x] Resolved Android Gradle R8 task collision & repository mode conflicts (`android/build.gradle.kts`, `android/settings.gradle.kts`)

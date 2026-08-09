@@ -281,3 +281,25 @@ This file is **append-only** â€” history is never overwritten.
 
 ### Fixed
 - Fixed GitHub Actions Windows CI build by removing CMAKE_GENERATOR environment override, allowing Flutter to properly auto-detect Visual Studio 2022.
+
+## Sprint 12 — Production Blocker & Certification Fix (2026-08-09)
+
+### Fixed
+- **Android crash on launch**: Added RustInitFailedScreen diagnostic/recovery screen; RustLib.init() failure now shows error details with retry instead of silently running broken app
+- **Android plugin crash**: Guarded BleAdapterPlugin and WifiDirectAdapterPlugin registration with hasSystemFeature() platform checks
+- **Android network security**: Replaced blanket usesCleartextTraffic=true with 
+etwork_security_config.xml restricting cleartext to localhost + RFC1918 only
+- **Windows CI build**: Pinned windows-2022 runner, added lutter clean + lutter doctor -v + artifact validation step
+- **CI coverage enforcement**: Removed continue-on-error: true from tarpaulin coverage threshold — CI now fails below 70%
+
+### Changed
+- **PROTOCOL.md**: Corrected from "Noise Protocol XX / ChaCha20-Poly1305" to actual AES-256-GCM + X25519
+- **SECURITY.md**: Corrected all crypto references to match actual implementation
+- **PLATFORM_SUPPORT.md**: Rewritten with honest build/runtime status per platform
+- **PRODUCTION_READINESS.md**: Rewritten with honest per-feature classification
+- **GAP_ANALYSIS.md**: Rewritten based on actual code audit
+
+### Added
+- docs/TRANSPORT_MATRIX.md: Honest transport implementation status (TCP=COMPLETE, BLE/Wi-Fi Direct/QUIC/WebRTC=NOT IMPLEMENTED)
+- lib/src/features/diagnostics/rust_init_failed_screen.dart: Engine init failure diagnostic screen
+- ndroid/app/src/main/res/xml/network_security_config.xml: LAN-only cleartext policy
