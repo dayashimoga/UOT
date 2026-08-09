@@ -53,7 +53,7 @@ jobs:
           mkdir -p rust/target/coverage
           cargo install cargo-tarpaulin --quiet
           cargo tarpaulin --manifest-path rust/Cargo.toml --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*load_stress*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
-        continue-on-error: true
+
 
       - name: Check coverage threshold (>= 70%)
         run: |
@@ -67,7 +67,7 @@ jobs:
           else
             echo "✅ Coverage ${COVERAGE}% meets threshold"
           fi
-        continue-on-error: true
+
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -225,7 +225,7 @@ jobs:
   build-windows:
     name: Build Windows
     needs: [rust-check, flutter-check]
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
@@ -239,6 +239,9 @@ jobs:
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
 
+      - name: Flutter doctor
+        run: flutter doctor -v
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -251,8 +254,20 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Clean build cache
+        run: flutter clean && flutter pub get
+
       - name: Build Windows
         run: flutter build windows --release
+
+      - name: Validate build artifact
+        run: |
+          if (!(Test-Path "build/windows/x64/runner/Release/uot_app.exe")) {
+            Write-Error "uot_app.exe not found in build output"
+            exit 1
+          }
+          Write-Output "✅ uot_app.exe found"
+          Get-ChildItem "build/windows/x64/runner/Release/" | Format-Table Name, Length
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4

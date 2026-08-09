@@ -1,25 +1,20 @@
 // UOT Application Root
 //
 // Configures MaterialApp with theme, routing, and responsive layout.
+// Handles Rust FFI engine initialization with proper error recovery.
 
 import 'package:flutter/material.dart';
 import 'src/core/theme/app_theme.dart';
 import 'src/core/router/app_router.dart';
+import 'src/features/diagnostics/rust_init_failed_screen.dart';
 import 'src/rust/frb_generated.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    await RustLib.init();
-  } catch (e, stackTrace) {
-    debugPrint('UOT RustLib initialization error: $e\n$stackTrace');
-  }
-
   runApp(const UotApp());
 }
 
-// Root application widget.
+/// Root application widget.
 class UotApp extends StatefulWidget {
   const UotApp({super.key});
 
@@ -29,6 +24,39 @@ class UotApp extends StatefulWidget {
 
 class _UotAppState extends State<UotApp> {
   ThemeMode _themeMode = ThemeMode.dark;
+
+  /// Engine initialization state.
+  _EngineInitState _engineState = _EngineInitState.loading;
+  Object? _initError;
+  StackTrace? _initStackTrace;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeEngine();
+  }
+
+  Future<void> _initializeEngine() async {
+    setState(() {
+      _engineState = _EngineInitState.loading;
+      _initError = null;
+      _initStackTrace = null;
+    });
+
+    try {
+      await RustLib.init();
+      setState(() {
+        _engineState = _EngineInitState.ready;
+      });
+    } catch (e, stackTrace) {
+      debugPrint('UOT RustLib initialization error: $e\n$stackTrace');
+      setState(() {
+        _engineState = _EngineInitState.failed;
+        _initError = e;
+        _initStackTrace = stackTrace;
+      });
+    }
+  }
 
   void _toggleTheme() {
     setState(() {
@@ -45,7 +73,40 @@ class _UotAppState extends State<UotApp> {
       theme: UotTheme.light,
       darkTheme: UotTheme.dark,
       themeMode: _themeMode,
-      home: AppRouter(onToggleTheme: _toggleTheme),
+      home: _buildHome(),
     );
   }
+
+  Widget _buildHome() {
+    switch (_engineState) {
+      case _EngineInitState.loading:
+        return const Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Initializing transfer engine...'),
+              ],
+            ),
+          ),
+        );
+      case _EngineInitState.failed:
+        return RustInitFailedScreen(
+          error: _initError ?? 'Unknown error',
+          stackTrace: _initStackTrace ?? StackTrace.current,
+          onRetry: _initializeEngine,
+        );
+      case _EngineInitState.ready:
+        return AppRouter(onToggleTheme: _toggleTheme);
+    }
+  }
+}
+
+/// Engine initialization states.
+enum _EngineInitState {
+  loading,
+  failed,
+  ready,
 }

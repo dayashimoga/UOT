@@ -12,28 +12,40 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Register BLE Adapter Plugin — guarded per platform feature
         try {
-            // Register BLE Adapter Plugin
-            val ble = BleAdapterPlugin(context)
-            blePlugin = ble
-            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BleAdapterPlugin.CHANNEL_NAME)
-                .setMethodCallHandler(ble)
-            EventChannel(flutterEngine.dartExecutor.binaryMessenger, BleAdapterPlugin.STATE_CHANNEL)
-                .setStreamHandler(ble.createStateStreamHandler())
-            EventChannel(flutterEngine.dartExecutor.binaryMessenger, BleAdapterPlugin.SCAN_CHANNEL)
-                .setStreamHandler(ble.createScanStreamHandler())
-
-            // Register Wi-Fi Direct Plugin
-            val wifi = WifiDirectAdapterPlugin(context)
-            wifiDirectPlugin = wifi
-            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WifiDirectAdapterPlugin.CHANNEL_NAME)
-                .setMethodCallHandler(wifi)
-            EventChannel(flutterEngine.dartExecutor.binaryMessenger, WifiDirectAdapterPlugin.STATE_CHANNEL)
-                .setStreamHandler(wifi.createStateStreamHandler())
-            EventChannel(flutterEngine.dartExecutor.binaryMessenger, WifiDirectAdapterPlugin.PEER_CHANNEL)
-                .setStreamHandler(wifi.createPeerStreamHandler())
+            if (context.packageManager.hasSystemFeature("android.hardware.bluetooth_le")) {
+                val ble = BleAdapterPlugin(context)
+                blePlugin = ble
+                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BleAdapterPlugin.CHANNEL_NAME)
+                    .setMethodCallHandler(ble)
+                EventChannel(flutterEngine.dartExecutor.binaryMessenger, BleAdapterPlugin.STATE_CHANNEL)
+                    .setStreamHandler(ble.createStateStreamHandler())
+                EventChannel(flutterEngine.dartExecutor.binaryMessenger, BleAdapterPlugin.SCAN_CHANNEL)
+                    .setStreamHandler(ble.createScanStreamHandler())
+            } else {
+                android.util.Log.w("UOT_MAIN", "BLE not available on this device, skipping BleAdapterPlugin")
+            }
         } catch (e: Exception) {
-            android.util.Log.e("UOT_MAIN", "Error configuring plugins: ${e.message}")
+            android.util.Log.e("UOT_MAIN", "BleAdapterPlugin registration failed: ${e.message}", e)
+        }
+
+        // Register Wi-Fi Direct Plugin — guarded per platform feature
+        try {
+            if (context.packageManager.hasSystemFeature("android.hardware.wifi.direct")) {
+                val wifi = WifiDirectAdapterPlugin(context)
+                wifiDirectPlugin = wifi
+                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WifiDirectAdapterPlugin.CHANNEL_NAME)
+                    .setMethodCallHandler(wifi)
+                EventChannel(flutterEngine.dartExecutor.binaryMessenger, WifiDirectAdapterPlugin.STATE_CHANNEL)
+                    .setStreamHandler(wifi.createStateStreamHandler())
+                EventChannel(flutterEngine.dartExecutor.binaryMessenger, WifiDirectAdapterPlugin.PEER_CHANNEL)
+                    .setStreamHandler(wifi.createPeerStreamHandler())
+            } else {
+                android.util.Log.w("UOT_MAIN", "Wi-Fi Direct not available on this device, skipping WifiDirectAdapterPlugin")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("UOT_MAIN", "WifiDirectAdapterPlugin registration failed: ${e.message}", e)
         }
     }
 

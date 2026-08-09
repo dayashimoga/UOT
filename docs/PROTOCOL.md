@@ -1,108 +1,74 @@
-# UOT Protocol Specification
+# UOT Wire Protocol Specification
 
-## Version: 1 (Draft)
+## Overview
 
-## Protocol Flow
+UOT uses a custom length-prefixed binary framing protocol over TCP sockets for all peer-to-peer communication.
+
+## Cryptography
+
+| Component | Algorithm | Status |
+|-----------|-----------|--------|
+| Key Exchange | X25519 ECDH | **IMPLEMENTED** |
+| Key Derivation | SHA-256 HKDF with domain separator `UOT-session-key-v1` | **IMPLEMENTED** |
+| Authenticated Encryption | AES-256-GCM (32-byte key, 12-byte nonce, 16-byte tag) | **IMPLEMENTED** |
+| Integrity Hash | SHA-256 (per-file and per-chunk verification) | **IMPLEMENTED** |
+
+> **Note**: Previous documentation incorrectly referenced "Noise Protocol XX" and "ChaCha20-Poly1305". These are **NOT** implemented. The actual implementation uses AES-256-GCM with X25519 key exchange as described above.
+
+## Wire Frame Format
 
 ```
-DISCOVER → PAIR → AUTHENTICATE → NEGOTIATE → CREATE_SESSION →
-OFFER → ACCEPT → START → CHUNK → ACK →
-[PAUSE → RESUME] | [RECONNECT → RETRY] →
-VERIFY → COMPLETE | CANCEL | ERROR
++-------------------+------------+------------------+
+| Payload Length (4B)| Type (1B)  | Payload (N bytes)|
++-------------------+------------+------------------+
 ```
 
-## State Machine
+- **Payload Length**: 4-byte big-endian unsigned integer (max 64 MB)
+- **Frame Type**: 1-byte enum:
+  - `0x00` — Control (JSON protocol message)
+  - `0x01` — Data (binary file chunk)
+  - `0x02` — Ping (keepalive)
+  - `0x03` — Pong (keepalive response)
 
-15 states with validated transitions. See `rust/src/protocol/state.rs`.
+## Protocol Messages (JSON, Frame Type 0x00)
+
+All control messages use tagged JSON (`"type"` field):
+
+| Message | Direction | Purpose |
+|---------|-----------|---------|
+| `hello` | Initiator → Responder | Device announcement (id, name, type, version, capabilities) |
+| `hello_ack` | Responder → Initiator | Acknowledge hello |
+| `key_exchange` | Bidirectional | X25519 public key for session encryption |
+| `offer` | Sender → Receiver | Propose file transfer (items, sizes) |
+| `offer_response` | Receiver → Sender | Accept/reject offer |
+| `file_start` | Sender → Receiver | Begin sending file (name, size, path) |
+| `file_end` | Sender → Receiver | File complete (SHA-256 hash) |
+| `transfer_complete` | Sender → Receiver | All files transferred |
+| `cancel` | Either → Either | Cancel transfer |
+| `pause` | Either → Either | Pause transfer |
+| `resume` | Either → Either | Resume transfer (with offset) |
+| `clipboard_data` | Either → Either | Text/clipboard sharing |
+
+## Connection Lifecycle
 
 ```
-                    ┌─────────┐
-                    │  IDLE   │
-                    └────┬────┘
-                         │
-                    ┌────▼────┐
-                    │DISCOVER │
-                    └────┬────┘
-                         │
-                    ┌────▼────┐
-                    │ PAIRING │
-                    └────┬────┘
-                         │
-                    ┌────▼────────┐
-                    │AUTHENTICATING│
-                    └────┬────────┘
-                         │
-                    ┌────▼───────┐
-                    │NEGOTIATING │
-                    └────┬───────┘
-                         │
-                    ┌────▼──────────┐
-           ┌────── │SESSION ACTIVE │◄──────────┐
-           │       └────┬──────────┘           │
-           │            │                      │
-           │       ┌────▼──────────┐           │
-           │       │ OFFER PENDING │           │
-           │       └────┬──────────┘           │
-           │            │                      │
-           │       ┌────▼──────────┐           │
-           │       │OFFER ACCEPTED │           │
-           │       └────┬──────────┘           │
-           │            │                      │
-           │       ┌────▼──────────┐           │
-           │    ┌──│ TRANSFERRING  │──┐        │
-           │    │  └───────────────┘  │        │
-           │    │         │           │        │
-           │ ┌──▼──┐  ┌──▼────┐  ┌──▼───────┐│
-           │ │PAUSE│  │VERIFY │  │RECONNECT ││
-           │ └──┬──┘  └──┬────┘  └──┬───────┘│
-           │    │         │          │        │
-           │    └─►RESUME │    RETRY─┘        │
-           │              │                   │
-           │       ┌──────▼──────┐            │
-           └───────│  COMPLETE   │────────────┘
-                   ├─────────────┤
-                   │  CANCELLED  │
-                   ├─────────────┤
-                   │    ERROR    │
-                   └─────────────┘
+Initiator                    Responder
+    |--- Hello ------------------>|
+    |<-- HelloAck ----------------|
+    |--- KeyExchange ------------>|
+    |<-- KeyExchange -------------|
+    |   (derive shared AES key)   |
+    |--- Offer ------------------>|
+    |<-- OfferResponse -----------|
+    |--- FileStart -------------->|
+    |--- Data (chunks) --------->|
+    |--- FileEnd ---------------->|
+    |--- TransferComplete ------->|
 ```
 
-## Message Format
+## Chunk Transfer
 
-All messages use JSON serialization with a common header:
-
-```json
-{
-  "header": {
-    "message_id": "uuid-v4",
-    "session_id": "uuid-v4 | null",
-    "protocol_version": 1,
-    "sequence": 0,
-    "timestamp": "2026-08-07T12:00:00Z",
-    "sender_id": "device-id"
-  },
-  "payload": { "type": "..." }
-}
-```
-
-## Message Types
-
-16 message categories defined in `rust/src/protocol/messages.rs`:
-
-| Category | Messages | Purpose |
-|----------|----------|---------|
-| Discovery | Discover, DiscoverResponse | Find nearby devices |
-| Pairing | PairRequest, PairResponse | Establish trust |
-| Session | CreateSession, SessionCreated | Create transfer session |
-| Transfer | Offer, OfferResponse, Start, Chunk, Ack | Data transfer |
-| Control | Pause, Resume, Cancel, Reconnect, Retry | Flow control |
-| Verification | Verify, VerifyResult | Integrity check |
-| Completion | Complete, Error | Terminal states |
-| Heartbeat | Ping, Pong | Keep-alive |
-
-## Integrity
-
-- Per-chunk CRC32 checksum
-- Per-file SHA-256 hash verification
-- Replay protection via monotonic sequence numbers
-- Session expiry with timeout
+- Default chunk size: 64 KB
+- Each chunk sent as Frame Type `0x01` (Data)
+- Per-file SHA-256 hash verified at `FileEnd`
+- Checkpoint state saved to disk for resume after interruption

@@ -1,48 +1,41 @@
-# Platform Support Matrix — Universal Offline Transfer (UOT)
+# UOT Platform Support
 
-> **Evidence-based platform capability report.** Updated: 2026-08-09 (Sprint 11 Audit).
+> Audited against actual source code and CI on 2026-08-09.
 
----
+## Build Status
 
-## Hardware & Transport Feature Matrix
+| Platform | Runner | Build Status | Runtime Validated | Notes |
+|----------|--------|-------------|-------------------|-------|
+| **Android** | `ubuntu-latest` + NDK | ✅ Builds (APK 23.9MB) | ❌ **Crash on launch** — P0 fix in progress | Native `.so` for arm64, armv7, x86_64 |
+| **Windows** | `windows-2022` | ❌ **CI failing** — P0 fix pushed | ❌ Not validated | CMake generator detection issue |
+| **Linux** | `ubuntu-latest` | ✅ Builds | ❌ Not validated | GTK3 desktop app |
+| **macOS** | `macos-latest` | ✅ Builds | ❌ Not validated | Sandboxed with network entitlements |
+| **iOS** | `macos-latest` | ✅ Builds (`--no-codesign`) | ❌ Not validated | Requires Apple Developer cert for device install |
+| **Web** | `ubuntu-latest` | ✅ Builds | ❌ Not validated | WASM Rust support TBD |
 
-| Platform | LAN (TCP) | mDNS | Subnet Scan | BLE GATT | Wi-Fi Direct (P2P) | Hotspot AP | QR / Animated QR | Media Streaming | Status |
-|----------|-----------|------|-------------|----------|--------------------|------------|------------------|-----------------|--------|
-| **Android** | ✅ Supported | ✅ Supported | ✅ Supported | ✅ Native MethodChannel | ✅ Native MethodChannel | ⚠️ Config Only | ✅ Native Camera Adapter | ⚠️ Structs Only | **COMPLETE & PROVEN** |
-| **Windows** | ✅ Supported | ✅ Supported | ✅ Supported | ⚠️ Rust Trait | ⚠️ Rust Trait | ⚠️ Config Only | ✅ Simulated Fallback | ⚠️ Structs Only | **COMPLETE & PROVEN** |
-| **Linux** | ✅ Supported | ✅ Supported | ✅ Supported | ⚠️ Rust Trait | ⚠️ Rust Trait | ⚠️ Config Only | ✅ Simulated Fallback | ⚠️ Structs Only | **COMPLETE & PROVEN** |
-| **macOS** | ✅ Supported | ✅ Supported | ✅ Supported | ⚠️ Rust Trait | ⚠️ Rust Trait | ⚠️ Config Only | ✅ Simulated Fallback | ⚠️ Structs Only | **COMPLETE & PROVEN** |
-| **iOS** | ✅ Supported | ✅ Supported | ✅ Supported | ✅ Native Swift Bridge | ❌ OS Restricted | ❌ OS Restricted | ✅ Native Camera Adapter | ⚠️ Structs Only | **PARTIAL** |
-| **Web** | ⚠️ WebSockets | ❌ Browser Limited | ❌ Browser Limited | ❌ Browser Limited | ❌ Unsupported | ❌ Unsupported | ⚠️ Web Camera API | ❌ Unsupported | **PARTIAL** |
+## Platform-Specific Configuration
 
----
+### Android
+- **Min SDK**: 21 (Android 5.0)
+- **Target SDK**: 35
+- **Permissions**: Internet, Network State, Wi-Fi, Bluetooth (scan/advertise/connect), Camera, Storage
+- **Network Security**: Cleartext restricted to localhost + RFC1918 private ranges via `network_security_config.xml`
+- **Native Plugins**: `BleAdapterPlugin`, `WifiDirectAdapterPlugin` — guarded by `hasSystemFeature()` checks
 
-## Detailed Transport Verification
+### iOS
+- `NSLocalNetworkUsageDescription` and `NSBonjourServices` (`_uot._tcp`) configured
+- BLE and Camera usage descriptions in `Info.plist`
 
-### 1. TCP / LAN
-- **Implementation**: Binary framed TCP sockets with 4-byte length prefix (`rust/src/transport/tcp.rs`).
-- **Support**: Native on Android, Windows, Linux, macOS, iOS.
-- **Verification**: Verified via loopback tests, multi-node Docker mesh (`uot-mesh`), and 100MB stress transfers.
+### macOS
+- App Sandbox enabled with `network.client`, `network.server`, file read-write entitlements
 
-### 2. mDNS Discovery
-- **Implementation**: Multicast DNS broadcasting on `_uot._tcp.local.` (`rust/src/discovery/mdns.rs`).
-- **Support**: Android, Windows, Linux, macOS, iOS.
-- **Fallback**: Active IPv4 /24 subnet scanner on port 42000 (`rust/src/discovery/subnet.rs`).
+### Windows
+- Requires Visual Studio 2022 with C++ desktop workload (CI)
+- Requires Developer Mode enabled (local builds only, for symlink support)
 
-### 3. Bluetooth Low Energy (BLE)
-- **Implementation**: GATT server advertising & client scanning (`rust/src/transport/ble.rs`).
-- **Native Adapters**:
-  - Android: `android/.../BleAdapterPlugin.kt` (BluetoothLeAdvertiser & BluetoothLeScanner).
-  - iOS: `ios/Runner/BleAdapterPlugin.swift` (CBPeripheralManager & CBCentralManager).
-  - Flutter: `lib/src/platform/ble_adapter.dart` (MethodChannel bridge with simulated fallback mode).
+### Linux
+- Requires GTK3 development headers (`libgtk-3-dev`, `liblzma-dev`)
 
-### 4. Wi-Fi Direct (P2P)
-- **Implementation**: P2P group negotiation and credential exchanges (`rust/src/transport/wifidirect.rs`).
-- **Native Adapters**:
-  - Android: `android/.../WifiDirectAdapterPlugin.kt` (WifiP2pManager group creation).
-  - Flutter: `lib/src/platform/wifi_direct_adapter.dart` (MethodChannel bridge).
+## Real-Device Testing Status
 
-### 5. Camera & QR Code Transport
-- **Implementation**: Luby Transform (LT) fountain encoder/decoder (`rust/src/protocol/fountain.rs`) + secure QR invitation framing (`rust/src/security/qr.rs`).
-- **Native Adapters**:
-  - Android & iOS: `lib/src/platform/camera_qr_adapter.dart` (MethodChannel bridge to CameraX / AVFoundation).
+**No real-device E2E transfers have been validated on any platform.** All "functional" claims are based on CI build success only.
