@@ -869,7 +869,10 @@ fn test_engine_api_full_suite() {
     let transfers = engine_get_transfers();
     assert!(transfers.starts_with('['));
 
-    let send_res = engine_send_files("nonexistent-dev".to_string(), vec!["/tmp/fake.txt".to_string()]);
+    let send_res = engine_send_files(
+        "nonexistent-dev".to_string(),
+        vec!["/tmp/fake.txt".to_string()],
+    );
     assert!(send_res.starts_with("error:"));
 
     let pause_res = engine_pause_transfer("invalid-uuid".to_string());
@@ -890,7 +893,10 @@ fn test_engine_api_full_suite() {
     let name_res = engine_set_device_name("CustomAPIName".to_string());
     assert_eq!(name_res, "ok");
 
-    let clip_res = engine_send_clipboard("nonexistent-dev".to_string(), "clipboard content".to_string());
+    let clip_res = engine_send_clipboard(
+        "nonexistent-dev".to_string(),
+        "clipboard content".to_string(),
+    );
     assert!(clip_res.starts_with("error:"));
 
     let events = engine_get_events(10);
@@ -1171,7 +1177,9 @@ async fn test_protocol_handler_messaging_and_chunks() {
 
     // 2. Data chunk exchange
     let payload = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
-    send_data_chunk(&client_conn, 1024, 0x12345678, &payload).await.unwrap();
+    send_data_chunk(&client_conn, 1024, 0x12345678, &payload)
+        .await
+        .unwrap();
 
     let (offset, crc32, data) = recv_data_chunk(&server_conn).await.unwrap();
     assert_eq!(offset, 1024);
@@ -1212,11 +1220,15 @@ async fn test_uot_engine_extended_coverage() {
     let (engine, _rx) = UotEngine::new(config);
 
     // Pin accept error handling
-    let pin_err = engine.accept_transfer_with_pin("tx-1", "dev-1", "000000").await;
+    let pin_err = engine
+        .accept_transfer_with_pin("tx-1", "dev-1", "000000")
+        .await;
     assert!(pin_err.is_err());
 
     // Clipboard device not found error
-    let clip_err = engine.send_clipboard("nonexistent-dev", "hello".to_string()).await;
+    let clip_err = engine
+        .send_clipboard("nonexistent-dev", "hello".to_string())
+        .await;
     assert!(clip_err.is_err());
 
     // Connect with retry invalid address/connection error
@@ -1230,7 +1242,8 @@ async fn test_uot_engine_extended_coverage() {
 
     // Transport strategy selection
     engine.set_transport_strategy(TransportSelectionStrategy::PreferOffline);
-    let selected = engine.select_best_transport(&[(TransportId::TcpLan, TransportState::Connected)]);
+    let selected =
+        engine.select_best_transport(&[(TransportId::TcpLan, TransportState::Connected)]);
     assert_eq!(selected, Some(TransportId::TcpLan));
 
     // History and stats getters
@@ -1274,4 +1287,3 @@ fn test_api_types_device_info() {
     assert_eq!(parsed.id, "dev-100");
     assert_eq!(parsed.signal, Some(95));
 }
-
