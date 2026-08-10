@@ -1954,3 +1954,202 @@ fn test_media_pipeline_jitter_buffer() {
     let bitrate = pipeline.current_bitrate_mbps();
     assert!(bitrate >= 0.0);
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// TYPED ERRORS — ALL VARIANTS DISPLAY COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_all_error_display_variants() {
+    use rust_lib_uot_app::core::error::*;
+
+    let transport_errs = vec![
+        TransportError::ConnectionFailed {
+            reason: "refused".into(),
+        },
+        TransportError::ConnectionLost {
+            reason: "reset".into(),
+        },
+        TransportError::SendFailed {
+            reason: "pipe".into(),
+        },
+        TransportError::ReceiveFailed {
+            reason: "eof".into(),
+        },
+        TransportError::NotAvailable {
+            transport: "ble".into(),
+        },
+        TransportError::Timeout { timeout_ms: 5000 },
+        TransportError::AddressInUse {
+            address: "127.0.0.1:42000".into(),
+        },
+        TransportError::Connection("err".into()),
+        TransportError::Protocol("proto".into()),
+    ];
+    for e in transport_errs {
+        assert!(!e.to_string().is_empty());
+        let top: UotError = e.into();
+        assert!(!top.to_string().is_empty());
+    }
+
+    let proto_errs = vec![
+        ProtocolError::InvalidStateTransition {
+            from: "Idle".into(),
+            to: "Receiving".into(),
+        },
+        ProtocolError::MalformedMessage {
+            reason: "bad json".into(),
+        },
+        ProtocolError::UnsupportedVersion { version: 99 },
+        ProtocolError::SessionExpired {
+            session_id: "s1".into(),
+        },
+        ProtocolError::MessageTooLarge {
+            size: 10000,
+            max_size: 1000,
+        },
+        ProtocolError::UnexpectedMessage {
+            message_type: "Offer".into(),
+        },
+    ];
+    for e in proto_errs {
+        assert!(!e.to_string().is_empty());
+        let top: UotError = e.into();
+        assert!(!top.to_string().is_empty());
+    }
+
+    let sec_errs = vec![
+        SecurityError::AuthenticationFailed {
+            reason: "bad pin".into(),
+        },
+        SecurityError::Unauthorized {
+            reason: "denied".into(),
+        },
+        SecurityError::EncryptionFailed {
+            reason: "cipher".into(),
+        },
+        SecurityError::DecryptionFailed {
+            reason: "tampered".into(),
+        },
+        SecurityError::InvalidCertificate {
+            reason: "expired".into(),
+        },
+        SecurityError::KeyGenerationFailed {
+            reason: "entropy".into(),
+        },
+        SecurityError::SessionKeyExpired,
+        SecurityError::ReplayDetected {
+            nonce: "123".into(),
+        },
+        SecurityError::KeyExchangeFailed {
+            reason: "handshake".into(),
+        },
+        SecurityError::PathTraversal {
+            path: "../etc".into(),
+            reason: "traversal".into(),
+        },
+    ];
+    for e in sec_errs {
+        assert!(!e.to_string().is_empty());
+        let top: UotError = e.into();
+        assert!(!top.to_string().is_empty());
+    }
+
+    let disc_errs = vec![
+        DiscoveryError::ScanFailed {
+            reason: "permissions".into(),
+        },
+        DiscoveryError::RegistrationFailed {
+            reason: "bound".into(),
+        },
+        DiscoveryError::DeviceNotFound {
+            device_id: "dev1".into(),
+        },
+        DiscoveryError::Timeout { timeout_ms: 3000 },
+        DiscoveryError::ServiceError("mdns".into()),
+    ];
+    for e in disc_errs {
+        assert!(!e.to_string().is_empty());
+        let top: UotError = e.into();
+        assert!(!top.to_string().is_empty());
+    }
+
+    let transfer_errs = vec![
+        TransferError::FileNotFound {
+            path: "missing.txt".into(),
+        },
+        TransferError::PermissionDenied {
+            path: "root.txt".into(),
+        },
+        TransferError::Cancelled {
+            transfer_id: "t1".into(),
+        },
+        TransferError::InsufficientSpace {
+            needed: 1000,
+            available: 500,
+        },
+        TransferError::ChunkOutOfOrder {
+            expected: 1,
+            actual: 2,
+        },
+        TransferError::TransferNotFound {
+            transfer_id: "t2".into(),
+        },
+        TransferError::ResumeNotPossible {
+            reason: "checksum".into(),
+        },
+        TransferError::FileIo("disk error".into()),
+        TransferError::IntegrityFailed("sha mismatch".into()),
+        TransferError::EmptyTransfer,
+        TransferError::DeviceNotFound("d3".into()),
+        TransferError::Protocol("proto".into()),
+    ];
+    for e in transfer_errs {
+        assert!(!e.to_string().is_empty());
+        let top: UotError = e.into();
+        assert!(!top.to_string().is_empty());
+    }
+
+    let stream_errs = vec![
+        StreamingError::NotSupported {
+            capability: "4k".into(),
+        },
+        StreamingError::CodecError {
+            reason: "h264".into(),
+        },
+        StreamingError::BufferOverflow {
+            reason: "full".into(),
+        },
+    ];
+    for e in stream_errs {
+        assert!(!e.to_string().is_empty());
+        let top: UotError = e.into();
+        assert!(!top.to_string().is_empty());
+    }
+
+    let config_top = UotError::Config("invalid setting".into());
+    assert!(!config_top.to_string().is_empty());
+}
+
+#[test]
+fn test_history_and_stats_invalid_json_handling() {
+    use rust_lib_uot_app::transfer::analytics::LifetimeStats;
+    use rust_lib_uot_app::transfer::history::TransferHistoryStore;
+
+    let dir = tempfile::tempdir().unwrap();
+    let bad_json_path = dir.path().join("bad.json");
+    std::fs::write(&bad_json_path, "{invalid json content}").unwrap();
+
+    // History load with invalid json falls back to default
+    let history = TransferHistoryStore::load(&bad_json_path);
+    assert!(history.records.is_empty());
+
+    // Stats load with invalid json falls back to default
+    let stats = LifetimeStats::load(&bad_json_path);
+    assert_eq!(stats.total_transfers, 0);
+
+    // Save to invalid path (dir doesn't exist and can't create)
+    let invalid_save_path = std::path::Path::new("\0invalid_path/file.json");
+    assert!(history.save(invalid_save_path).is_err());
+    assert!(stats.save(invalid_save_path).is_err());
+}
