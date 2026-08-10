@@ -32,18 +32,17 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify dialog title & layout
-    expect(find.text('Scan Optical QR Stream'), findsOneWidget);
-    expect(find.text('Simulate Frame'), findsOneWidget);
+    expect(find.text('Scan / Paste QR Code'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
 
-    // Tap Simulate Frame 5 times to trigger success
-    for (int i = 0; i < 5; i++) {
-      await tester.tap(find.text('Simulate Frame'));
-      await tester.pump();
-    }
+    // Verify manual input field exists
+    expect(find.byType(TextField), findsOneWidget);
+
+    // Tap Cancel to dismiss
+    await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
-    // Dialog should be dismissed on completion
-    expect(find.text('Scan Optical QR Stream'), findsNothing);
+    // Dialog should be dismissed
+    expect(find.text('Scan / Paste QR Code'), findsNothing);
   });
 }
