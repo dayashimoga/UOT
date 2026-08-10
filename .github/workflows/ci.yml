@@ -89,7 +89,7 @@ jobs:
       - name: Security audit
         run: |
           cargo install cargo-audit --quiet
-          cargo audit --file rust/Cargo.toml
+          cargo audit --file rust/Cargo.lock
 
   # ── Dart/Flutter: Format, Analyze, Test ──
   flutter-check:
