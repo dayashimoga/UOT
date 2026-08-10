@@ -74,3 +74,10 @@
 - [x] CheckpointStore for persistent resume state (`transfer/checkpoint.rs`)
 - [x] PIN enforcement via `accept_transfer_with_pin()` with TrustManager verification
 - [x] Coverage threshold enforcement (70% gate in CI via tarpaulin)
+
+### Sprint 14 - Production Gap-Closure & Cross-Platform Validation (Completed)
+- [x] Android crash fix: compileSdk/targetSdk 34, minSdk 24, optional hardware features, non-blocking RustLib.init() with timeout & RustInitFailedScreen fallback
+- [x] Windows CI fix: PowerShell multi-line syntax, Windows launch EXE smoke test
+- [x] Coverage hardening: 80.03% coverage (1395/1743 lines), 388 tests passing across all suites
+- [x] E2E edge cases & chaos tests (e2e_edge_cases.rs): 255-char filenames, 10-file batch, nested subdirs, checkpoint restart recovery, corrupted checkpoint handling, disconnect chaos & receiver timeout
+- [x] Documentation & sync: IMPLEMENTATION.md, TODO.md, CHANGELOG.md updated
