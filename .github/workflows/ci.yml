@@ -67,7 +67,7 @@ jobs:
           # core/engine.rs (420 lines) has ~47% coverage because start(), handle_incoming_connection(),
           # run_transfer_send/receive() require real TCP+mDNS networking. These paths are tested
           # by E2E integration tests (e2e_transfer.rs) and the virtual node harness instead.
-          COVERAGE=$(grep -oP '\d+\.\d+% coverage' rust/target/coverage/tarpaulin.log | head -1 | grep -oP '\d+\.\d+')
+          COVERAGE=$(grep -oP '\d+\.\d+% coverage' rust/target/coverage/tarpaulin.log | tail -1 | grep -oP '\d+\.\d+')
           echo "Coverage: ${COVERAGE}%"
           if [ -z "$COVERAGE" ]; then
             echo "::warning::Could not parse coverage percentage"

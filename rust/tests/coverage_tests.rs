@@ -2153,3 +2153,68 @@ fn test_history_and_stats_invalid_json_handling() {
     assert!(history.save(invalid_save_path).is_err());
     assert!(stats.save(invalid_save_path).is_err());
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// FOUNTAIN DECODER & RATELIMITER EDGE CASES
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_fountain_decoder_corrupt_packet_and_zero_blocks() {
+    use rust_lib_uot_app::protocol::fountain::{FountainDecoder, FountainPacket};
+
+    let mut decoder = FountainDecoder::new(64);
+
+    // Corrupt CRC
+    let corrupt_pkt = FountainPacket {
+        total_size: 100,
+        num_blocks: 2,
+        seed: 1,
+        payload: vec![1, 2, 3, 4],
+        crc32: 999999, // wrong CRC
+    };
+    assert!(decoder.process_packet(corrupt_pkt).is_none());
+
+    // Zero total blocks
+    let zero_pkt = FountainPacket {
+        total_size: 0,
+        num_blocks: 0,
+        seed: 1,
+        payload: vec![],
+        crc32: crc32fast::hash(&[]),
+    };
+    assert!(decoder.process_packet(zero_pkt).is_none());
+}
+
+#[tokio::test]
+async fn test_rate_limiter_throttling_delay() {
+    use rust_lib_uot_app::transfer::ratelimit::RateLimiter;
+    let mut limiter = RateLimiter::new(100); // 100 bytes/sec
+    limiter.consume(500).await; // exceeds tokens, forces wait_secs > 0.001 path
+}
+
+#[tokio::test]
+async fn test_connection_manager_success_flow() {
+    use rust_lib_uot_app::transport::connection_manager::ConnectionManager;
+    use rust_lib_uot_app::transport::tcp::TcpTransportListener;
+
+    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let port = listener.port();
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+
+    let mgr = ConnectionManager::default();
+
+    let server_task = tokio::spawn(async move {
+        let _stream = incoming.recv().await.unwrap();
+    });
+
+    let _conn = mgr.connect("dev_ok", "OK Device", addr).await.unwrap();
+    assert!(mgr.is_connected("dev_ok"));
+    assert_eq!(mgr.active_connections().len(), 1);
+    assert_eq!(mgr.active_connections()[0].device_name, "OK Device");
+    assert!(mgr.get("dev_ok").is_some());
+
+    mgr.remove("dev_ok");
+    assert!(!mgr.is_connected("dev_ok"));
+    server_task.await.unwrap();
+    listener.stop();
+}
