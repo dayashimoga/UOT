@@ -59,7 +59,7 @@ jobs:
           # - discovery/mdns: requires real multicast networking (cannot test in CI)
           # - transport/quic: requires real QUIC socket binding (covered by unit tests for structs)
           # - streaming/capture: requires real camera/screen/audio hardware
-          cargo tarpaulin --manifest-path rust/Cargo.toml --all-targets --ignore-tests --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*frb_generated*" --exclude-files "*load_stress*" --exclude-files "*src/testing*" --exclude-files "*discovery/mdns*" --exclude-files "*transport/quic*" --exclude-files "*streaming/capture*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
+          cargo tarpaulin --engine llvm --manifest-path rust/Cargo.toml --all-targets --ignore-tests --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*frb_generated*" --exclude-files "*load_stress*" --exclude-files "*src/testing*" --exclude-files "*discovery/mdns*" --exclude-files "*transport/quic*" --exclude-files "*streaming/capture*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
 
       - name: Check coverage threshold (>= 80%)
         run: |
