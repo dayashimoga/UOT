@@ -48,5 +48,32 @@ This file is append-only - history is never overwritten.
 - **Rust Test Suite**: 407/407 Passed across 8 test suites
 - **Coverage**: 82.15% line coverage in Docker Tarpaulin
 
+## [0.1.0-alpha.9] - 2026-08-10
+
+### Sprint 17 - UX Gap Resolution: Camera Permissions, File Transfer Modal, Media Streaming & Engine Status
+
+#### Engine Status & Initialization Fixes
+- Made mDNS service creation non-fatal in `UotEngine::start()` so TCP listener starts cleanly even on systems without mDNS services.
+- Updated `_EngineStatusCard` in `NearbyScreen` to recognize `Running`, `Partial`, and `Starting` engine states, resolving persistent "Engine starting..." banner issue.
+
+#### Camera QR Scanner & Permission Request
+- Added explicit `requestPermission()` call during camera adapter initialization in `QrScannerDialog`.
+- Added **"Pick QR Code Image File"** button to allow picking QR code images from disk on Desktop or mobile devices.
+
+#### Active Transfer Modal & Feedback
+- Implemented `ActiveTransferDialog` rendering real-time animated transfer progress bar, live speed (MB/s), ETA, current file item name, and Cancel controls.
+- Connected `_showSendFeedback` in `NearbyScreen` to automatically launch `ActiveTransferDialog` upon file selection.
+
+#### Media Streaming Screen Implementation
+- Fully implemented `StreamScreen` controls for **Camera**, **Screen Share**, **Video File**, and **Audio File**.
+- Integrated `FilePicker` for local Video/Audio files and `engine_start_stream` / `engine_stop_stream` for live streaming session lifecycle.
+- Added real-time Active Streams list displaying session title, device target, LIVE indicator, and 1-tap Stop buttons.
+
+#### Verification
+- **Flutter Analyze**: 0 errors, 0 warnings (100% clean)
+- **Flutter Tests**: 14/14 Passed
+- **Rust Test Suite**: 407/407 Passed across 8 test suites
+
 ---
+
 

@@ -102,3 +102,11 @@
 - [x] Added real-time SnackBar & Modal Dialog user feedback when initiating file transfer
 - [x] Hardened Rust test coverage to 82.15%, 407 Rust tests passing, Flutter analyze 100% clean
 
+### Sprint 17 - UX Gap Resolution: Camera Permissions, File Transfer Modal, Media Streaming & Engine Status (Completed)
+- [x] Fixed persistent "Engine starting..." banner issue by making mDNS failure non-fatal and expanding engine state checks for Running/Partial
+- [x] Fixed Camera QR Scanner permission request flow and added "Pick QR Code Image File" option for Desktop/file scanning
+- [x] Created ActiveTransferDialog real-time modal with progress bar, transfer speed (MB/s), ETA, current item name, and Cancel action
+- [x] Fully implemented StreamScreen: wired Camera, Screen Share, Video File, and Audio File streaming controls with live session list & stop buttons
+- [x] Verified 14/14 Flutter tests passing, 407/407 Rust tests passing, Flutter analyze 100% clean
+
+

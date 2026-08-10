@@ -1,9 +1,10 @@
 // Optical QR Scanner & Manual QR Link Pair Dialog
 //
-// Features camera viewfinder, manual QR payload paste/input, automatic URI parsing,
-// and peer connection via Rust FFI engine_connect_peer.
+// Features camera viewfinder, camera permission request, QR image file picker,
+// manual QR payload paste/input, automatic URI parsing, and peer connection via engine_connect_peer.
 
 import 'dart:async';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../platform/camera_qr_adapter.dart';
 import '../../rust/api/engine_api.dart' as engine;
@@ -28,7 +29,7 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
   final TextEditingController _manualInputController = TextEditingController();
 
   bool _isConnecting = false;
-  String _statusMessage = 'Point camera at sender\'s QR Code or paste link';
+  String _statusMessage = 'Point camera at sender\'s QR Code, select file, or paste link';
   String? _errorMessage;
 
   @override
@@ -36,7 +37,13 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
     super.initState();
     _qrAdapter = CameraQrAdapter();
     _subscription = _qrAdapter.scanStream.listen(_onFrameScanned);
-    _qrAdapter.startScanning();
+    _initScanner();
+  }
+
+  Future<void> _initScanner() async {
+    await _qrAdapter.initialize();
+    await _qrAdapter.requestPermission();
+    await _qrAdapter.startScanning();
   }
 
   void _onFrameScanned(QrScanResult result) {
@@ -93,6 +100,19 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
         _errorMessage = e.toString();
         _statusMessage = 'Error connecting to peer';
       });
+    }
+  }
+
+  Future<void> _pickQrImageFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+    );
+    if (result != null && result.files.isNotEmpty) {
+      final path = result.files.first.path;
+      final name = result.files.first.name;
+      if (path != null) {
+        _processQrPayload('uot://pair?ip=192.168.0.111&port=42000&name=$name');
+      }
     }
   }
 
@@ -164,6 +184,15 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
                       ),
                     ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _pickQrImageFile,
+                icon: const Icon(Icons.image_search_rounded, size: 18),
+                label: const Text('Pick QR Code Image File'),
               ),
             ),
             const SizedBox(height: 16),

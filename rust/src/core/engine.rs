@@ -186,52 +186,49 @@ impl UotEngine {
         let actual_port = tcp_listener.port();
         *self.listener.write() = Some(tcp_listener);
 
-        // Start mDNS discovery
-        let mut mdns = MdnsDiscovery::new().map_err(|e| {
-            UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e))
-        })?;
+        // Start mDNS discovery (non-fatal if mDNS is unavailable on local network interface)
+        if let Ok(mut mdns) = MdnsDiscovery::new() {
+            let device_type = DeviceType::Desktop;
+            if mdns
+                .register(
+                    &self.device_id,
+                    &device_name_clone,
+                    actual_port,
+                    device_type,
+                )
+                .is_ok()
+            {
+                if let Ok(mut discovery_rx) = mdns.start_browsing() {
+                    *self.discovery.write() = Some(mdns);
 
-        let device_type = DeviceType::Desktop; // TODO: detect platform
-        mdns.register(
-            &self.device_id,
-            &device_name_clone,
-            actual_port,
-            device_type,
-        )
-        .map_err(|e| UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e)))?;
-
-        // Start browsing
-        let mut discovery_rx = mdns.start_browsing().map_err(|e| {
-            UotError::Discovery(crate::core::error::DiscoveryError::ServiceError(e))
-        })?;
-
-        *self.discovery.write() = Some(mdns);
-
-        // Spawn discovery event handler
-        let devices = Arc::clone(&self.devices);
-        let event_tx = self.event_tx.clone();
-        tokio::spawn(async move {
-            while let Some(event) = discovery_rx.recv().await {
-                match event {
-                    DiscoveryEvent::DeviceFound(device) => {
-                        devices
-                            .write()
-                            .insert(device.device_id.clone(), device.clone());
-                        let _ = event_tx.send(EngineEvent::DeviceFound(device)).await;
-                    }
-                    DiscoveryEvent::DeviceLost(id) => {
-                        devices.write().remove(&id);
-                        let _ = event_tx.send(EngineEvent::DeviceLost(id)).await;
-                    }
-                    DiscoveryEvent::DeviceUpdated(device) => {
-                        devices
-                            .write()
-                            .insert(device.device_id.clone(), device.clone());
-                        let _ = event_tx.send(EngineEvent::DeviceUpdated(device)).await;
-                    }
+                    // Spawn discovery event handler
+                    let devices = Arc::clone(&self.devices);
+                    let event_tx = self.event_tx.clone();
+                    tokio::spawn(async move {
+                        while let Some(event) = discovery_rx.recv().await {
+                            match event {
+                                DiscoveryEvent::DeviceFound(device) => {
+                                    devices
+                                        .write()
+                                        .insert(device.device_id.clone(), device.clone());
+                                    let _ = event_tx.send(EngineEvent::DeviceFound(device)).await;
+                                }
+                                DiscoveryEvent::DeviceLost(id) => {
+                                    devices.write().remove(&id);
+                                    let _ = event_tx.send(EngineEvent::DeviceLost(id)).await;
+                                }
+                                DiscoveryEvent::DeviceUpdated(device) => {
+                                    devices
+                                        .write()
+                                        .insert(device.device_id.clone(), device.clone());
+                                    let _ = event_tx.send(EngineEvent::DeviceUpdated(device)).await;
+                                }
+                            }
+                        }
+                    });
                 }
             }
-        });
+        }
 
         // Spawn incoming connection handler
         let connections = Arc::clone(&self.connections);

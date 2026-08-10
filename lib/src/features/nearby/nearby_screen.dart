@@ -12,6 +12,7 @@ import '../../rust/api/init.dart' as rust_api;
 import '../../rust/api/engine_api.dart' as engine;
 import 'qr_pairing_dialog.dart';
 import 'optical_qr_sender_dialog.dart';
+import 'active_transfer_dialog.dart';
 
 // Device model parsed from JSON.
 class DeviceInfo {
@@ -293,7 +294,8 @@ class _EngineStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isRunning = engineState == 'Running';
+    final isRunning =
+        engineState == 'Running' || engineState == 'Partial' || engineState == 'Starting';
 
     return Card(
       child: Padding(
@@ -829,13 +831,14 @@ class _MyDeviceBanner extends StatelessWidget {
 void _showSendFeedback(
     BuildContext context, String result, String deviceName, int count) {
   if (result.startsWith('ok')) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            'Transfer initiated! Sending $count item(s) to $deviceName'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 4),
-      ),
+    final transferId = result.replaceFirst('ok:', '');
+    ActiveTransferDialog.show(
+      context,
+      transferId: transferId.isEmpty
+          ? 'tx-${DateTime.now().millisecondsSinceEpoch}'
+          : transferId,
+      targetDeviceName: deviceName,
+      fileCount: count,
     );
   } else {
     final errorMsg = result.replaceFirst('error:', '');
