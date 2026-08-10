@@ -2609,3 +2609,142 @@ fn test_engine_api_wrapper_uncovered_branches() {
 
     engine_stop_stream("sess_none".to_string());
 }
+
+#[test]
+fn test_capabilities_platform_and_transports_coverage() {
+    use rust_lib_uot_app::core::capabilities::PlatformCapabilities;
+
+    let caps = PlatformCapabilities::detect();
+    let transports = caps.supported_transports();
+    assert!(!transports.is_empty());
+}
+
+#[tokio::test]
+async fn test_connection_manager_retry_exhaustion_flow() {
+    use rust_lib_uot_app::transport::connection_manager::ConnectionManager;
+
+    let mgr = ConnectionManager::default();
+
+    // Connect to closed port -> exercises connect failure branch
+    let closed_addr = "127.0.0.1:59998".parse().unwrap();
+    let res = mgr.connect("dev_exhaust", "Exhaust Dev", closed_addr).await;
+    assert!(res.is_err(), "Connect to closed port should fail");
+}
+
+#[tokio::test]
+async fn test_tcp_connection_metadata_and_close_coverage() {
+    use rust_lib_uot_app::transport::tcp::TcpTransportListener;
+
+    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let port = listener.port();
+
+    let server_task = tokio::spawn(async move {
+        let _stream = incoming.recv().await.unwrap();
+    });
+
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let stream = rust_lib_uot_app::transport::tcp::connect(addr)
+        .await
+        .unwrap();
+    let mut conn = rust_lib_uot_app::transport::tcp::TcpConnection::new(stream).unwrap();
+
+    assert_eq!(
+        conn.state(),
+        rust_lib_uot_app::transport::types::TransportState::Connected
+    );
+    assert_eq!(conn.remote_addr().port(), port);
+    assert!(conn.local_addr().port() > 0);
+
+    let stats = conn.stats();
+    assert_eq!(stats.bytes_sent, 0);
+
+    conn.close();
+    server_task.await.unwrap();
+    listener.stop();
+}
+
+#[test]
+fn test_webrtc_error_and_buffer_drain_coverage() {
+    use rust_lib_uot_app::transport::tcp::Frame;
+    use rust_lib_uot_app::transport::webrtc::{IceCandidate, SessionDescription, WebRtcTransport};
+
+    let rtc = WebRtcTransport::default();
+
+    // Invalid SDP type on create_answer
+    let bad_offer = SessionDescription {
+        sdp_type: "invalid".to_string(),
+        sdp: "v=0".to_string(),
+    };
+    assert!(rtc.create_answer(&bad_offer).is_err());
+
+    // Invalid SDP type on set_remote_answer
+    let bad_answer = SessionDescription {
+        sdp_type: "invalid".to_string(),
+        sdp: "v=0".to_string(),
+    };
+    assert!(rtc.set_remote_answer(&bad_answer).is_err());
+
+    // ICE candidates & connected state
+    rtc.gather_candidates("127.0.0.1", 42000);
+    assert_eq!(rtc.local_candidates().len(), 1);
+
+    rtc.add_ice_candidate(IceCandidate {
+        candidate: "cand".to_string(),
+        sdp_mid: None,
+        sdp_mline_index: None,
+    });
+
+    rtc.set_connected();
+
+    // Message too large error
+    let huge_frame = Frame::data(vec![0u8; 300_000]);
+    assert!(rtc.send_frame(huge_frame).is_err());
+
+    // Inject and recv rx frame
+    rtc.inject_rx_frame(Frame::data(vec![1, 2, 3]));
+    let rx = rtc.recv_frame();
+    assert!(rx.is_ok());
+
+    let _stats = rtc.stats();
+    rtc.close();
+}
+
+#[test]
+fn test_usb_transport_device_and_mode_coverage() {
+    use rust_lib_uot_app::transport::usb::{UsbDevice, UsbMode, UsbTransport};
+
+    let usb = UsbTransport::new(UsbMode::Bulk);
+    assert!(usb.connected_device().is_none());
+
+    let dev = UsbDevice {
+        vendor_id: 0x1234,
+        product_id: 0x5678,
+        device_name: "Test USB".to_string(),
+        serial_number: Some("USB123".to_string()),
+        mode: UsbMode::Bulk,
+    };
+    assert_eq!(dev.vendor_id, 0x1234);
+    assert_eq!(usb.mode(), UsbMode::Bulk);
+}
+
+#[test]
+fn test_progress_tracker_speed_and_eta_drain_coverage() {
+    use rust_lib_uot_app::transfer::engine::ProgressTracker;
+    use uuid::Uuid;
+
+    // zero total_bytes snapshot -> progress = 1.0 branch
+    let tracker_zero = ProgressTracker::new(Uuid::new_v4(), 0, 1);
+    let snap_zero = tracker_zero.snapshot();
+    assert_eq!(snap_zero.progress, 1.0);
+    assert!(snap_zero.eta_secs.is_none());
+
+    // 25+ speed samples -> drains past 20 samples branch
+    let tracker = ProgressTracker::new(Uuid::new_v4(), 100_000, 1);
+    for _ in 0..25 {
+        tracker.add_bytes(1000);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let snap = tracker.snapshot();
+    assert!(snap.speed_bytes_per_sec > 0);
+    assert!(snap.eta_secs.is_some());
+}
