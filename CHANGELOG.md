@@ -74,6 +74,28 @@ This file is append-only - history is never overwritten.
 - **Flutter Tests**: 14/14 Passed
 - **Rust Test Suite**: 407/407 Passed across 8 test suites
 
+## [0.1.0-alpha.10] - 2026-08-10
+
+### Sprint 18 - Direct IP Validation, ConfirmSendDialog, InstantChat & Android MobileScanner
+
+#### Direct IP Address Validation & Auto-Fill
+- Added strict IPv4 octet (0-255) validation in `QrPairingDialog` to catch typos (e.g. `292.168.0.111`) before initiating connections.
+
+#### File Send Confirmation Modal (`ConfirmSendDialog`)
+- Created `ConfirmSendDialog` displaying selected file list, individual item sizes, batch total size, target device info, and a prominent green `[🚀 Send Files Now]` action button.
+
+#### Instant Messaging & Connection Ping (`InstantChatDialog`)
+- Created `InstantChatDialog` enabling two-way text message exchange, connection pings (`PING: Connection Check`), and delivery verification between connected nodes.
+
+#### Android Mobile Camera QR Scanner
+- Integrated `mobile_scanner: ^7.4.0` in `QrScannerDialog` for live hardware camera scanning on Android devices.
+
+#### Verification
+- **Flutter Analyze**: 0 errors, 0 warnings (100% clean)
+- **Flutter Tests**: 14/14 Passed
+- **Rust Test Suite**: 407/407 Passed across 8 test suites
+
 ---
+
 
 

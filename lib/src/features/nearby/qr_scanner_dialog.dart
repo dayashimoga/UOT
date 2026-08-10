@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../platform/camera_qr_adapter.dart';
 import '../../rust/api/engine_api.dart' as engine;
 
@@ -152,38 +153,47 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: colorScheme.primary, width: 2),
               ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.camera_alt_outlined,
-                    size: 56,
-                    color: colorScheme.onSurfaceVariant.withOpacity(0.5),
-                  ),
-                  if (_isConnecting)
-                    const CircularProgressIndicator(color: Colors.white)
-                  else
-                    Positioned(
-                      bottom: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.75),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _statusMessage,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    MobileScanner(
+                      onDetect: (capture) {
+                        final List<Barcode> barcodes = capture.barcodes;
+                        for (final barcode in barcodes) {
+                          if (barcode.rawValue != null && barcode.rawValue!.isNotEmpty) {
+                            _processQrPayload(barcode.rawValue!);
+                            break;
+                          }
+                        }
+                      },
+                    ),
+                    if (_isConnecting)
+                      const CircularProgressIndicator(color: Colors.white)
+                    else
+                      Positioned(
+                        bottom: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.75),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _statusMessage,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 12),

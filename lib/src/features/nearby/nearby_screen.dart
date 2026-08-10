@@ -13,6 +13,8 @@ import '../../rust/api/engine_api.dart' as engine;
 import 'qr_pairing_dialog.dart';
 import 'optical_qr_sender_dialog.dart';
 import 'active_transfer_dialog.dart';
+import 'confirm_send_dialog.dart';
+import 'instant_chat_dialog.dart';
 
 // Device model parsed from JSON.
 class DeviceInfo {
@@ -601,13 +603,21 @@ class _SendBottomSheet extends StatelessWidget {
                         .where((f) => f.path != null)
                         .map((f) => f.path!)
                         .toList();
-                    if (paths.isNotEmpty) {
-                      final sendRes = await engine.engineSendFiles(
-                        deviceId: device.deviceId,
+                    if (paths.isNotEmpty && context.mounted) {
+                      final confirm = await ConfirmSendDialog.show(
+                        context,
+                        targetDeviceName: device.deviceName,
+                        targetAddress: device.address ?? 'LAN Node',
                         filePaths: paths,
                       );
-                      if (context.mounted) {
-                        _showSendFeedback(context, sendRes, device.deviceName, paths.length);
+                      if (confirm == true && context.mounted) {
+                        final sendRes = await engine.engineSendFiles(
+                          deviceId: device.deviceId,
+                          filePaths: paths,
+                        );
+                        if (context.mounted) {
+                          _showSendFeedback(context, sendRes, device.deviceName, paths.length);
+                        }
                       }
                     }
                   }
@@ -622,15 +632,38 @@ class _SendBottomSheet extends StatelessWidget {
                 onTap: () async {
                   Navigator.pop(context);
                   final dir = await FilePicker.platform.getDirectoryPath();
-                  if (dir != null) {
-                    final sendRes = await engine.engineSendFiles(
-                      deviceId: device.deviceId,
+                  if (dir != null && context.mounted) {
+                    final confirm = await ConfirmSendDialog.show(
+                      context,
+                      targetDeviceName: device.deviceName,
+                      targetAddress: device.address ?? 'LAN Node',
                       filePaths: [dir],
                     );
-                    if (context.mounted) {
-                      _showSendFeedback(context, sendRes, device.deviceName, 1);
+                    if (confirm == true && context.mounted) {
+                      final sendRes = await engine.engineSendFiles(
+                        deviceId: device.deviceId,
+                        filePaths: [dir],
+                      );
+                      if (context.mounted) {
+                        _showSendFeedback(context, sendRes, device.deviceName, 1);
+                      }
                     }
                   }
+                },
+              ),
+              const SizedBox(height: 8),
+              _SendOption(
+                icon: Icons.chat_rounded,
+                title: 'Instant Message / Chat',
+                subtitle: 'Send text messages & ping peer connection',
+                color: Colors.green,
+                onTap: () {
+                  Navigator.pop(context);
+                  InstantChatDialog.show(
+                    context,
+                    deviceId: device.deviceId,
+                    deviceName: device.deviceName,
+                  );
                 },
               ),
               const SizedBox(height: 8),
@@ -676,14 +709,12 @@ class _SendBottomSheet extends StatelessWidget {
                     final file = result.files.first;
                     final name = file.name;
                     final path = file.path;
-                    if (path != null) {
-                      if (context.mounted) {
-                        await OpticalQrSenderDialog.show(
-                          context,
-                          fileName: name,
-                          payloadText: 'UOT-AIRGAPPED-PAYLOAD:$name',
-                        );
-                      }
+                    if (path != null && context.mounted) {
+                      await OpticalQrSenderDialog.show(
+                        context,
+                        fileName: name,
+                        payloadText: 'UOT-AIRGAPPED-PAYLOAD:$name',
+                      );
                     }
                   }
                 },

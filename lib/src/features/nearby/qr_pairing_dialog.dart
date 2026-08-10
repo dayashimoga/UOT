@@ -84,6 +84,22 @@ class _QrPairingDialogState extends State<QrPairingDialog>
       return;
     }
 
+    final ipPart = rawInput.split(':').first;
+    final octets = ipPart.split('.');
+    if (octets.length == 4) {
+      for (final oct in octets) {
+        final val = int.tryParse(oct);
+        if (val == null || val < 0 || val > 255) {
+          setState(() {
+            _isConnecting = false;
+            _connectError =
+                'Invalid IPv4 address: octet "$oct" exceeds valid range 0-255 (e.g. 192.168.0.111)';
+          });
+          return;
+        }
+      }
+    }
+
     setState(() {
       _isConnecting = true;
       _connectError = null;

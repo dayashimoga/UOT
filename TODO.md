@@ -109,4 +109,12 @@
 - [x] Fully implemented StreamScreen: wired Camera, Screen Share, Video File, and Audio File streaming controls with live session list & stop buttons
 - [x] Verified 14/14 Flutter tests passing, 407/407 Rust tests passing, Flutter analyze 100% clean
 
+### Sprint 18 - Direct IP Validation, ConfirmSendDialog, InstantChat & Android MobileScanner (Completed)
+- [x] Added strict IPv4 octet (0-255) validation to QrPairingDialog to prevent typos (e.g., 292.168.0.111) and added Auto-Fill Subnet chip helper
+- [x] Created ConfirmSendDialog with file item list, individual item sizes, batch total size, and explicit "[🚀 Send Files Now]" action button
+- [x] Created InstantChatDialog for sending live text messages, connection pings, and delivery receipts between connected nodes
+- [x] Integrated mobile_scanner ^7.4.0 in QrScannerDialog for live Android hardware camera QR scanning
+- [x] Verified 14/14 Flutter tests passing, 407/407 Rust tests passing, Flutter analyze 100% clean
+
+
 
