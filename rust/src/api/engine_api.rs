@@ -389,4 +389,105 @@ mod tests {
         // Before init, should return "Stopped" since engine doesn't exist
         assert!(state == "Stopped" || state == "Running");
     }
+
+    #[test]
+    fn test_engine_api_full_inline_suite() {
+        let init_res = engine_init();
+        assert!(init_res.starts_with("ok:") || init_res == "already_initialized");
+
+        let state = engine_state();
+        assert!(!state.is_empty());
+
+        let dev_id = engine_device_id();
+        assert!(!dev_id.is_empty());
+
+        let devices = engine_get_devices();
+        assert!(devices.starts_with('['));
+
+        let transfers = engine_get_transfers();
+        assert!(transfers.starts_with('['));
+
+        let send_res = engine_send_files(
+            "nonexistent-dev".to_string(),
+            vec!["/tmp/fake.txt".to_string()],
+        );
+        assert!(send_res.starts_with("error:"));
+
+        let pause_res = engine_pause_transfer("invalid-uuid".to_string());
+        assert!(pause_res.starts_with("error:"));
+
+        let resume_res = engine_resume_transfer("invalid-uuid".to_string());
+        assert!(resume_res.starts_with("error:"));
+
+        let cancel_res = engine_cancel_transfer("invalid-uuid".to_string());
+        assert!(cancel_res.starts_with("error:"));
+
+        let accept_res = engine_accept_transfer("invalid-uuid".to_string());
+        assert!(accept_res.starts_with("error:"));
+
+        let prog_res = engine_get_progress("invalid-uuid".to_string());
+        assert_eq!(prog_res, "null");
+
+        let name_res = engine_set_device_name("CustomAPIName".to_string());
+        assert_eq!(name_res, "ok");
+
+        let clip_res = engine_send_clipboard(
+            "nonexistent-dev".to_string(),
+            "clipboard content".to_string(),
+        );
+        assert!(clip_res.starts_with("error:"));
+
+        let events = engine_get_events(10);
+        assert!(events.starts_with('['));
+
+        let streams = engine_get_streams();
+        assert!(streams.starts_with('['));
+
+        let stream_id = engine_start_stream(
+            "Camera".to_string(),
+            "dev-1".to_string(),
+            "Device 1".to_string(),
+            42000,
+            true,
+        );
+        assert!(!stream_id.is_empty());
+
+        let stop_stream_res = engine_stop_stream(stream_id);
+        assert_eq!(stop_stream_res, "ok");
+
+        let settings = engine_load_settings();
+        assert!(settings.contains("device_name"));
+
+        let save_res = engine_save_settings(settings);
+        assert_eq!(save_res, "ok");
+
+        let save_err_res = engine_save_settings("invalid-json".to_string());
+        assert!(save_err_res.starts_with("error:"));
+
+        let pin = engine_generate_pin(300);
+        assert_eq!(pin.len(), 6);
+
+        let qr_json = engine_generate_qr_invitation(pin.clone());
+        assert!(qr_json.contains("pin"));
+
+        let parse_qr = engine_parse_qr_invitation(qr_json.clone());
+        assert!(parse_qr.contains("pin"));
+
+        let parse_qr_err = engine_parse_qr_invitation("invalid-qr-json".to_string());
+        assert!(parse_qr_err.starts_with("error:"));
+
+        let history = engine_search_history("".to_string());
+        assert!(history.starts_with('['));
+
+        let stats = engine_get_stats();
+        assert!(stats.contains("total_transfers"));
+
+        let scan = engine_subnet_scan();
+        assert!(scan.starts_with('['));
+
+        let verify_res = engine_verify_pin("dev-1".to_string(), "000000".to_string());
+        assert_eq!(verify_res, "invalid");
+
+        engine_stop();
+    }
 }

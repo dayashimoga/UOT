@@ -48,3 +48,19 @@ impl WifiDirectGroupInfo {
         serde_json::from_str(json)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wifidirect_group_info_inline() {
+        let group = WifiDirectGroupInfo::new_group("TestDevice", 42000);
+        assert!(group.ssid.contains("DIRECT-UOT-TestDevice"));
+        assert_eq!(group.port, 42000);
+
+        let json = group.to_json().unwrap();
+        let parsed = WifiDirectGroupInfo::from_json(&json).unwrap();
+        assert_eq!(parsed.ssid, group.ssid);
+    }
+}

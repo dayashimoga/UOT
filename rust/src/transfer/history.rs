@@ -70,3 +70,65 @@ impl TransferHistoryStore {
             .join("history.json")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transfer::types::*;
+
+    #[test]
+    fn test_transfer_history_store_inline_persistence() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("history.json");
+
+        let mut store = TransferHistoryStore::load(&path);
+        assert!(store.records.is_empty());
+
+        let rec1 = TransferRecord {
+            transfer_id: uuid::Uuid::new_v4(),
+            direction: TransferDirection::Send,
+            status: TransferStatus::Completed,
+            remote_device: "PixelPhone".to_string(),
+            items: vec![TransferItemRecord {
+                item_id: uuid::Uuid::new_v4(),
+                name: "photo.jpg".to_string(),
+                relative_path: "photo.jpg".to_string(),
+                size: 2048,
+                transferred_bytes: 2048,
+                status: TransferStatus::Completed,
+                hash: None,
+            }],
+            total_size: 2048,
+            transferred_bytes: 2048,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            finished_at: None,
+            error: None,
+        };
+
+        store.upsert(rec1.clone());
+        store.save(&path).unwrap();
+
+        let mut store2 = TransferHistoryStore::load(&path);
+        assert_eq!(store2.records.len(), 1);
+
+        // Upsert update
+        let mut rec1_updated = rec1.clone();
+        rec1_updated.transferred_bytes = 2048;
+        store2.upsert(rec1_updated);
+        assert_eq!(store2.records.len(), 1);
+
+        // Query tests
+        let q_pixel = store2.query("Pixel", None);
+        assert_eq!(q_pixel.len(), 1);
+
+        let q_photo = store2.query("photo", Some(TransferStatus::Completed));
+        assert_eq!(q_photo.len(), 1);
+
+        let q_failed = store2.query("", Some(TransferStatus::Failed));
+        assert!(q_failed.is_empty());
+
+        let def_path = TransferHistoryStore::default_path();
+        assert!(def_path.to_string_lossy().contains("history.json"));
+    }
+}

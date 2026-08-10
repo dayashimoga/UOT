@@ -71,3 +71,28 @@ impl UserSettings {
             .join("settings.json")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_settings_inline_persistence() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("settings.json");
+
+        let mut settings = UserSettings::load(&path);
+        assert_eq!(settings.theme_mode, "dark");
+
+        settings.device_name = "TestDeviceSettings".to_string();
+        settings.chunk_size_kb = 512;
+        settings.save(&path).unwrap();
+
+        let reloaded = UserSettings::load(&path);
+        assert_eq!(reloaded.device_name, "TestDeviceSettings");
+        assert_eq!(reloaded.chunk_size_kb, 512);
+
+        let def_path = UserSettings::default_path();
+        assert!(def_path.to_string_lossy().contains("settings.json"));
+    }
+}

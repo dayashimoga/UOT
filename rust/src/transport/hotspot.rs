@@ -38,3 +38,19 @@ impl HotspotConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hotspot_config_inline() {
+        let hs = HotspotConfig::create_temp("TestDevice", 42000);
+        assert_eq!(hs.ssid, "UOT-TestDevice");
+        assert_eq!(hs.state, HotspotState::Disabled);
+
+        let hs_json = serde_json::to_string(&hs).unwrap();
+        let hs_parsed: HotspotConfig = serde_json::from_str(&hs_json).unwrap();
+        assert_eq!(hs_parsed.ssid, hs.ssid);
+    }
+}

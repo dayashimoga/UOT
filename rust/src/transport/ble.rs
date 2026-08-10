@@ -34,3 +34,29 @@ impl BleAdvertisement {
         serde_json::from_slice(bytes)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ble_advertisement_inline() {
+        assert!(!UOT_BLE_SERVICE_UUID.is_empty());
+        assert!(!UOT_BLE_CHAR_CONTROL.is_empty());
+        assert!(!UOT_BLE_CHAR_DATA.is_empty());
+
+        let adv = BleAdvertisement {
+            device_name: "Phone".to_string(),
+            device_hash: "abc12345".to_string(),
+            wifi_ip: Some("192.168.1.50".to_string()),
+            port: 42000,
+        };
+
+        let encoded = adv.encode();
+        assert!(!encoded.is_empty());
+
+        let decoded = BleAdvertisement::decode(&encoded).unwrap();
+        assert_eq!(decoded.device_name, "Phone");
+        assert_eq!(decoded.wifi_ip, Some("192.168.1.50".to_string()));
+    }
+}

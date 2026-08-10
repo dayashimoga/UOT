@@ -153,3 +153,40 @@ impl Default for StreamManager {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stream_manager_inline_lifecycle() {
+        let mgr = StreamManager::new();
+        let session_id = mgr.start_session(
+            StreamType::Camera,
+            "remote-dev-123",
+            "Remote Camera",
+            42000,
+            true,
+        );
+
+        assert_eq!(mgr.active_sessions().len(), 1);
+
+        mgr.update_state(&session_id, StreamState::Streaming);
+        mgr.update_stats(&session_id, 1048576, 30.0);
+
+        let session = mgr.get_session(&session_id).unwrap();
+        assert_eq!(session.state, StreamState::Streaming);
+        assert_eq!(session.bytes_streamed, 1048576);
+        assert_eq!(session.duration_secs, 30.0);
+
+        mgr.stop_session(&session_id);
+        let session_stopping = mgr.get_session(&session_id).unwrap();
+        assert_eq!(session_stopping.state, StreamState::Stopping);
+
+        mgr.remove_session(&session_id);
+        assert!(mgr.active_sessions().is_empty());
+
+        let def_mgr = StreamManager::default();
+        assert!(def_mgr.active_sessions().is_empty());
+    }
+}

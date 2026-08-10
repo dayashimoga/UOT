@@ -62,3 +62,35 @@ impl LifetimeStats {
             .join("stats.json")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lifetime_stats_inline_persistence() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("stats.json");
+
+        let mut stats = LifetimeStats::load(&path);
+        assert_eq!(stats.total_transfers, 0);
+
+        stats.record_success(1024, true, 50000);
+        stats.record_success(2048, false, 80000);
+        stats.record_failure();
+
+        assert_eq!(stats.total_transfers, 3);
+        assert_eq!(stats.successful_transfers, 2);
+        assert_eq!(stats.failed_transfers, 1);
+        assert_eq!(stats.total_bytes_sent, 1024);
+        assert_eq!(stats.total_bytes_received, 2048);
+        assert_eq!(stats.peak_speed_bytes_per_sec, 80000);
+
+        stats.save(&path).unwrap();
+        let reloaded = LifetimeStats::load(&path);
+        assert_eq!(reloaded.total_transfers, 3);
+
+        let def_path = LifetimeStats::default_path();
+        assert!(def_path.to_string_lossy().contains("stats.json"));
+    }
+}
