@@ -1174,9 +1174,65 @@ impl UotEngine {
         self.config.read().clone()
     }
 
+    /// Direct connection to a peer by address string (IP:port or IP).
+    pub async fn connect_peer(&self, addr_str: &str) -> Result<DiscoveredDevice, UotError> {
+        let port = self.config.read().network_port.unwrap_or(tcp::DEFAULT_PORT);
+        let full_addr = if addr_str.contains(':') {
+            addr_str.to_string()
+        } else {
+            format!("{addr_str}:{port}")
+        };
+
+        let socket_addr: SocketAddr = full_addr.parse().map_err(|e| {
+            UotError::Transport(crate::core::error::TransportError::ConnectionFailed {
+                reason: format!("Invalid address '{full_addr}': {e}"),
+            })
+        })?;
+
+        let conn_stream = tcp::connect(socket_addr).await.map_err(|e| {
+            UotError::Transport(crate::core::error::TransportError::ConnectionFailed {
+                reason: format!("Failed to connect to {socket_addr}: {e}"),
+            })
+        })?;
+
+        let conn = TcpConnection::new(conn_stream)?;
+
+        let remote_ip = socket_addr.ip().to_string();
+        let device_id = format!("peer-{}", remote_ip.replace('.', "-"));
+        let device_name = format!("Device ({remote_ip})");
+        let now = chrono::Utc::now();
+
+        let device = DiscoveredDevice {
+            device_id: device_id.clone(),
+            device_name: device_name.clone(),
+            device_type: DeviceType::Desktop,
+            discovery_method: crate::discovery::types::DiscoveryMethod::Manual,
+            address: Some(socket_addr.to_string()),
+            capabilities: vec!["tcp_lan".to_string()],
+            signal_strength: Some(100),
+            first_seen: now,
+            last_seen: now,
+            is_trusted: false,
+        };
+
+        self.devices
+            .write()
+            .insert(device_id.clone(), device.clone());
+        self.connections
+            .write()
+            .insert(device_id.clone(), Arc::new(conn));
+        let _ = self
+            .event_tx
+            .send(EngineEvent::DeviceFound(device.clone()))
+            .await;
+
+        Ok(device)
+    }
+
     /// Fallback discovery: scan local subnet for UOT listeners.
     pub async fn subnet_scan(&self) -> Vec<std::net::SocketAddr> {
         use crate::discovery::subnet::SubnetScanner;
+        use crate::discovery::types::DiscoveryMethod;
 
         let port = self.config.read().network_port.unwrap_or(tcp::DEFAULT_PORT);
         let scanner = SubnetScanner::new(port);
@@ -1184,10 +1240,28 @@ impl UotEngine {
         // Get local IPs and scan each /24 subnet
         let local_ips = tcp::local_ips();
         let mut all_found = Vec::new();
+        let now = chrono::Utc::now();
         for ip in local_ips {
             if let std::net::IpAddr::V4(v4) = ip {
                 let octets = v4.octets();
                 let found = scanner.scan_subnet(octets).await;
+                for addr in &found {
+                    let dev_id = format!("lan-{}", addr.ip().to_string().replace('.', "-"));
+                    let dev = DiscoveredDevice {
+                        device_id: dev_id.clone(),
+                        device_name: format!("UOT Node ({})", addr.ip()),
+                        device_type: DeviceType::Desktop,
+                        discovery_method: DiscoveryMethod::Manual,
+                        address: Some(addr.to_string()),
+                        capabilities: vec!["tcp_lan".to_string()],
+                        signal_strength: Some(100),
+                        first_seen: now,
+                        last_seen: now,
+                        is_trusted: false,
+                    };
+                    self.devices.write().insert(dev_id, dev.clone());
+                    let _ = self.event_tx.send(EngineEvent::DeviceFound(dev)).await;
+                }
                 all_found.extend(found);
             }
         }

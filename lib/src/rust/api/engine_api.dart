@@ -29,14 +29,10 @@ String engineGetTransfers() =>
     RustLib.instance.api.crateApiEngineApiEngineGetTransfers();
 
 /// Send files to a device. Returns transfer ID or error.
-Future<String> engineSendFiles({
-  required String deviceId,
-  required List<String> filePaths,
-}) =>
+Future<String> engineSendFiles(
+        {required String deviceId, required List<String> filePaths}) =>
     RustLib.instance.api.crateApiEngineApiEngineSendFiles(
-      deviceId: deviceId,
-      filePaths: filePaths,
-    );
+        deviceId: deviceId, filePaths: filePaths);
 
 /// Stop the engine.
 Future<void> engineStop() => RustLib.instance.api.crateApiEngineApiEngineStop();
@@ -70,14 +66,10 @@ Future<String> engineSetDeviceName({required String name}) =>
     RustLib.instance.api.crateApiEngineApiEngineSetDeviceName(name: name);
 
 /// Send clipboard text to a device.
-Future<String> engineSendClipboard({
-  required String deviceId,
-  required String text,
-}) =>
-    RustLib.instance.api.crateApiEngineApiEngineSendClipboard(
-      deviceId: deviceId,
-      text: text,
-    );
+Future<String> engineSendClipboard(
+        {required String deviceId, required String text}) =>
+    RustLib.instance.api
+        .crateApiEngineApiEngineSendClipboard(deviceId: deviceId, text: text);
 
 /// Get event log (latest N events as JSON).
 String engineGetEvents({required int limit}) =>
@@ -86,6 +78,24 @@ String engineGetEvents({required int limit}) =>
 /// Get active streaming sessions as JSON.
 String engineGetStreams() =>
     RustLib.instance.api.crateApiEngineApiEngineGetStreams();
+
+/// Start a new media streaming session.
+String engineStartStream(
+        {required String streamType,
+        required String remoteDeviceId,
+        required String remoteDeviceName,
+        required int port,
+        required bool isSender}) =>
+    RustLib.instance.api.crateApiEngineApiEngineStartStream(
+        streamType: streamType,
+        remoteDeviceId: remoteDeviceId,
+        remoteDeviceName: remoteDeviceName,
+        port: port,
+        isSender: isSender);
+
+/// Stop an active media streaming session.
+String engineStopStream({required String sessionId}) => RustLib.instance.api
+    .crateApiEngineApiEngineStopStream(sessionId: sessionId);
 
 /// Load user settings as JSON.
 String engineLoadSettings() =>
@@ -104,9 +114,31 @@ String engineParseQrInvitation({required String json}) =>
     RustLib.instance.api.crateApiEngineApiEngineParseQrInvitation(json: json);
 
 /// Search persistent transfer history with query string.
+/// Search transfer history via engine's in-memory store.
 String engineSearchHistory({required String query}) =>
     RustLib.instance.api.crateApiEngineApiEngineSearchHistory(query: query);
 
-/// Get cumulative lifetime transfer statistics as JSON.
+/// Get cumulative lifetime transfer statistics from engine.
 String engineGetStats() =>
     RustLib.instance.api.crateApiEngineApiEngineGetStats();
+
+/// Fallback subnet scan for device discovery.
+Future<String> engineSubnetScan() =>
+    RustLib.instance.api.crateApiEngineApiEngineSubnetScan();
+
+/// Direct connection to a peer by address (IP:port or IP).
+Future<String> engineConnectPeer({required String address}) =>
+    RustLib.instance.api.crateApiEngineApiEngineConnectPeer(address: address);
+
+/// Get local IPv4 addresses as JSON list.
+String engineGetLocalIps() =>
+    RustLib.instance.api.crateApiEngineApiEngineGetLocalIps();
+
+/// Generate a 6-digit verification PIN with specified TTL in seconds.
+String engineGeneratePin({required BigInt ttlSecs}) =>
+    RustLib.instance.api.crateApiEngineApiEngineGeneratePin(ttlSecs: ttlSecs);
+
+/// Verify a PIN attempt for a device ID, returning session token on success.
+String engineVerifyPin({required String deviceId, required String attempt}) =>
+    RustLib.instance.api
+        .crateApiEngineApiEngineVerifyPin(deviceId: deviceId, attempt: attempt);

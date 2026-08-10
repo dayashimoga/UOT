@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../rust/api/init.dart' as rust_api;
 import '../../rust/api/engine_api.dart' as engine;
+import 'qr_pairing_dialog.dart';
 
 // Device model parsed from JSON.
 class DeviceInfo {
@@ -110,10 +111,17 @@ class _NearbyScreenState extends State<NearbyScreen>
     _startRefresh();
   }
 
+  int _refreshCount = 0;
+
   void _startRefresh() {
     _refreshDevices();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _refreshCount++;
       _refreshDevices();
+      // Periodically trigger subnet scan every 6 seconds if scanning is active
+      if (_isScanning && _refreshCount % 3 == 0) {
+        engine.engineSubnetScan();
+      }
     });
   }
 
@@ -135,6 +143,17 @@ class _NearbyScreenState extends State<NearbyScreen>
     }
   }
 
+  void _triggerSubnetScan() {
+    engine.engineSubnetScan();
+    _refreshDevices();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Scanning local network subnet for UOT devices...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _refreshTimer?.cancel();
@@ -147,6 +166,20 @@ class _NearbyScreenState extends State<NearbyScreen>
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    String localIp = '127.0.0.1';
+    try {
+      final ipsJson = engine.engineGetLocalIps();
+      final List<dynamic> ips = jsonDecode(ipsJson);
+      if (ips.isNotEmpty) localIp = ips.first.toString();
+    } catch (_) {}
+
+    String devName = 'My Device';
+    try {
+      final settingsJson = engine.engineLoadSettings();
+      final map = jsonDecode(settingsJson) as Map<String, dynamic>;
+      devName = map['device_name']?.toString() ?? 'UOT Device';
+    } catch (_) {}
+
     return SafeArea(
       child: CustomScrollView(
         slivers: [
@@ -156,8 +189,8 @@ class _NearbyScreenState extends State<NearbyScreen>
             actions: [
               IconButton(
                 icon: const Icon(Icons.qr_code_scanner_rounded),
-                onPressed: () {},
-                tooltip: 'Scan QR Code',
+                onPressed: () => QrPairingDialog.show(context),
+                tooltip: 'Scan QR Code / Direct Connect',
               ),
               IconButton(
                 icon: Icon(
@@ -182,6 +215,17 @@ class _NearbyScreenState extends State<NearbyScreen>
                   version: _coreVersion,
                   healthStatus: _healthStatus,
                   isScanning: _isScanning,
+                ),
+                const SizedBox(height: 12),
+
+                // My Device & Quick Connect Header
+                _MyDeviceBanner(
+                  colorScheme: colorScheme,
+                  deviceName: devName,
+                  localIp: localIp,
+                  onOpenQr: () => QrPairingDialog.show(context),
+                  onOpenDirectConnect: () => QrPairingDialog.show(context),
+                  onScanSubnet: _triggerSubnetScan,
                 ),
                 const SizedBox(height: 16),
 
@@ -647,3 +691,93 @@ class _SendOption extends StatelessWidget {
     );
   }
 }
+
+class _MyDeviceBanner extends StatelessWidget {
+  final ColorScheme colorScheme;
+  final String deviceName;
+  final String localIp;
+  final VoidCallback onOpenQr;
+  final VoidCallback onOpenDirectConnect;
+  final VoidCallback onScanSubnet;
+
+  const _MyDeviceBanner({
+    required this.colorScheme,
+    required this.deviceName,
+    required this.localIp,
+    required this.onOpenQr,
+    required this.onOpenDirectConnect,
+    required this.onScanSubnet,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      color: colorScheme.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.laptop_chromebook_rounded,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        deviceName,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'IP: $localIp:42000',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: onOpenQr,
+                  icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                  label: const Text('Pair / Show QR'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onOpenDirectConnect,
+                  icon: const Icon(Icons.lan_rounded, size: 18),
+                  label: const Text('Direct IP Connect'),
+                ),
+                IconButton.outlined(
+                  onPressed: onScanSubnet,
+                  tooltip: 'Scan Local Subnet (LAN)',
+                  icon: const Icon(Icons.radar_rounded, size: 18),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

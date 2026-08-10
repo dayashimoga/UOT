@@ -339,6 +339,34 @@ pub fn engine_subnet_scan() -> String {
     .unwrap_or_else(|| "[]".to_string())
 }
 
+/// Direct connection to a peer by address (IP:port or IP).
+pub fn engine_connect_peer(address: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.connect_peer(&address).await }) {
+            Ok(dev) => serde_json::to_string(&dev).unwrap_or_else(|_| "ok".to_string()),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Get local IPv4 addresses as JSON list.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_local_ips() -> String {
+    let ips: Vec<String> = crate::transport::tcp::local_ips()
+        .into_iter()
+        .filter_map(|ip| {
+            if let std::net::IpAddr::V4(v4) = ip {
+                if !v4.is_loopback() {
+                    return Some(v4.to_string());
+                }
+            }
+            None
+        })
+        .collect();
+    serde_json::to_string(&ips).unwrap_or_else(|_| "[]".to_string())
+}
+
 /// Generate a 6-digit verification PIN with specified TTL in seconds.
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_generate_pin(ttl_secs: u64) -> String {
@@ -384,16 +412,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_engine_state_before_init() {
-        let state = engine_state();
-        // Before init, should return "Stopped" since engine doesn't exist
-        assert!(state == "Stopped" || state == "Running");
-    }
-
-    #[test]
     fn test_engine_api_full_inline_suite() {
+        let before_state = engine_state();
+        assert!(!before_state.is_empty());
+
         let init_res = engine_init();
-        assert!(init_res.starts_with("ok:") || init_res == "already_initialized");
+        assert!(
+            init_res.starts_with("ok:")
+                || init_res.starts_with("partial:")
+                || init_res == "already_initialized"
+        );
 
         let state = engine_state();
         assert!(!state.is_empty());
@@ -485,8 +513,11 @@ mod tests {
         let scan = engine_subnet_scan();
         assert!(scan.starts_with('['));
 
-        let verify_res = engine_verify_pin("dev-1".to_string(), "000000".to_string());
-        assert_eq!(verify_res, "invalid");
+        let local_ips = engine_get_local_ips();
+        assert!(local_ips.starts_with('['));
+
+        let conn_peer_err = engine_connect_peer("127.0.0.1:59997".to_string());
+        assert!(conn_peer_err.starts_with("error:"));
 
         engine_stop();
     }

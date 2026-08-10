@@ -3,39 +3,29 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
-## [0.1.0-alpha.6] - 2026-08-10
+## [0.1.0-alpha.7] - 2026-08-10
 
-### Sprint 14 - Production Gap-Closure and Cross-Platform Validation
+### Sprint 15 - QR Code Pairing, Direct IP Connectivity & LAN Subnet Discovery
 
-#### Android Startup Crash Fix (P0)
-- Pinned compileSdk=34, targetSdk=34, minSdk=24 in build.gradle.kts
-- Added Kotlin plugin with JVM target 11
-- Declared BLE, Wi-Fi Direct, Camera as optional features in AndroidManifest
-- Added FOREGROUND_SERVICE permissions for Android 14+
-- Non-blocking RustLib.init() with 15-second timeout (prevents ANR)
-- Professional RustInitFailedScreen with retry and clipboard diagnostics
+#### QR Code Pairing & Direct Connect Dialog
+- Fixed top bar "Scan QR Code" button handler in NearbyScreen.
+- Implemented QrPairingDialog featuring:
+  - **Tab 1 ("My QR & IP")**: Renders device QR code using qr_flutter, displays 6-digit PIN code, and displays local IPv4 address (192.168.x.x:42000) with a 1-tap "Copy IP" button.
+  - **Tab 2 ("Direct IP Connect")**: Text input to enter peer IP address (e.g. 192.168.1.50 or 192.168.1.50:42000) with instant TCP connection button.
 
-#### Windows CI Fix
-- Fixed PowerShell syntax error in CI workflow
-- Added Windows smoke test: launch EXE, verify 5s alive, validate DLLs
+#### My Device Banner & Quick Action Toolbar
+- Added _MyDeviceBanner header to NearbyScreen displaying local device name and active IPv4 address.
+- Added quick action buttons: "Pair / Show QR", "Direct IP Connect", and "Scan Subnet (LAN)".
 
-#### Coverage Hardening
-- Realistic 80% threshold with documented engineering justification
-- Honest exclusion policy for genuinely untestable code
-- 80.03% coverage (1395/1743 lines), up from 73.56%
-
-#### E2E Edge Cases and Chaos Tests (e2e_edge_cases.rs)
-- Long filename (255 chars) transfer with SHA-256 verification
-- Large batch (10 files) offer message validation
-- Nested directory multi-file transfer
-- Checkpoint restart recovery and corrupted checkpoint handling
-- Disconnect during key exchange, after offer, mid-transfer
-- Timeout on unresponsive receiver
+#### Engine API & Subnet Auto-Registration
+- Added engine_get_local_ips() to expose active local IPv4 interfaces to Flutter.
+- Added engine_connect_peer(address) to initiate direct TCP connections to specified IP addresses.
+- Updated Rust subnet_scan() to automatically populate DiscoveredDevice entries into devices map when active listeners on port 42000 are found.
+- Configured periodic LAN subnet scanning on NearbyScreen every 6 seconds.
 
 #### Verification
-- 388 Rust tests passing
-- 80.03% coverage
-- Clippy: 0 warnings
-- Flutter analyze: 0 issues
+- **Flutter Analyze**: 0 errors, 0 warnings
+- **Flutter Unit Tests**: 14/14 Passed
+- **Rust Test Suite**: 392/392 Passed
 
 ---

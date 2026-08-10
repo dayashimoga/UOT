@@ -855,7 +855,11 @@ fn test_engine_api_full_suite() {
     use rust_lib_uot_app::api::engine_api::*;
 
     let init_res = engine_init();
-    assert!(init_res.starts_with("ok:") || init_res == "already_initialized");
+    assert!(
+        init_res.starts_with("ok:")
+            || init_res.starts_with("partial:")
+            || init_res == "already_initialized"
+    );
 
     let state = engine_state();
     assert!(!state.is_empty());

@@ -81,3 +81,13 @@
 - [x] Coverage hardening: 80.03% coverage (1395/1743 lines), 388 tests passing across all suites
 - [x] E2E edge cases & chaos tests (e2e_edge_cases.rs): 255-char filenames, 10-file batch, nested subdirs, checkpoint restart recovery, corrupted checkpoint handling, disconnect chaos & receiver timeout
 - [x] Documentation & sync: IMPLEMENTATION.md, TODO.md, CHANGELOG.md updated
+
+### Sprint 15 - QR Code Pairing, Direct IP Connectivity & LAN Subnet Discovery (Completed)
+- [x] Fixed "Scan QR Code" top bar button handler (connected to QrPairingDialog)
+- [x] Added QrPairingDialog with dual tabs ("My QR & IP", "Direct IP Connect")
+- [x] Integrated qr_flutter package for pure Dart cross-platform QR code generation
+- [x] Added _MyDeviceBanner header displaying local IPv4 address, device name, and instant action buttons ("Show QR", "Direct Connect", "Scan Subnet")
+- [x] Exposed engine_get_local_ips and engine_connect_peer in Rust FRB engine API
+- [x] Updated Rust subnet_scan to automatically populate and broadcast discovered LAN nodes
+- [x] Configured periodic background subnet scanning every 6 seconds on NearbyScreen
+- [x] Flutter analyze 100% clean (0 errors, 0 warnings), 14 Flutter tests passing, 392 Rust tests passing
