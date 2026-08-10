@@ -170,4 +170,25 @@ mod tests {
         let third = qm.pop_next().unwrap();
         assert_eq!(third.priority, Priority::Low);
     }
+
+    #[test]
+    fn test_queue_manager_methods_coverage() {
+        let mut qm = TransferQueueManager::new(3);
+        assert_eq!(qm.max_concurrent(), 3);
+
+        qm.set_max_concurrent(5);
+        assert_eq!(qm.max_concurrent(), 5);
+
+        let rec = make_record("remove_test");
+        let id = rec.transfer_id;
+        qm.push(rec, Priority::High);
+        assert_eq!(qm.items().len(), 1);
+        assert_eq!(qm.active_count(), 0);
+
+        let removed = qm.remove(&id);
+        assert!(removed.is_some());
+        assert!(qm.remove(&id).is_none());
+
+        assert!(qm.pop_next().is_none());
+    }
 }

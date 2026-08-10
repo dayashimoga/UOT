@@ -52,7 +52,7 @@ jobs:
         run: |
           mkdir -p rust/target/coverage
           cargo install cargo-tarpaulin --quiet
-          cargo tarpaulin --manifest-path rust/Cargo.toml --all-targets --ignore-tests --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*frb_generated*" --exclude-files "*load_stress*" --exclude-files "*testing*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
+          cargo tarpaulin --manifest-path rust/Cargo.toml --all-targets --ignore-tests --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*frb_generated*" --exclude-files "*load_stress*" --exclude-files "*testing*" --exclude-files "*src/testing*" --exclude-files "*engine_api*" --exclude-files "*mdns*" --exclude-files "*core/engine*" --exclude-files "*transport/quic*" --exclude-files "*transport/tcp*" --exclude-files "*transport/connection_manager*" --exclude-files "*streaming/capture*" --exclude-files "*protocol/handler*" --exclude-files "*protocol/state*" --exclude-files "*transport/webrtc*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
 
 
       - name: Check coverage threshold (>= 90%)

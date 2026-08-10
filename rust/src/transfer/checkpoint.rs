@@ -226,4 +226,14 @@ mod tests {
         let result = store.load(&Uuid::new_v4());
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_checkpoint_default_path_and_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = CheckpointStore::new(dir.path());
+        assert_eq!(store.dir(), dir.path());
+
+        let default_p = CheckpointStore::default_path();
+        assert!(default_p.to_string_lossy().contains("checkpoints"));
+    }
 }

@@ -89,4 +89,14 @@ mod tests {
         assert_eq!(snap.bytes_per_sec, 0);
         assert_eq!(snap.mbps, 0.0);
     }
+
+    #[test]
+    fn test_throughput_benchmark_update_interval() {
+        let mut bench = ThroughputBenchmark::new();
+        bench.last_sample_time = Instant::now() - std::time::Duration::from_millis(600);
+        bench.update(1024 * 1024);
+        let snap = bench.snapshot();
+        assert!(snap.bytes_per_sec > 0);
+        assert!(snap.mbps > 0.0);
+    }
 }

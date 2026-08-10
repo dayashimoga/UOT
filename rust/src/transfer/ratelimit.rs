@@ -61,4 +61,10 @@ mod tests {
         let mut limiter = RateLimiter::new(10_000_000); // 10 MB/s
         limiter.consume(1000).await;
     }
+
+    #[tokio::test]
+    async fn test_rate_limiter_exceeded() {
+        let mut limiter = RateLimiter::new(100);
+        limiter.consume(200).await;
+    }
 }

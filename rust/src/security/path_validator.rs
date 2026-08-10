@@ -419,4 +419,18 @@ mod tests {
         let v = validator_with_base();
         assert!(v.validate_relative_path("subdir/file.txt").is_ok());
     }
+
+    #[test]
+    fn test_sanitize_filename_edge_cases() {
+        let v = validator();
+        let long_str = "a".repeat(300);
+        let sanitized = v.sanitize_filename(&long_str);
+        assert_eq!(sanitized.len(), 255);
+
+        let space_only = v.sanitize_filename("   ");
+        assert_eq!(space_only, "unnamed");
+
+        let null_str = v.sanitize_filename("test\0name.txt");
+        assert!(!null_str.contains('\0'));
+    }
 }

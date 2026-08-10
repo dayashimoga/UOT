@@ -186,4 +186,21 @@ mod tests {
             assert!(names.contains(&"Hardware Codecs"));
         }
     }
+
+    #[test]
+    fn test_capabilities_all_branches() {
+        let mut caps = PlatformCapabilities::detect();
+        caps.ble_gatt = true;
+        caps.wifi_direct = true;
+        let transports = caps.supported_transports();
+        assert!(transports.contains(&"ble_gatt"));
+        assert!(transports.contains(&"wifi_direct"));
+
+        caps.ble_gatt = true;
+        caps.wifi_direct = true;
+        caps.camera_qr_scanner = true;
+        caps.hardware_codecs = true;
+        let unsupported = caps.unsupported_features();
+        assert!(unsupported.is_empty());
+    }
 }

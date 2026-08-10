@@ -108,4 +108,14 @@ mod tests {
         let item = ClipboardItem::auto_detect("<html><body>Hi</body></html>".to_string());
         assert_eq!(item.content_type.to_string(), "text/html");
     }
+
+    #[test]
+    fn test_clipboard_item_edge_cases() {
+        let long_text = "a".repeat(150);
+        let item = ClipboardItem::text(long_text);
+        assert!(item.preview.unwrap().ends_with('…'));
+
+        let img_type = ClipboardContentType::Image;
+        assert_eq!(img_type.to_string(), "image/png");
+    }
 }

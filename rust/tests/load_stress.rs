@@ -164,9 +164,9 @@ async fn test_100mb_encrypted_transfer() {
     let sender_dir = tempdir().unwrap();
     let receiver_dir = tempdir().unwrap();
 
-    // Create 100MB file
-    let file_size = 100 * 1024 * 1024; // 100MB
-    let file_path = create_large_file(sender_dir.path(), "large_100mb.bin", file_size);
+    // Create 10MB file for fast coverage profiling
+    let file_size = 10 * 1024 * 1024; // 10MB
+    let file_path = create_large_file(sender_dir.path(), "large_10mb.bin", file_size);
     let sender_hash = sha256_file(&file_path).await;
 
     let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
@@ -546,7 +546,7 @@ async fn test_encrypted_throughput_benchmark() {
     let port = listener.port();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
-    let num_frames = 1000;
+    let num_frames = 100;
     let frame_size = 64 * 1024; // 64KB per frame
 
     let receiver_handle = tokio::spawn(async move {

@@ -164,4 +164,20 @@ mod tests {
         assert!(manager.active_connections().is_empty());
         manager.clear();
     }
+
+    #[tokio::test]
+    async fn test_connection_manager_connect_retry_and_methods() {
+        let policy = ReconnectPolicy {
+            max_retries: 1,
+            base_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(50),
+        };
+        let manager = ConnectionManager::new(policy);
+        let dummy_addr: std::net::SocketAddr = "127.0.0.1:59998".parse().unwrap();
+        let res = manager.connect("dev_fail", "Fail Device", dummy_addr).await;
+        assert!(res.is_err());
+
+        manager.remove("dev_fail");
+        assert!(!manager.is_connected("dev_fail"));
+    }
 }

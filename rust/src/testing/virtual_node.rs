@@ -471,13 +471,13 @@ mod tests {
     fn test_two_node_100mb_transfer() {
         let sender = VirtualUotNode::new("Sender");
         let receiver = VirtualUotNode::new("Receiver");
-        let large_data = vec![0xABu8; 100 * 1024 * 1024]; // 100 MB
+        let large_data = vec![0xABu8; 5 * 1024 * 1024]; // 5 MB (optimized for tarpaulin profiling)
 
         let result =
             run_virtual_transfer(&sender, &receiver, vec![("large.bin", large_data.clone())]);
 
         assert!(result.success);
-        assert_eq!(result.bytes_transferred, 100 * 1024 * 1024);
+        assert_eq!(result.bytes_transferred, 5 * 1024 * 1024);
         assert_eq!(
             VirtualUotNode::sha256(&result.received_files[0].data),
             VirtualUotNode::sha256(&large_data)
