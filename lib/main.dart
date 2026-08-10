@@ -2,6 +2,9 @@
 //
 // Configures MaterialApp with theme, routing, and responsive layout.
 // Handles Rust FFI engine initialization with proper error recovery.
+// Engine init runs asynchronously with a timeout to prevent ANR on Android.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'src/core/theme/app_theme.dart';
@@ -44,17 +47,32 @@ class _UotAppState extends State<UotApp> {
     });
 
     try {
-      await RustLib.init();
-      setState(() {
-        _engineState = _EngineInitState.ready;
-      });
+      // Run RustLib.init() with a 15-second timeout to prevent ANR.
+      // On Android, native .so loading can hang if the library is missing
+      // or the ABI is incompatible; the timeout ensures graceful recovery.
+      await RustLib.init().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw TimeoutException(
+            'Rust engine initialization timed out after 15 seconds. '
+            'This may indicate a missing native library for this platform/ABI.',
+          );
+        },
+      );
+      if (mounted) {
+        setState(() {
+          _engineState = _EngineInitState.ready;
+        });
+      }
     } catch (e, stackTrace) {
       debugPrint('UOT RustLib initialization error: $e\n$stackTrace');
-      setState(() {
-        _engineState = _EngineInitState.failed;
-        _initError = e;
-        _initStackTrace = stackTrace;
-      });
+      if (mounted) {
+        setState(() {
+          _engineState = _EngineInitState.failed;
+          _initError = e;
+          _initStackTrace = stackTrace;
+        });
+      }
     }
   }
 

@@ -180,4 +180,24 @@ mod tests {
         manager.remove("dev_fail");
         assert!(!manager.is_connected("dev_fail"));
     }
+
+    #[tokio::test]
+    async fn test_connection_manager_connect_success() {
+        let (mut listener, _incoming) = crate::transport::tcp::TcpTransportListener::bind(0)
+            .await
+            .unwrap();
+        let port = listener.port();
+        let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+
+        let manager = ConnectionManager::default();
+        let conn = manager.connect("dev-ok", "OK Device", addr).await;
+        assert!(conn.is_ok());
+        assert!(manager.is_connected("dev-ok"));
+        assert!(manager.get("dev-ok").is_some());
+        assert_eq!(manager.active_connections().len(), 1);
+
+        manager.remove("dev-ok");
+        assert!(!manager.is_connected("dev-ok"));
+        assert!(manager.active_connections().is_empty());
+    }
 }

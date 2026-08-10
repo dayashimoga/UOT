@@ -1287,3 +1287,478 @@ fn test_api_types_device_info() {
     assert_eq!(parsed.id, "dev-100");
     assert_eq!(parsed.signal, Some(95));
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// ADDITIONAL ENGINE COVERAGE — TRANSFER LIFECYCLE
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_engine_accept_transfer_nonexistent() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+
+    // Invalid UUID
+    let r = engine.accept_transfer("not-a-uuid").await;
+    assert!(r.is_err());
+
+    // Valid UUID but no matching transfer
+    let r = engine
+        .accept_transfer("00000000-0000-0000-0000-000000000001")
+        .await;
+    assert!(r.is_err());
+}
+
+#[tokio::test]
+async fn test_engine_accept_transfer_with_pin_invalid() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+
+    // No PIN exists → should fail
+    let r = engine
+        .accept_transfer_with_pin("00000000-0000-0000-0000-000000000001", "dev-1", "999999")
+        .await;
+    assert!(r.is_err());
+}
+
+#[tokio::test]
+async fn test_engine_send_clipboard_no_device() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+    let r = engine
+        .send_clipboard("nonexistent-dev", "Hello".to_string())
+        .await;
+    assert!(r.is_err());
+}
+
+#[tokio::test]
+async fn test_engine_connect_with_retry_no_device() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+    // Connect to a non-listening address — should fail after retries
+    let addr: std::net::SocketAddr = "127.0.0.1:59997".parse().unwrap();
+    let r = engine.connect_with_retry("dev-fail", addr).await;
+    assert!(r.is_err());
+}
+
+#[tokio::test]
+async fn test_engine_subnet_scan() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+    let results = engine.subnet_scan().await;
+    // Just verify it doesn't panic; may or may not find hosts
+    let _count = results.len();
+    let events = engine.get_recent_events(5);
+    assert!(events.iter().any(|e| e.contains("Subnet scan")));
+}
+
+#[test]
+fn test_engine_stop_without_start() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+    // Should not panic even without start()
+    engine.stop();
+    assert_eq!(engine.state(), EngineState::Stopped);
+}
+
+#[test]
+fn test_engine_get_progress_invalid_uuid() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+    let r = engine.get_progress(&uuid::Uuid::new_v4());
+    assert!(r.is_none());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PROTOCOL HANDLER — ASYNC TCP MESSAGING
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_protocol_send_recv_message_via_tcp() {
+    use rust_lib_uot_app::protocol::handler::{recv_message, send_message};
+    use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
+
+    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let port = listener.port();
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+
+    // Spawn receiver
+    let recv_handle = tokio::spawn(async move {
+        let stream = incoming.recv().await.expect("accept");
+        let conn = TcpConnection::new(stream).unwrap();
+        let msg = recv_message(&conn).await.unwrap();
+        msg
+    });
+
+    // Connect and send
+    let stream = rust_lib_uot_app::transport::tcp::connect(addr)
+        .await
+        .unwrap();
+    let conn = TcpConnection::new(stream).unwrap();
+    let msg = WireMessage::Hello {
+        device_id: "sender-1".to_string(),
+        device_name: "Sender".to_string(),
+        device_type: "Desktop".to_string(),
+        version: "0.2.0".to_string(),
+        capabilities: vec!["files".to_string()],
+    };
+    send_message(&conn, &msg).await.unwrap();
+
+    // Verify received
+    let received = recv_handle.await.unwrap();
+    match received {
+        WireMessage::Hello { device_id, .. } => assert_eq!(device_id, "sender-1"),
+        _ => panic!("Expected Hello"),
+    }
+}
+
+#[tokio::test]
+async fn test_protocol_send_recv_data_chunk_via_tcp() {
+    use rust_lib_uot_app::protocol::handler::{recv_data_chunk, send_data_chunk};
+    use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
+
+    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let port = listener.port();
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+
+    let recv_handle = tokio::spawn(async move {
+        let stream = incoming.recv().await.expect("accept");
+        let conn = TcpConnection::new(stream).unwrap();
+        recv_data_chunk(&conn).await.unwrap()
+    });
+
+    let stream = rust_lib_uot_app::transport::tcp::connect(addr)
+        .await
+        .unwrap();
+    let conn = TcpConnection::new(stream).unwrap();
+    let test_data = vec![0xAB; 1024];
+    send_data_chunk(&conn, 4096, 0xDEADBEEF, &test_data)
+        .await
+        .unwrap();
+
+    let (offset, crc, data) = recv_handle.await.unwrap();
+    assert_eq!(offset, 4096);
+    assert_eq!(crc, 0xDEADBEEF);
+    assert_eq!(data.len(), 1024);
+    assert_eq!(data[0], 0xAB);
+}
+
+#[tokio::test]
+async fn test_protocol_recv_data_chunk_too_short() {
+    use rust_lib_uot_app::protocol::handler::recv_data_chunk;
+    use rust_lib_uot_app::transport::tcp::{Frame, FrameType, TcpConnection, TcpTransportListener};
+
+    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let port = listener.port();
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+
+    let recv_handle = tokio::spawn(async move {
+        let stream = incoming.recv().await.expect("accept");
+        let conn = TcpConnection::new(stream).unwrap();
+        recv_data_chunk(&conn).await
+    });
+
+    let stream = rust_lib_uot_app::transport::tcp::connect(addr)
+        .await
+        .unwrap();
+    let conn = TcpConnection::new(stream).unwrap();
+    // Send a Data frame with too-short payload (< 16 bytes)
+    conn.send_frame(Frame {
+        frame_type: FrameType::Data,
+        payload: vec![0; 8], // only 8 bytes, need 16
+    })
+    .await
+    .unwrap();
+
+    let r = recv_handle.await.unwrap();
+    assert!(r.is_err());
+}
+
+#[tokio::test]
+async fn test_protocol_recv_data_chunk_unexpected_control() {
+    use rust_lib_uot_app::protocol::handler::{recv_data_chunk, send_message};
+    use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
+
+    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let port = listener.port();
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+
+    let recv_handle = tokio::spawn(async move {
+        let stream = incoming.recv().await.expect("accept");
+        let conn = TcpConnection::new(stream).unwrap();
+        recv_data_chunk(&conn).await
+    });
+
+    let stream = rust_lib_uot_app::transport::tcp::connect(addr)
+        .await
+        .unwrap();
+    let conn = TcpConnection::new(stream).unwrap();
+    // Send a Control message when Data is expected
+    let msg = WireMessage::Cancel {
+        transfer_id: "tid".to_string(),
+        reason: Some("abort".to_string()),
+    };
+    send_message(&conn, &msg).await.unwrap();
+
+    let r = recv_handle.await.unwrap();
+    assert!(r.is_err()); // Should get "control message during data transfer" error
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TRANSPORT TCP — ADDITIONAL COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_tcp_listener_port_and_stop() {
+    use rust_lib_uot_app::transport::tcp::TcpTransportListener;
+
+    let (mut listener, _incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let port = listener.port();
+    assert!(port > 0);
+    listener.stop();
+}
+
+#[test]
+fn test_tcp_local_ips() {
+    use rust_lib_uot_app::transport::tcp::local_ips;
+    let ips = local_ips();
+    // Should at least have loopback
+    assert!(!ips.is_empty());
+}
+
+#[test]
+fn test_frame_type_all_variants() {
+    let variants = [
+        (0u8, FrameType::Control),
+        (1u8, FrameType::Data),
+        (2u8, FrameType::Ping),
+        (3u8, FrameType::Pong),
+    ];
+    for (byte, expected) in &variants {
+        let ft = FrameType::try_from(*byte).unwrap();
+        assert_eq!(ft, *expected);
+    }
+    // Invalid byte
+    assert!(FrameType::try_from(255u8).is_err());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DISCOVERY TYPES — ADDITIONAL COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_discovery_types_device_type_display() {
+    use rust_lib_uot_app::discovery::types::DeviceType;
+    assert_eq!(DeviceType::Desktop.to_string(), "Desktop");
+    assert_eq!(DeviceType::Phone.to_string(), "Phone");
+    assert_eq!(DeviceType::Tablet.to_string(), "Tablet");
+    assert_eq!(DeviceType::Laptop.to_string(), "Laptop");
+    assert_eq!(DeviceType::Tv.to_string(), "TV");
+    assert_eq!(DeviceType::Unknown.to_string(), "Unknown");
+}
+
+#[test]
+fn test_discovered_device_default_fields() {
+    use rust_lib_uot_app::discovery::types::{DeviceType, DiscoveredDevice, DiscoveryMethod};
+    let now = chrono::Utc::now();
+    let dev = DiscoveredDevice {
+        device_id: "dd-1".to_string(),
+        device_name: "Test".to_string(),
+        device_type: DeviceType::Desktop,
+        discovery_method: DiscoveryMethod::Mdns,
+        address: Some("192.168.1.1:42000".to_string()),
+        capabilities: vec!["files".to_string()],
+        signal_strength: Some(80),
+        first_seen: now,
+        last_seen: now,
+        is_trusted: false,
+    };
+    let json = serde_json::to_string(&dev).unwrap();
+    assert!(json.contains("dd-1"));
+    let parsed: DiscoveredDevice = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.device_id, "dd-1");
+    assert_eq!(parsed.capabilities.len(), 1);
+    assert_eq!(parsed.is_trusted, false);
+}
+
+#[test]
+fn test_discovery_method_display() {
+    use rust_lib_uot_app::discovery::types::DiscoveryMethod;
+    assert_eq!(DiscoveryMethod::Mdns.to_string(), "mDNS");
+    assert_eq!(DiscoveryMethod::BluetoothLe.to_string(), "Bluetooth LE");
+    assert_eq!(DiscoveryMethod::BluetoothClassic.to_string(), "Bluetooth");
+    assert_eq!(DiscoveryMethod::QrCode.to_string(), "QR Code");
+    assert_eq!(DiscoveryMethod::Manual.to_string(), "Manual");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STREAMING TYPES — ADDITIONAL COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_streaming_types_coverage() {
+    use rust_lib_uot_app::streaming::types::{StreamCapability, StreamConfig, StreamStatus};
+
+    // StreamCapability Display
+    assert_eq!(StreamCapability::Camera.to_string(), "Camera");
+    assert_eq!(
+        StreamCapability::ScreenCapture.to_string(),
+        "Screen Capture"
+    );
+    assert_eq!(StreamCapability::VideoFile.to_string(), "Video File");
+    assert_eq!(StreamCapability::AudioFile.to_string(), "Audio File");
+    assert_eq!(StreamCapability::Microphone.to_string(), "Microphone");
+
+    // StreamConfig default
+    let config = StreamConfig::default();
+    assert_eq!(config.width, 1280);
+    assert_eq!(config.height, 720);
+    assert_eq!(config.fps, 30);
+    assert!(config.adaptive_quality);
+
+    // StreamConfig serialization
+    let json = serde_json::to_string(&config).unwrap();
+    let parsed: StreamConfig = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.buffer_ms, 500);
+
+    // StreamStatus Display — all variants
+    assert_eq!(StreamStatus::Idle.to_string(), "Idle");
+    assert_eq!(StreamStatus::Buffering.to_string(), "Buffering\u{2026}");
+    assert_eq!(StreamStatus::Playing.to_string(), "Playing");
+    assert_eq!(StreamStatus::Paused.to_string(), "Paused");
+    assert_eq!(StreamStatus::Error.to_string(), "Error");
+    assert_eq!(StreamStatus::Ended.to_string(), "Ended");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TRANSPORT TYPES — ADDITIONAL COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_transport_state_all_variants() {
+    // Cover all Display arms
+    assert_eq!(TransportState::Idle.to_string(), "Idle");
+    assert_eq!(TransportState::Listening.to_string(), "Listening");
+    assert!(!TransportState::Connecting.to_string().is_empty());
+    assert_eq!(TransportState::Connected.to_string(), "Connected");
+    assert!(!TransportState::Reconnecting.to_string().is_empty());
+    assert!(!TransportState::Disconnecting.to_string().is_empty());
+    assert_eq!(TransportState::Disconnected.to_string(), "Disconnected");
+    assert_eq!(TransportState::Unavailable.to_string(), "Unavailable");
+    assert_eq!(TransportState::Error.to_string(), "Error");
+}
+
+#[test]
+fn test_transport_id_all_variants() {
+    let ids = vec![
+        TransportId::TcpLan,
+        TransportId::BluetoothLe,
+        TransportId::BluetoothClassic,
+        TransportId::WifiDirect,
+        TransportId::Usb,
+        TransportId::QrCode,
+        TransportId::Hotspot,
+        TransportId::Relay,
+    ];
+    for id in &ids {
+        let s = format!("{}", id);
+        assert!(!s.is_empty());
+        let json = serde_json::to_string(id).unwrap();
+        let parsed: TransportId = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, *id);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TRANSFER TYPES — ADDITIONAL COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_transfer_status_all_variants_and_display() {
+    let statuses = vec![
+        TransferStatus::Pending,
+        TransferStatus::InProgress,
+        TransferStatus::Paused,
+        TransferStatus::Completed,
+        TransferStatus::Failed,
+        TransferStatus::Cancelled,
+    ];
+    for status in &statuses {
+        let s = format!("{:?}", status);
+        assert!(!s.is_empty());
+        let json = serde_json::to_string(status).unwrap();
+        let parsed: TransferStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, *status);
+    }
+}
+
+#[test]
+fn test_transfer_direction_all_variants() {
+    let dirs = vec![TransferDirection::Send, TransferDirection::Receive];
+    for dir in &dirs {
+        let json = serde_json::to_string(dir).unwrap();
+        let parsed: TransferDirection = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, *dir);
+    }
+}
+
+#[test]
+fn test_transfer_item_record_serialization() {
+    let item = TransferItemRecord {
+        item_id: uuid::Uuid::new_v4(),
+        name: "file.txt".to_string(),
+        relative_path: "docs/file.txt".to_string(),
+        size: 2048,
+        transferred_bytes: 0,
+        status: TransferStatus::Pending,
+        hash: None,
+    };
+    let json = serde_json::to_string(&item).unwrap();
+    let parsed: TransferItemRecord = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.name, "file.txt");
+    assert_eq!(parsed.size, 2048);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FALLBACK MANAGER — EDGE CASES
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_fallback_empty_candidates() {
+    let fm = TransportFallbackManager::default();
+    assert_eq!(fm.select_best_transport(&[]), None);
+}
+
+#[test]
+fn test_fallback_all_disconnected() {
+    let fm = TransportFallbackManager::default();
+    let candidates = vec![
+        (TransportId::TcpLan, TransportState::Disconnected),
+        (TransportId::BluetoothLe, TransportState::Error),
+    ];
+    assert_eq!(fm.select_best_transport(&candidates), None);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SECURITY — PATH VALIDATOR EDGE CASES
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_path_validator_edge_cases() {
+    use rust_lib_uot_app::security::path_validator::StrictPathValidator;
+    use rust_lib_uot_app::security::PathValidator;
+
+    let pv = StrictPathValidator::new(None);
+
+    // Normal valid filenames
+    assert!(pv.validate_filename("report.pdf").is_ok());
+    assert!(pv.validate_filename("img_001.jpg").is_ok());
+
+    // Valid relative paths
+    assert!(pv.validate_relative_path("documents/report.pdf").is_ok());
+    assert!(pv.validate_relative_path("a/b/c.txt").is_ok());
+
+    // Sanitize
+    let sanitized = pv.sanitize_filename("file<>name.txt");
+    assert!(!sanitized.contains('<'));
+    assert!(!sanitized.contains('>'));
+}

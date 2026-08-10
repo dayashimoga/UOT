@@ -194,8 +194,21 @@ mod tests {
 
     #[test]
     fn test_display() {
-        assert_eq!(ProtocolState::Transferring.to_string(), "Transferring");
+        assert_eq!(ProtocolState::Idle.to_string(), "Idle");
+        assert_eq!(ProtocolState::Discovering.to_string(), "Discovering");
+        assert_eq!(ProtocolState::Pairing.to_string(), "Pairing");
+        assert_eq!(ProtocolState::Authenticating.to_string(), "Authenticating");
+        assert_eq!(ProtocolState::Negotiating.to_string(), "Negotiating");
         assert_eq!(ProtocolState::SessionActive.to_string(), "Session Active");
+        assert_eq!(ProtocolState::OfferPending.to_string(), "Offer Pending");
+        assert_eq!(ProtocolState::OfferAccepted.to_string(), "Offer Accepted");
+        assert_eq!(ProtocolState::Transferring.to_string(), "Transferring");
+        assert_eq!(ProtocolState::Paused.to_string(), "Paused");
+        assert_eq!(ProtocolState::Reconnecting.to_string(), "Reconnecting");
+        assert_eq!(ProtocolState::Verifying.to_string(), "Verifying");
+        assert_eq!(ProtocolState::Completed.to_string(), "Completed");
+        assert_eq!(ProtocolState::Cancelled.to_string(), "Cancelled");
+        assert_eq!(ProtocolState::Error.to_string(), "Error");
     }
 
     #[test]
@@ -204,5 +217,30 @@ mod tests {
         let json = serde_json::to_string(&state).unwrap();
         let deserialized: ProtocolState = serde_json::from_str(&json).unwrap();
         assert_eq!(state, deserialized);
+    }
+
+    #[test]
+    fn test_additional_transitions() {
+        use ProtocolState::*;
+        // Error recovery paths
+        assert!(Authenticating.can_transition_to(Error));
+        assert!(Negotiating.can_transition_to(Error));
+        assert!(Transferring.can_transition_to(Error));
+        assert!(Verifying.can_transition_to(Error));
+        assert!(Error.can_transition_to(Idle));
+        assert!(Error.can_transition_to(Reconnecting));
+        // Terminal → reset
+        assert!(Completed.can_transition_to(SessionActive));
+        assert!(Completed.can_transition_to(Idle));
+        assert!(Cancelled.can_transition_to(SessionActive));
+        assert!(Cancelled.can_transition_to(Idle));
+        // Offer rejection
+        assert!(OfferPending.can_transition_to(SessionActive));
+        // Session disconnect
+        assert!(SessionActive.can_transition_to(Idle));
+        assert!(Discovering.can_transition_to(Idle));
+        assert!(Pairing.can_transition_to(Idle));
+        // Reconnect re-negotiate
+        assert!(Reconnecting.can_transition_to(Negotiating));
     }
 }
