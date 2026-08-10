@@ -91,3 +91,14 @@
 - [x] Updated Rust subnet_scan to automatically populate and broadcast discovered LAN nodes
 - [x] Configured periodic background subnet scanning every 6 seconds on NearbyScreen
 - [x] Flutter analyze 100% clean (0 errors, 0 warnings), 14 Flutter tests passing, 392 Rust tests passing
+
+### Sprint 16 - Optical Animated QR Air-Gapped Transfer & Connectivity Hardening (Completed)
+- [x] Built OpticalQrSenderDialog for air-gapped zero-network animated QR stream data transfer using Fountain Codes (Luby Transform)
+- [x] Added "Optical Animated QR Stream" option in _SendBottomSheet for sending files without Wi-Fi or Bluetooth
+- [x] Exposed engine_fountain_encode in Rust FRB API for animated QR payload generation
+- [x] Added "Scan Peer's QR Code" camera button and manual QR link input/paste field in QrScannerDialog
+- [x] Added automatic Windows Defender Firewall port 42000 rule registration on engine initialization
+- [x] Added 4-second connection attempt timeout and automatic candidate port fallback ([42000, 42001, 8080, 50000]) in connect_peer
+- [x] Added real-time SnackBar & Modal Dialog user feedback when initiating file transfer
+- [x] Hardened Rust test coverage to 82.15%, 407 Rust tests passing, Flutter analyze 100% clean
+

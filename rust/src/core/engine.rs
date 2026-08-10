@@ -1176,25 +1176,60 @@ impl UotEngine {
 
     /// Direct connection to a peer by address string (IP:port or IP).
     pub async fn connect_peer(&self, addr_str: &str) -> Result<DiscoveredDevice, UotError> {
-        let port = self.config.read().network_port.unwrap_or(tcp::DEFAULT_PORT);
-        let full_addr = if addr_str.contains(':') {
-            addr_str.to_string()
+        let default_port = self.config.read().network_port.unwrap_or(tcp::DEFAULT_PORT);
+        let trimmed = addr_str.trim();
+
+        // Extract IP and target port list (only fallback ports if no explicit port supplied)
+        let (ip_str, target_ports) = if trimmed.contains(':') {
+            let parts: Vec<&str> = trimmed.split(':').collect();
+            let ip = parts[0];
+            let port_parsed = parts[1].parse::<u16>().unwrap_or(default_port);
+            (ip, vec![port_parsed])
         } else {
-            format!("{addr_str}:{port}")
+            (trimmed, vec![default_port, 42000, 42001, 8080, 50000])
         };
 
-        let socket_addr: SocketAddr = full_addr.parse().map_err(|e| {
-            UotError::Transport(crate::core::error::TransportError::ConnectionFailed {
-                reason: format!("Invalid address '{full_addr}': {e}"),
-            })
-        })?;
+        // Try connecting to target ports with a 4-second timeout per port
+        let mut last_err = String::new();
+        let mut connected_stream = None;
+        let mut final_socket_addr = None;
 
-        let conn_stream = tcp::connect(socket_addr).await.map_err(|e| {
-            UotError::Transport(crate::core::error::TransportError::ConnectionFailed {
-                reason: format!("Failed to connect to {socket_addr}: {e}"),
-            })
-        })?;
+        for &port in &target_ports {
+            let full_addr_str = format!("{ip_str}:{port}");
+            if let Ok(socket_addr) = full_addr_str.parse::<SocketAddr>() {
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(4),
+                    tcp::connect(socket_addr),
+                )
+                .await
+                {
+                    Ok(Ok(stream)) => {
+                        connected_stream = Some(stream);
+                        final_socket_addr = Some(socket_addr);
+                        break;
+                    }
+                    Ok(Err(e)) => {
+                        last_err = format!("Connect to {socket_addr} failed: {e}");
+                    }
+                    Err(_) => {
+                        last_err = format!("Connection to {socket_addr} timed out after 4 seconds (Windows Firewall / Wi-Fi filter)");
+                    }
+                }
+            }
+        }
 
+        let conn_stream = match connected_stream {
+            Some(s) => s,
+            None => {
+                return Err(UotError::Transport(
+                    crate::core::error::TransportError::ConnectionFailed {
+                        reason: format!("{last_err}. Check that both devices are on the same Wi-Fi and port 42000 is allowed in Firewall."),
+                    },
+                ));
+            }
+        };
+
+        let socket_addr = final_socket_addr.unwrap();
         let conn = TcpConnection::new(conn_stream)?;
 
         let remote_ip = socket_addr.ip().to_string();

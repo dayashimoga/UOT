@@ -11,6 +11,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../rust/api/init.dart' as rust_api;
 import '../../rust/api/engine_api.dart' as engine;
 import 'qr_pairing_dialog.dart';
+import 'optical_qr_sender_dialog.dart';
 
 // Device model parsed from JSON.
 class DeviceInfo {
@@ -599,10 +600,13 @@ class _SendBottomSheet extends StatelessWidget {
                         .map((f) => f.path!)
                         .toList();
                     if (paths.isNotEmpty) {
-                      await engine.engineSendFiles(
+                      final sendRes = await engine.engineSendFiles(
                         deviceId: device.deviceId,
                         filePaths: paths,
                       );
+                      if (context.mounted) {
+                        _showSendFeedback(context, sendRes, device.deviceName, paths.length);
+                      }
                     }
                   }
                 },
@@ -617,10 +621,13 @@ class _SendBottomSheet extends StatelessWidget {
                   Navigator.pop(context);
                   final dir = await FilePicker.platform.getDirectoryPath();
                   if (dir != null) {
-                    await engine.engineSendFiles(
+                    final sendRes = await engine.engineSendFiles(
                       deviceId: device.deviceId,
                       filePaths: [dir],
                     );
+                    if (context.mounted) {
+                      _showSendFeedback(context, sendRes, device.deviceName, 1);
+                    }
                   }
                 },
               ),
@@ -634,10 +641,48 @@ class _SendBottomSheet extends StatelessWidget {
                   Navigator.pop(context);
                   final data = await Clipboard.getData(Clipboard.kTextPlain);
                   if (data?.text != null && data!.text!.isNotEmpty) {
-                    await engine.engineSendClipboard(
+                    final sendRes = await engine.engineSendClipboard(
                       deviceId: device.deviceId,
                       text: data.text!,
                     );
+                    if (context.mounted) {
+                      _showSendFeedback(context, sendRes, device.deviceName, 1);
+                    }
+                  } else if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Clipboard is empty!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 8),
+              _SendOption(
+                icon: Icons.qr_code_2_rounded,
+                title: 'Optical Animated QR Stream',
+                subtitle: 'Zero network required • Air-gapped optical transfer',
+                color: colorScheme.tertiaryContainer,
+                onTap: () async {
+                  Navigator.pop(context);
+                  final result = await FilePicker.platform.pickFiles(
+                    allowMultiple: false,
+                    type: FileType.any,
+                  );
+                  if (result != null && result.files.isNotEmpty) {
+                    final file = result.files.first;
+                    final name = file.name;
+                    final path = file.path;
+                    if (path != null) {
+                      if (context.mounted) {
+                        await OpticalQrSenderDialog.show(
+                          context,
+                          fileName: name,
+                          payloadText: 'UOT-AIRGAPPED-PAYLOAD:$name',
+                        );
+                      }
+                    }
                   }
                 },
               ),
@@ -780,4 +825,34 @@ class _MyDeviceBanner extends StatelessWidget {
     );
   }
 }
+
+void _showSendFeedback(
+    BuildContext context, String result, String deviceName, int count) {
+  if (result.startsWith('ok')) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            'Transfer initiated! Sending $count item(s) to $deviceName'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  } else {
+    final errorMsg = result.replaceFirst('error:', '');
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Transfer Error'),
+        content: Text('Could not send to $deviceName:\n\n$errorMsg'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 

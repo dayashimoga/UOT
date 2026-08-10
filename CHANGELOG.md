@@ -1,4 +1,4 @@
-﻿# CHANGELOG
+# CHANGELOG
 
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
@@ -28,4 +28,25 @@ This file is append-only - history is never overwritten.
 - **Flutter Unit Tests**: 14/14 Passed
 - **Rust Test Suite**: 392/392 Passed
 
+## [0.1.0-alpha.8] - 2026-08-10
+
+### Sprint 16 - Optical Animated QR Air-Gapped Transfer & Connectivity Hardening
+
+#### Optical Animated QR Stream (Zero Network / Air-Gapped)
+- Created `OpticalQrSenderDialog` widget rendering animated Luby Transform / Fountain Code QR code stream at 5-15 FPS.
+- Added "Optical Animated QR Stream" option in `_SendBottomSheet` for transmitting files without Wi-Fi, Bluetooth, or cellular networks.
+- Exposed `engine_fountain_encode` in Rust FRB API to convert binary file payloads into fountain packets.
+- Enhanced `QrScannerDialog` with camera optical stream decoding, automatic URI payload parsing, and interactive manual QR link input/paste text field.
+
+#### Connectivity & Windows Firewall Hardening
+- Added non-blocking Windows Defender Firewall port 42000 rule auto-registration on engine initialization (`netsh advfirewall firewall add rule`).
+- Updated `connect_peer` in Rust engine with 4-second connection attempt timeout and automatic candidate port fallback (`[42000, 42001, 8080, 50000]`).
+- Added real-time `SnackBar` & `AlertDialog` visual feedback when initiating file send actions.
+
+#### Verification
+- **Flutter Analyze**: 0 errors, 0 warnings (100% clean)
+- **Rust Test Suite**: 407/407 Passed across 8 test suites
+- **Coverage**: 82.15% line coverage in Docker Tarpaulin
+
 ---
+

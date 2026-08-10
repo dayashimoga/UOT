@@ -40,6 +40,25 @@ pub fn engine_init() -> String {
     // Start the engine
     let device_id = engine.device_id().to_string();
 
+    #[cfg(target_os = "windows")]
+    {
+        std::thread::spawn(|| {
+            let _ = std::process::Command::new("netsh")
+                .args([
+                    "advfirewall",
+                    "firewall",
+                    "add",
+                    "rule",
+                    "name=UOT File Transfer",
+                    "dir=in",
+                    "action=allow",
+                    "protocol=TCP",
+                    "localport=42000",
+                ])
+                .output();
+        });
+    }
+
     let start_result = runtime.block_on(async { engine.start().await });
 
     match start_result {
@@ -383,6 +402,30 @@ pub fn engine_verify_pin(device_id: String, attempt: String) -> String {
             .unwrap_or_else(|| "invalid".to_string())
     })
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Encode data payload into animated fountain packets (for zero-network Optical QR transfer).
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_fountain_encode(data_base64: String, block_size: u32) -> String {
+    use base64::Engine;
+    let bytes = match base64::engine::general_purpose::STANDARD.decode(&data_base64) {
+        Ok(b) => b,
+        Err(e) => return format!("error:base64:{e}"),
+    };
+
+    let bs = if block_size == 0 {
+        128
+    } else {
+        block_size as usize
+    };
+    let mut encoder = crate::protocol::fountain::FountainEncoder::new(&bytes, bs);
+
+    let mut packets = Vec::new();
+    for _ in 0..60 {
+        packets.push(encoder.next_packet());
+    }
+
+    serde_json::to_string(&packets).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Helper: access the engine.

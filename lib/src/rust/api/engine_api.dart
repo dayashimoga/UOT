@@ -142,3 +142,9 @@ String engineGeneratePin({required BigInt ttlSecs}) =>
 String engineVerifyPin({required String deviceId, required String attempt}) =>
     RustLib.instance.api
         .crateApiEngineApiEngineVerifyPin(deviceId: deviceId, attempt: attempt);
+
+/// Encode data payload into animated fountain packets (for zero-network Optical QR transfer).
+String engineFountainEncode(
+        {required String dataBase64, required int blockSize}) =>
+    RustLib.instance.api.crateApiEngineApiEngineFountainEncode(
+        dataBase64: dataBase64, blockSize: blockSize);

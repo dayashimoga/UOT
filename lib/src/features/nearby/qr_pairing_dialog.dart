@@ -267,6 +267,18 @@ class _QrPairingDialogState extends State<QrPairingDialog>
                             ],
                           ),
                         ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              Navigator.of(context).pop();
+                              await QrScannerDialog.show(context);
+                            },
+                            icon: const Icon(Icons.qr_code_scanner_rounded),
+                            label: const Text('Scan Peer\'s QR Code / Camera'),
+                          ),
+                        ),
                       ],
                     ),
                   ),
