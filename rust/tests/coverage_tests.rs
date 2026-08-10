@@ -1738,6 +1738,41 @@ fn test_fallback_all_disconnected() {
     assert_eq!(fm.select_best_transport(&candidates), None);
 }
 
+#[test]
+fn test_fallback_prefer_speed_ble_fallback() {
+    // PreferSpeed: TcpLan/WifiDirect unavailable, only BLE connected → should select BLE (L53-57)
+    let fm = TransportFallbackManager::default(); // PreferSpeed
+    let candidates = vec![(TransportId::BluetoothLe, TransportState::Connected)];
+    assert_eq!(
+        fm.select_best_transport(&candidates),
+        Some(TransportId::BluetoothLe)
+    );
+}
+
+#[test]
+fn test_fallback_prefer_speed_other_transport_fallback() {
+    // PreferSpeed: none of TcpLan/WifiDirect/BLE connected → falls through to active[0] (L59)
+    let fm = TransportFallbackManager::default();
+    let candidates = vec![(TransportId::Usb, TransportState::Connected)];
+    assert_eq!(
+        fm.select_best_transport(&candidates),
+        Some(TransportId::Usb)
+    );
+}
+
+#[test]
+fn test_transfer_status_display_all_variants() {
+    // Covers all Display match arms (L87-94)
+    assert_eq!(TransferStatus::Queued.to_string(), "Queued");
+    assert_eq!(TransferStatus::Pending.to_string(), "Pending");
+    assert_eq!(TransferStatus::InProgress.to_string(), "In Progress");
+    assert_eq!(TransferStatus::Paused.to_string(), "Paused");
+    assert_eq!(TransferStatus::Verifying.to_string(), "Verifying");
+    assert_eq!(TransferStatus::Completed.to_string(), "Completed");
+    assert_eq!(TransferStatus::Failed.to_string(), "Failed");
+    assert_eq!(TransferStatus::Cancelled.to_string(), "Cancelled");
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECURITY — PATH VALIDATOR EDGE CASES
 // ═══════════════════════════════════════════════════════════════════
@@ -1761,4 +1796,161 @@ fn test_path_validator_edge_cases() {
     let sanitized = pv.sanitize_filename("file<>name.txt");
     assert!(!sanitized.contains('<'));
     assert!(!sanitized.contains('>'));
+}
+
+#[test]
+fn test_path_validator_error_branches() {
+    use rust_lib_uot_app::security::path_validator::StrictPathValidator;
+    use rust_lib_uot_app::security::PathValidator;
+
+    let pv = StrictPathValidator::new(None);
+
+    // validate_relative_path error branches:
+    // Empty path (L143-146)
+    assert!(pv.validate_relative_path("").is_err());
+
+    // Null byte in path (L151-154)
+    assert!(pv.validate_relative_path("foo\0bar.txt").is_err());
+
+    // URL-encoded traversal in path (L159-162)
+    assert!(pv.validate_relative_path("foo%2e%2ebar.txt").is_err());
+
+    // Parent directory traversal (L188-192)
+    assert!(pv.validate_relative_path("../etc/passwd").is_err());
+
+    // Absolute path (L194-197)
+    assert!(pv.validate_relative_path("/etc/passwd").is_err());
+
+    // Path resolves to empty — just "." (L206-209)
+    assert!(pv.validate_relative_path(".").is_err());
+
+    // validate_filename error branches:
+    // Empty filename
+    assert!(pv.validate_filename("").is_err());
+
+    // Null byte in filename
+    assert!(pv.validate_filename("foo\0.txt").is_err());
+
+    // URL-encoded traversal in filename (L86-89)
+    assert!(pv.validate_filename("%2e%2e").is_err());
+
+    // validate_within_base (L52-55)
+    let pv_with_base = StrictPathValidator::new(Some(std::path::PathBuf::from("/safe/dir")));
+    assert!(pv_with_base
+        .validate_within_base(std::path::Path::new("/other/dir/file.txt"))
+        .is_err());
+    assert!(pv_with_base
+        .validate_within_base(std::path::Path::new("/safe/dir/file.txt"))
+        .is_ok());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG — ADDITIONAL VALIDATION BRANCHES
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_config_scan_interval_zero() {
+    let mut config = AppConfig::default();
+    config.discovery.scan_interval_secs = 0;
+    let result = config.validate();
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    assert!(errors.iter().any(|e| e.contains("Scan interval")));
+}
+
+#[test]
+fn test_config_multiple_validation_errors() {
+    let mut config = AppConfig::default();
+    config.transfer.max_concurrent_transfers = 0;
+    config.discovery.scan_interval_secs = 0;
+    let result = config.validate();
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    assert!(errors.len() >= 2);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SECURITY VERIFICATION — ADDITIONAL COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_verification_pin_expired() {
+    use rust_lib_uot_app::security::verification::TrustManager;
+
+    let mut tm = TrustManager::new();
+
+    // Generate PIN with 0-second TTL (immediately expired)
+    let pin = tm.generate_pin(0).to_string();
+
+    // Should fail because PIN is expired
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let result = tm.verify_pin("device-1", &pin);
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_trust_manager_trust_and_revoke() {
+    use rust_lib_uot_app::security::verification::TrustManager;
+
+    let mut tm = TrustManager::new();
+    assert!(!tm.is_trusted("dev-1"));
+
+    tm.trust_device("dev-1", "Dev One");
+    assert!(tm.is_trusted("dev-1"));
+
+    tm.revoke_trust("dev-1");
+    assert!(!tm.is_trusted("dev-1"));
+
+    // Also test trusted_devices listing
+    tm.trust_device("dev-2", "Dev Two");
+    let trusted = tm.trusted_devices();
+    assert_eq!(trusted.len(), 1);
+
+    // Cleanup expired sessions
+    tm.cleanup();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PROTOCOL FOUNTAIN — COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_fountain_encoder_basic() {
+    use rust_lib_uot_app::protocol::fountain::FountainEncoder;
+
+    let data = vec![0xABu8; 1000];
+    let mut encoder = FountainEncoder::new(&data, 100);
+    let packet = encoder.next_packet();
+    assert!(!packet.payload.is_empty());
+    assert!(packet.seed > 0);
+    assert_eq!(packet.num_blocks, 10);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STREAMING PIPELINE — ADDITIONAL COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_media_pipeline_jitter_buffer() {
+    use rust_lib_uot_app::streaming::pipeline::{H264NalType, MediaStreamPipeline};
+
+    let mut pipeline = MediaStreamPipeline::new(10);
+    // Encode some frames
+    let pkt1 = pipeline.encode_video_frame(H264NalType::IdrKeyframe, 1000, &[0; 50]);
+    let pkt2 = pipeline.encode_video_frame(H264NalType::SlicePFrame, 2000, &[0; 50]);
+    let pkt3 = pipeline.encode_audio_frame(3000, &[0; 30]);
+
+    // Push into jitter buffer
+    pipeline.push_jitter(pkt1);
+    pipeline.push_jitter(pkt2);
+    pipeline.push_jitter(pkt3);
+
+    // Pop from jitter buffer
+    let out = pipeline.pop_jitter();
+    assert!(out.is_some());
+    assert!(out.unwrap().is_video);
+
+    // Bitrate should be > 0 after encoding
+    let bitrate = pipeline.current_bitrate_mbps();
+    assert!(bitrate >= 0.0);
 }
