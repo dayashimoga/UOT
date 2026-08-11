@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.uot.uot_app"
-    compileSdk = 34
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
