@@ -1186,23 +1186,14 @@ impl UotEngine {
         let default_port = self.listening_port();
         let trimmed = addr_str.trim();
 
-        // Extract IP and target port list (try target port first, then candidate ports)
+        // Extract IP and target port list (if explicit port passed, connect ONLY to that port; if no port, try candidate ports)
         let (ip_str, target_ports) = if trimmed.contains(':') {
             let parts: Vec<&str> = trimmed.split(':').collect();
             let ip = parts[0];
             let port_parsed = parts[1].parse::<u16>().unwrap_or(default_port);
-            let mut ports = vec![port_parsed];
-            for p in [42000, 42001, 42002, 42003, 8080, 50000] {
-                if p != port_parsed {
-                    ports.push(p);
-                }
-            }
-            (ip, ports)
+            (ip, vec![port_parsed])
         } else {
-            (
-                trimmed,
-                vec![default_port, 42000, 42001, 42002, 42003, 8080, 50000],
-            )
+            (trimmed, vec![default_port, 42000, 42001, 42002, 42003])
         };
 
         // Prevent self-loopback connection to our own listening port
