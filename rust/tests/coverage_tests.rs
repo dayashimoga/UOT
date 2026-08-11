@@ -2228,7 +2228,8 @@ async fn test_connection_manager_success_flow() {
 async fn test_engine_connect_peer_and_subnet_scan_branches() {
     use rust_lib_uot_app::core::config::AppConfig;
     use rust_lib_uot_app::core::engine::UotEngine;
-    use rust_lib_uot_app::transport::tcp::TcpTransportListener;
+    use rust_lib_uot_app::protocol::handler::{self as proto, WireMessage};
+    use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
     use tempfile::tempdir;
 
     let dir = tempdir().unwrap();
@@ -2243,28 +2244,54 @@ async fn test_engine_connect_peer_and_subnet_scan_branches() {
     let err_parse = engine.connect_peer("not_an_ip").await;
     assert!(err_parse.is_err());
 
-    // 2. Closed port -> ConnectionRefused branch
+    // 2. Closed port -> ConnectionRefused/timeout branch
     let err_refused = engine.connect_peer("127.0.0.1:59991").await;
     assert!(err_refused.is_err());
 
-    // 3. Active listener -> Success branch
+    // 3. Active listener with Hello/HelloAck mock -> Success branch
     let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
     let listener_port = listener.port();
     let addr_str = format!("127.0.0.1:{listener_port}");
 
+    // Spawn a mock server that handles the Hello handshake
     let server_handle = tokio::spawn(async move {
-        let _stream = incoming.recv().await.unwrap();
+        let stream = incoming.recv().await.unwrap();
+        let conn = TcpConnection::new(stream).unwrap();
+        // Receive Hello from connect_peer
+        let msg = proto::recv_message(&conn).await.unwrap();
+        match msg {
+            WireMessage::Hello { device_id, .. } => {
+                assert!(!device_id.is_empty());
+            }
+            _ => panic!("Expected Hello message"),
+        }
+        // Send HelloAck back
+        let ack = WireMessage::HelloAck {
+            device_id: "mock-server-id".to_string(),
+            device_name: "MockServer".to_string(),
+            device_type: "Desktop".to_string(),
+            version: "0.1.0-alpha".to_string(),
+        };
+        proto::send_message(&conn, &ack).await.unwrap();
+        // Keep connection alive briefly for Ping
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     });
 
     let connect_res = engine.connect_peer(&addr_str).await;
-    assert!(connect_res.is_ok(), "Direct connect should succeed");
+    assert!(connect_res.is_ok(), "Direct connect should succeed: {:?}", connect_res.err());
     let dev = connect_res.unwrap();
-    assert!(dev.device_id.contains("peer-127-0-0-1"));
+    // Device ID now comes from HelloAck, not from IP
+    assert_eq!(dev.device_id, "mock-server-id");
+    assert_eq!(dev.device_name, "MockServer");
     assert_eq!(dev.capabilities, vec!["tcp_lan".to_string()]);
 
     // Check device was registered in engine devices map
     let devices = engine.discovered_devices();
     assert!(!devices.is_empty(), "Connected peer must be registered");
+
+    // Check peer state is SessionReady
+    let peer_state = engine.get_peer_state("mock-server-id");
+    assert_eq!(peer_state, rust_lib_uot_app::core::engine::PeerConnectionState::SessionReady);
 
     // 4. Subnet scan invocation
     let scanned = engine.subnet_scan().await;

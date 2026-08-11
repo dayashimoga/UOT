@@ -466,6 +466,7 @@ class _DeviceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final hasAddress = device.address != null && device.address!.isNotEmpty;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -479,12 +480,16 @@ class _DeviceCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer,
+                  color: hasAddress
+                      ? Colors.green.withOpacity(0.15)
+                      : colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   device.icon,
-                  color: colorScheme.onPrimaryContainer,
+                  color: hasAddress
+                      ? Colors.green.shade700
+                      : colorScheme.onPrimaryContainer,
                   size: 24,
                 ),
               ),
@@ -493,10 +498,37 @@ class _DeviceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(device.deviceName, style: theme.textTheme.titleMedium),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(device.deviceName,
+                              style: theme.textTheme.titleMedium),
+                        ),
+                        if (hasAddress) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Connected ✓',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: Colors.green.shade700,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 2),
                     Text(
-                      '${device.deviceType} • ${device.capabilities.join(", ")}',
+                      hasAddress
+                          ? '${device.deviceType} • ${device.address}'
+                          : '${device.deviceType} • ${device.capabilities.join(", ")}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),

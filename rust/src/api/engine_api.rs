@@ -392,6 +392,16 @@ pub fn engine_get_listening_port() -> u16 {
     with_engine(|engine| engine.listening_port()).unwrap_or(42000)
 }
 
+/// Get the connection state of a specific peer by device ID.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_peer_state(device_id: String) -> String {
+    with_engine(|engine| {
+        let state = engine.get_peer_state(&device_id);
+        serde_json::to_string(&state).unwrap_or_else(|_| "\"Disconnected\"".to_string())
+    })
+    .unwrap_or_else(|| "\"Disconnected\"".to_string())
+}
+
 /// Generate a 6-digit verification PIN with specified TTL in seconds.
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_generate_pin(ttl_secs: u64) -> String {

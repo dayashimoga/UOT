@@ -5,6 +5,7 @@
 // manual QR payload paste/input, automatic URI parsing, and peer connection via engine_connect_peer.
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -92,11 +93,17 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
           _statusMessage = 'Connection failed. Tap below to scan again.';
         });
       } else {
+        // Parse device info from HelloAck JSON response
+        String peerName = targetAddress;
+        try {
+          final devJson = jsonDecode(res) as Map<String, dynamic>;
+          peerName = devJson['device_name']?.toString() ?? targetAddress;
+        } catch (_) {}
         _qrAdapter.stopScanning();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Connected to device at $targetAddress!'),
+              content: Text('Connected to $peerName (Hello verified ✓)'),
               backgroundColor: Colors.green,
             ),
           );

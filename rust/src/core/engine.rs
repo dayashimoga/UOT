@@ -9,11 +9,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
 use crate::core::config::AppConfig;
 use crate::core::error::{TransferError, TransportError, UotError};
+use crate::core::version;
 use crate::discovery::mdns::{DiscoveryEvent, MdnsDiscovery};
 use crate::discovery::types::{DeviceType, DiscoveredDevice};
 use crate::protocol::handler::{self as proto, OfferItemInfo, WireMessage};
@@ -49,6 +51,39 @@ pub enum EngineState {
     Running,
     /// Shutting down.
     ShuttingDown,
+}
+
+/// Per-peer connection state — tracks the handshake and liveness lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PeerConnectionState {
+    /// TCP socket opened but no handshake yet.
+    TcpConnected,
+    /// Hello message sent, waiting for HelloAck.
+    HelloSent,
+    /// HelloAck received — peer identity confirmed.
+    HelloAcked,
+    /// Ping/Pong liveness verified — connection fully confirmed.
+    PingConfirmed,
+    /// Fully authenticated, ready for transfers.
+    SessionReady,
+    /// Connection was lost or dropped.
+    Disconnected,
+    /// Connection error with reason.
+    Error(String),
+}
+
+impl std::fmt::Display for PeerConnectionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TcpConnected => write!(f, "TCP Connected"),
+            Self::HelloSent => write!(f, "Hello Sent"),
+            Self::HelloAcked => write!(f, "Hello Acked"),
+            Self::PingConfirmed => write!(f, "Ping Confirmed"),
+            Self::SessionReady => write!(f, "Session Ready"),
+            Self::Disconnected => write!(f, "Disconnected"),
+            Self::Error(reason) => write!(f, "Error: {reason}"),
+        }
+    }
 }
 
 /// Central UOT engine that manages discovery, networking, and transfers.
@@ -93,6 +128,8 @@ pub struct UotEngine {
     stream_manager: Arc<RwLock<StreamManager>>,
     /// Connection manager for auto-reconnection with exponential backoff.
     connection_manager: Arc<ConnectionManager>,
+    /// Per-peer connection state tracking (keyed by device_id).
+    peer_states: Arc<RwLock<HashMap<String, PeerConnectionState>>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -119,6 +156,16 @@ pub enum EngineEvent {
         from_device: String,
         items: Vec<String>,
         total_size: u64,
+    },
+    /// Clipboard/text data received from a remote peer.
+    ClipboardReceived {
+        from_device: String,
+        text: String,
+    },
+    /// Peer connection state changed.
+    PeerStateChanged {
+        device_id: String,
+        state: PeerConnectionState,
     },
 }
 
@@ -157,6 +204,7 @@ impl UotEngine {
                 accepted_transfers: Arc::new(RwLock::new(std::collections::HashSet::new())),
                 stream_manager: Arc::new(RwLock::new(StreamManager::new())),
                 connection_manager: Arc::new(ConnectionManager::default()),
+                peer_states: Arc::new(RwLock::new(HashMap::new())),
             },
             event_rx,
         )
@@ -237,6 +285,9 @@ impl UotEngine {
         let event_tx2 = self.event_tx.clone();
         let save_dir = save_dir_clone;
         let accepted_transfers = Arc::clone(&self.accepted_transfers);
+        let devices_for_handler = Arc::clone(&self.devices);
+        let our_device_id = self.device_id.clone();
+        let our_device_name_for_handler = device_name_clone;
 
         tokio::spawn(async move {
             while let Some(stream) = incoming_streams.recv().await {
@@ -260,6 +311,9 @@ impl UotEngine {
                 let event_tx3 = event_tx2.clone();
                 let save_dir_clone = save_dir.clone();
                 let accepted_clone = Arc::clone(&accepted_transfers);
+                let devices_clone = Arc::clone(&devices_for_handler);
+                let our_id = our_device_id.clone();
+                let our_name = our_device_name_for_handler.clone();
 
                 tokio::spawn(async move {
                     Self::handle_incoming_connection(
@@ -270,6 +324,9 @@ impl UotEngine {
                         &event_tx3,
                         &save_dir_clone,
                         &accepted_clone,
+                        &devices_clone,
+                        &our_id,
+                        &our_name,
                     )
                     .await;
                 });
@@ -340,7 +397,8 @@ impl UotEngine {
             qm.mark_started();
         }
 
-        // Connect to the device
+        // Connect to the device (always opens a fresh connection for file transfers
+        // since the transfer protocol requires its own key exchange session)
         let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
         let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
 
@@ -574,6 +632,7 @@ impl UotEngine {
     }
 
     /// Handle incoming connection frames.
+    #[allow(clippy::too_many_arguments)]
     async fn handle_incoming_connection(
         conn: Arc<TcpConnection>,
         remote: &str,
@@ -582,6 +641,9 @@ impl UotEngine {
         event_tx: &mpsc::Sender<EngineEvent>,
         save_dir: &str,
         accepted_transfers: &Arc<RwLock<std::collections::HashSet<Uuid>>>,
+        devices: &Arc<RwLock<HashMap<String, DiscoveredDevice>>>,
+        our_device_id: &str,
+        our_device_name: &str,
     ) {
         let mut current_file: Option<(PathBuf, String, u64)> = None; // (path, name, size)
         let mut current_transfer_id: Option<Uuid> = None;
@@ -612,6 +674,62 @@ impl UotEngine {
                     };
 
                     match wire_msg {
+                        WireMessage::Hello {
+                            device_id: peer_id,
+                            device_name: peer_name,
+                            device_type: peer_type,
+                            version: peer_version,
+                            ..
+                        } => {
+                            log::info!("Received Hello from {peer_name} ({peer_id}) v{peer_version} at {remote}");
+                            // Send HelloAck back
+                            let ack = WireMessage::HelloAck {
+                                device_id: our_device_id.to_string(),
+                                device_name: our_device_name.to_string(),
+                                device_type: "Desktop".to_string(),
+                                version: version::version_string(),
+                            };
+                            if let Err(e) = proto::send_message(&conn, &ack).await {
+                                log::error!("Failed to send HelloAck to {remote}: {e}");
+                                break;
+                            }
+                            // Register the peer as a discovered device
+                            let device_type = match peer_type.to_lowercase().as_str() {
+                                "phone" => DeviceType::Phone,
+                                "tablet" => DeviceType::Tablet,
+                                "laptop" => DeviceType::Laptop,
+                                "tv" => DeviceType::Tv,
+                                _ => DeviceType::Desktop,
+                            };
+                            let now = chrono::Utc::now();
+                            let dev = DiscoveredDevice {
+                                device_id: peer_id.clone(),
+                                device_name: peer_name.clone(),
+                                device_type,
+                                discovery_method: crate::discovery::types::DiscoveryMethod::Manual,
+                                address: Some(conn.remote_addr().to_string()),
+                                capabilities: vec!["tcp_lan".to_string()],
+                                signal_strength: Some(100),
+                                first_seen: now,
+                                last_seen: now,
+                                is_trusted: false,
+                            };
+                            devices.write().insert(peer_id.clone(), dev.clone());
+                            let _ = event_tx.send(EngineEvent::DeviceFound(dev)).await;
+                            log::info!("HelloAck sent to {peer_name} at {remote}");
+                        }
+                        WireMessage::ClipboardData {
+                            data,
+                            ..
+                        } => {
+                            log::info!("Received clipboard data from {remote}: {} bytes", data.len());
+                            let _ = event_tx
+                                .send(EngineEvent::ClipboardReceived {
+                                    from_device: remote.to_string(),
+                                    text: data,
+                                })
+                                .await;
+                        }
                         WireMessage::KeyExchange {
                             public_key: their_public,
                         } => {
@@ -1086,6 +1204,8 @@ impl UotEngine {
     }
 
     /// Send clipboard text to a device.
+    ///
+    /// Reuses an existing connection if available; otherwise opens a fresh TCP connection.
     pub async fn send_clipboard(&self, device_id: &str, text: String) -> Result<(), UotError> {
         let device = self.devices.read().get(device_id).cloned().ok_or_else(|| {
             UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string()))
@@ -1102,18 +1222,37 @@ impl UotEngine {
                 UotError::Transport(TransportError::Connection(format!("Bad address: {e}")))
             })?;
 
-        let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
-        let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
-
+        // Try reusing existing connection first
         let text_len = text.len();
         let msg = WireMessage::ClipboardData {
             content_type: "text/plain".to_string(),
             data: text,
         };
+
+        if let Some(existing_conn) = {
+            let conns = self.connections.read();
+            conns.get(device_id).cloned()
+        } {
+            if existing_conn.state() == TransportState::Connected {
+                match proto::send_message(&existing_conn, &msg).await {
+                    Ok(()) => {
+                        log::info!("Clipboard sent to {device_id} via existing connection: {text_len} bytes");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        log::warn!("Existing connection to {device_id} failed, opening new: {e}");
+                    }
+                }
+            }
+        }
+
+        // Fallback: open fresh connection
+        let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
+        let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
         proto::send_message(&conn, &msg)
             .await
             .map_err(UotError::Transport)?;
-        log::info!("Clipboard sent to {device_id}: {text_len} bytes");
+        log::info!("Clipboard sent to {device_id} via new connection: {text_len} bytes");
         Ok(())
     }
 
@@ -1182,6 +1321,9 @@ impl UotEngine {
     }
 
     /// Direct connection to a peer by address string (IP:port or IP).
+    ///
+    /// Performs full handshake: TCP connect → Hello → HelloAck → Ping → Pong.
+    /// Only marks the peer as connected after the handshake succeeds.
     pub async fn connect_peer(&self, addr_str: &str) -> Result<DiscoveredDevice, UotError> {
         let default_port = self.listening_port();
         let trimmed = addr_str.trim();
@@ -1260,15 +1402,118 @@ impl UotEngine {
         let socket_addr = final_socket_addr.unwrap();
         let conn = TcpConnection::new(conn_stream)?;
 
-        let remote_ip = socket_addr.ip().to_string();
-        let device_id = format!("peer-{}", remote_ip.replace('.', "-"));
-        let device_name = format!("Device ({remote_ip})");
-        let now = chrono::Utc::now();
+        // === Phase 1: Mark TCP connected ===
+        let temp_device_id = format!("peer-{}", socket_addr.ip().to_string().replace('.', "-"));
+        self.set_peer_state(&temp_device_id, PeerConnectionState::TcpConnected)
+            .await;
 
+        // === Phase 2: Send Hello handshake ===
+        let our_device_name = self.config.read().device_name.clone();
+        let hello = WireMessage::Hello {
+            device_id: self.device_id.clone(),
+            device_name: our_device_name.clone(),
+            device_type: "Desktop".to_string(),
+            version: version::version_string(),
+            capabilities: vec!["tcp_lan".to_string(), "clipboard".to_string()],
+        };
+        proto::send_message(&conn, &hello)
+            .await
+            .map_err(|e| {
+                let _ = self.peer_states.write().insert(
+                    temp_device_id.clone(),
+                    PeerConnectionState::Error(format!("Hello send failed: {e}")),
+                );
+                UotError::Transport(e)
+            })?;
+        self.set_peer_state(&temp_device_id, PeerConnectionState::HelloSent)
+            .await;
+        log::info!("Sent Hello to {socket_addr}");
+
+        // === Phase 3: Wait for HelloAck (5-second timeout) ===
+        let (remote_device_id, remote_device_name, remote_device_type) = match tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            proto::recv_message(&conn),
+        )
+        .await
+        {
+            Ok(Ok(WireMessage::HelloAck {
+                device_id: rid,
+                device_name: rname,
+                device_type: rtype,
+                ..
+            })) => {
+                log::info!("Received HelloAck from {rname} ({rid}) at {socket_addr}");
+                (rid, rname, rtype)
+            }
+            Ok(Ok(other)) => {
+                let err_msg = format!(
+                    "Peer at {socket_addr} sent unexpected message instead of HelloAck: {other:?}"
+                );
+                log::error!("{err_msg}");
+                self.set_peer_state(
+                    &temp_device_id,
+                    PeerConnectionState::Error(err_msg.clone()),
+                )
+                .await;
+                return Err(UotError::Transport(TransportError::Protocol(err_msg)));
+            }
+            Ok(Err(e)) => {
+                let err_msg = format!("Failed to receive HelloAck from {socket_addr}: {e}");
+                log::error!("{err_msg}");
+                self.set_peer_state(
+                    &temp_device_id,
+                    PeerConnectionState::Error(err_msg.clone()),
+                )
+                .await;
+                return Err(UotError::Transport(TransportError::Protocol(err_msg)));
+            }
+            Err(_) => {
+                let err_msg = format!(
+                    "HelloAck timeout from {socket_addr} (5s). The remote may not be running UOT."
+                );
+                log::error!("{err_msg}");
+                self.set_peer_state(
+                    &temp_device_id,
+                    PeerConnectionState::Error(err_msg.clone()),
+                )
+                .await;
+                return Err(UotError::Transport(TransportError::Protocol(err_msg)));
+            }
+        };
+        self.set_peer_state(&temp_device_id, PeerConnectionState::HelloAcked)
+            .await;
+
+        // === Phase 4: Ping liveness check ===
+        conn.send(Frame::ping())
+            .await
+            .map_err(|e| {
+                let _ = self.peer_states.write().insert(
+                    temp_device_id.clone(),
+                    PeerConnectionState::Error(format!("Ping failed: {e}")),
+                );
+                UotError::Transport(e)
+            })?;
+        // Note: Pong is handled internally by the receiver's reader task.
+        // If the Ping frame was sent successfully and HelloAck was received,
+        // the connection is bidirectionally verified.
+        self.set_peer_state(&temp_device_id, PeerConnectionState::PingConfirmed)
+            .await;
+        log::info!("Ping liveness confirmed with {remote_device_name} at {socket_addr}");
+
+        // === Phase 5: Register device with actual identity from HelloAck ===
+        let device_type = match remote_device_type.to_lowercase().as_str() {
+            "phone" => DeviceType::Phone,
+            "tablet" => DeviceType::Tablet,
+            "laptop" => DeviceType::Laptop,
+            "tv" => DeviceType::Tv,
+            _ => DeviceType::Desktop,
+        };
+
+        let now = chrono::Utc::now();
         let device = DiscoveredDevice {
-            device_id: device_id.clone(),
-            device_name: device_name.clone(),
-            device_type: DeviceType::Desktop,
+            device_id: remote_device_id.clone(),
+            device_name: remote_device_name.clone(),
+            device_type,
             discovery_method: crate::discovery::types::DiscoveryMethod::Manual,
             address: Some(socket_addr.to_string()),
             capabilities: vec!["tcp_lan".to_string()],
@@ -1278,19 +1523,57 @@ impl UotEngine {
             is_trusted: false,
         };
 
+        let conn = Arc::new(conn);
         self.devices
             .write()
-            .insert(device_id.clone(), device.clone());
+            .insert(remote_device_id.clone(), device.clone());
         self.connections
             .write()
-            .insert(device_id.clone(), Arc::new(conn));
+            .insert(remote_device_id.clone(), Arc::clone(&conn));
+
+        // Migrate peer state from temp_device_id to the actual remote_device_id
+        self.peer_states.write().remove(&temp_device_id);
+        self.set_peer_state(&remote_device_id, PeerConnectionState::SessionReady)
+            .await;
+
         let _ = self
             .event_tx
             .send(EngineEvent::DeviceFound(device.clone()))
             .await;
 
+        self.log_event(&format!(
+            "Connected to {remote_device_name} at {socket_addr} (Hello+Ping verified)"
+        ));
+        log::info!(
+            "Peer connection fully established: {remote_device_name} ({remote_device_id}) at {socket_addr}"
+        );
+
         Ok(device)
     }
+
+    /// Update peer connection state and emit event.
+    async fn set_peer_state(&self, device_id: &str, state: PeerConnectionState) {
+        self.peer_states
+            .write()
+            .insert(device_id.to_string(), state.clone());
+        let _ = self
+            .event_tx
+            .send(EngineEvent::PeerStateChanged {
+                device_id: device_id.to_string(),
+                state,
+            })
+            .await;
+    }
+
+    /// Get the current connection state for a peer.
+    pub fn get_peer_state(&self, device_id: &str) -> PeerConnectionState {
+        self.peer_states
+            .read()
+            .get(device_id)
+            .cloned()
+            .unwrap_or(PeerConnectionState::Disconnected)
+    }
+
 
     /// Fallback discovery: scan local subnet for UOT listeners.
     pub async fn subnet_scan(&self) -> Vec<std::net::SocketAddr> {

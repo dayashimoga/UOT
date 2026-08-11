@@ -115,10 +115,16 @@ class _QrPairingDialogState extends State<QrPairingDialog>
           _connectError = res.replaceFirst('error:', '');
         });
       } else {
+        // Parse device info from HelloAck JSON response
+        String peerName = rawInput;
+        try {
+          final devJson = jsonDecode(res) as Map<String, dynamic>;
+          peerName = devJson['device_name']?.toString() ?? rawInput;
+        } catch (_) {}
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Connected to $rawInput'),
+              content: Text('Connected to $peerName (Hello verified ✓)'),
               backgroundColor: Colors.green,
             ),
           );

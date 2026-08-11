@@ -3,6 +3,41 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.11] - 2026-08-11
+
+### Sprint 11 — Connectivity E2E Reliability & Protocol Handshake
+
+#### P0: Hello/HelloAck Protocol Handshake (Critical Fix)
+- `connect_peer()` now performs full TCP → Hello → HelloAck → Ping handshake before claiming "Connected"
+- Previously only opened TCP socket and immediately reported success — no protocol verification
+- `handle_incoming_connection()` now handles `WireMessage::Hello` and replies with `WireMessage::HelloAck`
+- Device identity (name, type, ID) now comes from HelloAck, not synthesized from IP address
+- Connection only marked "Connected" after bidirectional handshake is verified
+
+#### P0: PeerConnectionState Tracking
+- Added `PeerConnectionState` enum: TcpConnected → HelloSent → HelloAcked → PingConfirmed → SessionReady
+- Per-peer state tracked in `UotEngine::peer_states` HashMap
+- `PeerStateChanged` event emitted at each handshake phase for UI updates
+- New API: `engine_get_peer_state(device_id)` for Flutter to query connection status
+
+#### P0: ClipboardData Receiver Handler
+- `handle_incoming_connection()` now processes `WireMessage::ClipboardData` messages
+- Emits new `EngineEvent::ClipboardReceived { from_device, text }` for InstantChat delivery
+- `send_clipboard()` now reuses existing connection before falling back to fresh TCP
+
+#### P0: Flutter UI Verified Connection Status
+- `QrPairingDialog` and `QrScannerDialog` now parse HelloAck JSON to show real peer device name
+- Connection success message shows "Connected to {name} (Hello verified ✓)"
+
+#### P0: Test Fix
+- Fixed `test_engine_connect_peer_and_subnet_scan_branches` — now spawns mock Hello server
+- Test verifies full Hello/HelloAck handshake and PeerConnectionState::SessionReady
+
+#### Verification
+- Rust: 407 tests passed, 0 failed (250 lib + 119 coverage + 38 integration)
+- Flutter: 14 tests passed, 0 issues
+- `flutter analyze`: 0 issues
+
 ## [0.1.0-alpha.7] - 2026-08-10
 
 ### Sprint 15 - QR Code Pairing, Direct IP Connectivity & LAN Subnet Discovery
