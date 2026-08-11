@@ -2779,3 +2779,118 @@ fn test_progress_tracker_speed_and_eta_drain_coverage() {
     assert!(snap.speed_bytes_per_sec > 0);
     assert!(snap.eta_secs.is_some());
 }
+
+#[tokio::test]
+async fn test_uot_engine_full_handshake_and_clipboard_e2e_coverage() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::{PeerConnectionState, UotEngine};
+    use tempfile::tempdir;
+
+    // Test PeerConnectionState Display trait
+    let states = vec![
+        PeerConnectionState::TcpConnected,
+        PeerConnectionState::HelloSent,
+        PeerConnectionState::HelloAcked,
+        PeerConnectionState::PingConfirmed,
+        PeerConnectionState::SessionReady,
+        PeerConnectionState::Disconnected,
+        PeerConnectionState::Error("test error".to_string()),
+    ];
+    for s in states {
+        assert!(!s.to_string().is_empty());
+    }
+
+    let dir1 = tempdir().unwrap();
+    let mut config1 = AppConfig::default();
+    config1.transfer.save_directory = dir1.path().to_string_lossy().to_string();
+    config1.device_name = "EngineAlpha".to_string();
+    config1.network_port = Some(0);
+
+    let (engine1, _rx1) = UotEngine::new(config1);
+    engine1.start().await.unwrap();
+    let _port1 = engine1.listening_port();
+
+    let dir2 = tempdir().unwrap();
+    let mut config2 = AppConfig::default();
+    config2.transfer.save_directory = dir2.path().to_string_lossy().to_string();
+    config2.device_name = "EngineBeta".to_string();
+    config2.network_port = Some(0);
+
+    let (engine2, _rx2) = UotEngine::new(config2);
+    engine2.start().await.unwrap();
+    let port2 = engine2.listening_port();
+
+    // Connect engine1 -> engine2
+    let addr2_str = format!("127.0.0.1:{port2}");
+    let dev2 = engine1.connect_peer(&addr2_str).await.unwrap();
+    assert_eq!(dev2.device_name, "EngineBeta");
+
+    let state1 = engine1.get_peer_state(&dev2.device_id);
+    assert_eq!(state1, PeerConnectionState::SessionReady);
+
+    // Test send_clipboard via existing connection
+    let clip_res = engine1
+        .send_clipboard(&dev2.device_id, "Hello from Alpha!".to_string())
+        .await;
+    assert!(clip_res.is_ok());
+
+    // Give incoming loop time to process events
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Check recent events logged
+    let events = engine1.get_recent_events(10);
+    assert!(!events.is_empty());
+
+    engine1.stop();
+    engine2.stop();
+}
+
+#[tokio::test]
+async fn test_connect_peer_handshake_error_branches() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::UotEngine;
+    use rust_lib_uot_app::protocol::handler::{self as proto, WireMessage};
+    use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let mut config = AppConfig::default();
+    config.transfer.save_directory = dir.path().to_string_lossy().to_string();
+    config.network_port = Some(0);
+
+    let (engine, _rx) = UotEngine::new(config);
+
+    // 1. Server sends unexpected message instead of HelloAck
+    let (mut listener1, mut incoming1) = TcpTransportListener::bind(0).await.unwrap();
+    let port1 = listener1.port();
+    let server1 = tokio::spawn(async move {
+        let stream = incoming1.recv().await.unwrap();
+        let conn = TcpConnection::new(stream).unwrap();
+        let _ = proto::recv_message(&conn).await;
+        // Send KeyExchange instead of HelloAck
+        let bad_msg = WireMessage::KeyExchange {
+            public_key: vec![1, 2, 3],
+        };
+        let _ = proto::send_message(&conn, &bad_msg).await;
+    });
+
+    let res1 = engine.connect_peer(&format!("127.0.0.1:{port1}")).await;
+    assert!(res1.is_err());
+    server1.await.unwrap();
+    listener1.stop();
+
+    // 2. Server closes connection immediately after receiving Hello
+    let (mut listener2, mut incoming2) = TcpTransportListener::bind(0).await.unwrap();
+    let port2 = listener2.port();
+    let server2 = tokio::spawn(async move {
+        let stream = incoming2.recv().await.unwrap();
+        let conn = TcpConnection::new(stream).unwrap();
+        let _ = proto::recv_message(&conn).await;
+        // Close stream by letting conn drop
+    });
+
+    let res2 = engine.connect_peer(&format!("127.0.0.1:{port2}")).await;
+    assert!(res2.is_err());
+    server2.await.unwrap();
+    listener2.stop();
+}
