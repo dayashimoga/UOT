@@ -1,0 +1,8 @@
+{
+  "device_name": "Test_Fixture_Peer",
+  "device_id": "00000000-1111-2222-3333-444444444444",
+  "public_key": "dGVzdF9wdWJrZXlfYjY0X2ZpeHR1cmU=",
+  "address": "192.168.1.100:42000",
+  "pin": "123456",
+  "ttl_secs": 300
+}

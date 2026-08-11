@@ -45,8 +45,11 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --manifest-path rust/Cargo.toml -- -D warnings
 
-      - name: Run tests
+      - name: Run unit & integration tests
         run: cargo test --manifest-path rust/Cargo.toml --verbose
+
+      - name: Run E2E multi-peer & fault injection tests
+        run: cargo test --manifest-path rust/Cargo.toml --test e2e_two_peer_workflow --test network_fault_harness --test qr_payload_e2e_test --verbose
 
       - name: Install and run coverage (tarpaulin)
         run: |

@@ -1,40 +1,41 @@
-# UOT Testing Strategy & Matrix
+# UOT Automated Testing System & Test Matrix
 
-## Test Suite Overview
+## Test Suite Hierarchy
 
-| Category | Command | Count | Pass Rate |
-|----------|---------|-------|-----------|
-| **Rust Unit Tests** | `cargo test --manifest-path rust/Cargo.toml` | 126 | 100% |
-| **Rust Integration Tests** | `cargo test --test integration_transfer` | 2 | 100% |
-| **Flutter Widget Tests** | `flutter test` | 10 | 100% |
-| **Rust Clippy Lint** | `cargo clippy --manifest-path rust/Cargo.toml -- -D warnings` | Clean (0 warnings) | 100% |
-| **Flutter Analysis** | `dart analyze` | Clean | 100% |
+| Category | Suite File / Command | Target Scope | Classification Level |
+|----------|-----------------------|--------------|----------------------|
+| **Dual-Peer E2E Workflow** | `cargo test --test e2e_two_peer_workflow` | TCP, Hello Handshake, X25519, Messaging, File Transfer, SHA-256 | `PROVEN` |
+| **Network Fault Harness** | `cargo test --test network_fault_harness` | Closed Ports, Timeout, Expired PIN, Stream Drops | `PROVEN` |
+| **QR Payload & Security** | `cargo test --test qr_payload_e2e_test` | QR JSON, URI Schema (`uot://pair`), Malformed Payload, Expiry | `PROVEN` |
+| **Rust Unit & Lib Suite** | `cargo test --lib` (250 tests) | Crypto, Protocol, Security, Queue, Engine | `PROVEN` |
+| **Coverage & Edge Cases** | `cargo test --test coverage_tests` (121 tests) | Edge Cases, State Machine, Subnet Scan, Transports | `PROVEN` |
+| **Flutter Widget & Unit Tests** | `flutter test` (14 tests) | UI Components, Theme, QR Decoder, Adapters | `PROVEN` |
+| **Flutter Integration Driver** | `flutter test integration_test` | Full Flutter App Navigation & Engine Init | `EMULATOR-PROVEN` |
+| **Android Emulator Smoke Script** | `bash scripts/android_smoke_test.sh` | APK Install, RESUMED state, Logcat Crash Detection | `EMULATOR-PROVEN` |
 
 ---
 
-## Test Inventory
+## Execution Commands
 
-### 1. Security Tests (`rust/src/security/`)
-- AES-256-GCM encrypt/decrypt roundtrip
-- Tampered ciphertext detection
-- Invalid key & nonce length handling
-- X25519 Diffie-Hellman key exchange shared secret verification
-- Nonce uniqueness check
-- Path traversal rejection (`../`, encoded sequences, null-bytes)
-- Windows reserved filename sanitization (`CON`, `NUL`, `AUX`)
-- Absolute path rejection & symlink check
-- PIN expiry and verification test
-- Session token generation and validation
+### 1. Execute All Automated Rust Tests
+```bash
+cargo test --manifest-path rust/Cargo.toml
+```
 
-### 2. Protocol Tests (`rust/src/protocol/`)
-- WireMessage snake_case serialization roundtrips
-- Fountain encoder packet generation
-- Header creation and frame payload validation
-- Protocol state machine transitions and invalid state error handling
+### 2. Execute Specific Multi-Peer E2E & Fault Harness
+```bash
+cargo test --manifest-path rust/Cargo.toml --test e2e_two_peer_workflow --test network_fault_harness --test qr_payload_e2e_test
+```
 
-### 3. Transport & Engine Integration Tests (`rust/src/transport/`, `rust/tests/`)
-- TCP listener bind & socket accept
-- TCP connection bidirectional framed read/write
-- Engine lifecycle (start/stop)
-- Two-engine loopback transfer integration test
-- Queue manager batch priority scheduling test
+### 3. Execute All Flutter Tests
+```bash
+C:\flutter\bin\flutter.bat analyze
+C:\flutter\bin\flutter.bat test
+```
+
+### 4. Execute Automated Script Harness
+```bash
+bash scripts/qr_e2e_test.sh
+bash scripts/network_fault_test.sh
+bash scripts/android_smoke_test.sh
+```

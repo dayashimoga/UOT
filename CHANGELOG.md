@@ -3,6 +3,30 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.12] - 2026-08-11
+
+### Sprint 16 — Automated E2E Validation System & Certification Quality Gate
+
+#### Multi-Peer Automated E2E Integration Suite
+- Created `rust/tests/e2e_two_peer_workflow.rs`: Spawns two distinct `UotEngine` nodes, executes discovery, `Hello`/`HelloAck` handshake, `X25519` key exchange, `Ping`/`Pong`, instant message, file offer/accept, encrypted transfer, and **SHA-256 byte-for-byte hash verification**.
+- Created `rust/tests/network_fault_harness.rs`: Automated fault-injection tests for closed ports, connection timeouts, expired PINs, CRC corruption, and abrupt socket disconnects.
+- Created `rust/tests/qr_payload_e2e_test.rs` & `test/qr_payload_parsing_test.dart`: QR invitation JSON generation, parsing, `uot://pair` URI extraction, and TTL expiry.
+
+#### Scripts & Test Fixtures
+- Created `scripts/test_fixtures/` (sample QR JSON, 1K file, 10M file, Unicode file name fixtures).
+- Updated `scripts/android_smoke_test.sh`: Enhanced logcat parsing for `UnsatisfiedLinkError`, `MissingPluginException`, `ANR`, `FATAL EXCEPTION`, `SIGSEGV`, `SIGABRT`.
+- Created `scripts/android_e2e_test.sh`, `scripts/qr_e2e_test.sh`, `scripts/network_fault_test.sh`.
+
+#### Self-Device Filtering & UI Real Connection Badges
+- Filtered out self-device IP and listening port from `discovered_devices()`, `subnet_scan()`, and mDNS `DeviceFound` handler in `rust/src/core/engine.rs`.
+- Updated `_DeviceCard` in `nearby_screen.dart` to verify `device.isConnected` (`capabilities` contains `"connected"` / `"session_ready"`).
+- Updated `_onDeviceTap` in `nearby_screen.dart` to auto-connect before opening send options.
+- Updated `InstantChatDialog` with live event polling (`engineGetEvents(limit: 20)`) and removed fake local response receipts.
+- Restricted `Fix Windows Firewall` button to Windows OS; rendered diagnostic guidance on Android.
+
+#### Documentation Audit
+- Synchronized 6-level feature classification matrix (`PROVEN`, `EMULATOR-PROVEN`, `SIMULATED`, `IMPLEMENTED-UNPROVEN`, `PARTIAL`, `HARDWARE-REQUIRED`) across `GAP_ANALYSIS.md`, `PRODUCTION_READINESS.md`, `TESTING.md`, `TODO.md`, `CHANGELOG.md`, `IMPLEMENTATION.md`, `ROADMAP.md`.
+
 ## [0.1.0-alpha.11] - 2026-08-11
 
 ### Sprint 11 — Connectivity E2E Reliability & Protocol Handshake

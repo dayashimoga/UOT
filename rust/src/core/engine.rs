@@ -830,22 +830,25 @@ impl UotEngine {
                         WireMessage::FileStart { .. } | WireMessage::FileEnd { .. }
                             if !transfer_accepted =>
                         {
-                            // Check if the transfer has been accepted by the UI
+                            // Wait up to 5 seconds for acceptance signal from UI
                             if let Some(tid) = current_transfer_id {
-                                if accepted_transfers.read().contains(&tid) {
+                                let mut accepted = false;
+                                for _ in 0..50 {
+                                    if accepted_transfers.read().contains(&tid) {
+                                        accepted = true;
+                                        break;
+                                    }
+                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                                }
+
+                                if accepted {
                                     transfer_accepted = true;
                                     if let Some(record) = transfers.write().get_mut(&tid) {
                                         record.status = TransferStatus::InProgress;
                                         record.started_at = Some(chrono::Utc::now());
                                     }
                                     log::info!("Transfer {tid} accepted, processing files");
-                                    // IMPORTANT: Do NOT continue — fall through to let
-                                    // the wire_msg be re-matched by the FileStart/FileEnd
-                                    // arms below (transfer_accepted is now true so this
-                                    // guard arm won't re-match; Rust will try the next arms).
-                                    //
-                                    // However, Rust match already consumed this arm.
-                                    // We must manually dispatch the frame here.
+
                                     match wire_msg {
                                         WireMessage::FileStart {
                                             file_name,
@@ -899,18 +902,14 @@ impl UotEngine {
                                             }
                                             current_file = None;
                                         }
-                                        _ => {} // unreachable due to guard
+                                        _ => {}
                                     }
                                 } else {
-                                    // Not yet accepted — skip file frames until accepted
-                                    log::debug!(
-                                        "Skipping file frame for unaccepted transfer {tid}"
+                                    log::warn!(
+                                        "File frame for unaccepted transfer {tid} timed out"
                                     );
                                     continue;
                                 }
-                            } else {
-                                log::warn!("File frame without prior offer from {remote}");
-                                continue;
                             }
                         }
                         WireMessage::FileStart {
@@ -960,8 +959,12 @@ impl UotEngine {
                             }
                             current_file = None;
                         }
-                        WireMessage::TransferComplete { .. } => {
-                            if let Some(tid) = current_transfer_id {
+                        WireMessage::TransferComplete {
+                            transfer_id: ref tid_str,
+                            ..
+                        } => {
+                            let tid = Uuid::parse_str(tid_str).ok().or(current_transfer_id);
+                            if let Some(tid) = tid {
                                 let mut t = transfers.write();
                                 if let Some(record) = t.get_mut(&tid) {
                                     record.status = TransferStatus::Completed;
