@@ -123,6 +123,14 @@
 - [x] Added 1-tap "Fix Windows Firewall" helper button in QrScannerDialog and QrPairingDialog
 - [x] Verified 14/14 Flutter tests passing, 407/407 Rust tests passing, Flutter analyze 100% clean
 
+### Sprint 20 - Dynamic Bound Port QR Payloads, Self-Loopback Protection & Candidate Port Fallback (Completed)
+- [x] Exposed engine_get_listening_port in Rust FRB API returning actual bound TCP socket port
+- [x] Updated QrPairingDialog and NearbyScreen device banner to dynamically generate QR payload and IP display with actual bound port
+- [x] Added self-loopback check in connect_peer preventing devices from connecting to themselves
+- [x] Enabled candidate port fallback [42000, 42001, 42002, 42003, 8080, 50000] when connecting via explicit IP:port strings
+- [x] Verified 14/14 Flutter tests passing, 407/407 Rust tests passing, Flutter analyze 100% clean
+
+
 
 
 

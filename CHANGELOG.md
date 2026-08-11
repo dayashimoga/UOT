@@ -112,7 +112,27 @@ This file is append-only - history is never overwritten.
 - **Flutter Tests**: 14/14 Passed
 - **Rust Test Suite**: 407/407 Passed across 8 test suites
 
+## [0.1.0-alpha.12] - 2026-08-11
+
+### Sprint 20 - Dynamic Bound Port QR Payloads, Self-Loopback Protection & Candidate Port Fallback
+
+#### Dynamic Listening Port API
+- Exposed `engine_get_listening_port()` in Rust FRB API to query actual bound TCP transport socket port.
+- Updated `QrPairingDialog` and `NearbyScreen` `_MyDeviceBanner` to generate QR payload and display IP with the actual bound port (e.g. `:42001` if `:42000` is bound).
+
+#### Self-Loopback Connection Prevention
+- Added self-loopback check in `connect_peer` returning an explicit error (`Cannot connect to your own device`) if a device attempts to connect to its own local IP and bound port.
+
+#### Candidate Port Probing
+- Enhanced `connect_peer` to probe fallback ports (`[42000, 42001, 42002, 42003, 8080, 50000]`) even when explicit target `IP:port` strings are provided.
+
+#### Verification
+- **Flutter Analyze**: 0 errors, 0 warnings (100% clean)
+- **Flutter Tests**: 14/14 Passed
+- **Rust Test Suite**: 407/407 Passed across 8 test suites
+
 ---
+
 
 
 

@@ -134,6 +134,10 @@ Future<String> engineConnectPeer({required String address}) =>
 String engineGetLocalIps() =>
     RustLib.instance.api.crateApiEngineApiEngineGetLocalIps();
 
+/// Get the actual bound listening port of the local TCP transport engine.
+int engineGetListeningPort() =>
+    RustLib.instance.api.crateApiEngineApiEngineGetListeningPort();
+
 /// Generate a 6-digit verification PIN with specified TTL in seconds.
 String engineGeneratePin({required BigInt ttlSecs}) =>
     RustLib.instance.api.crateApiEngineApiEngineGeneratePin(ttlSecs: ttlSecs);

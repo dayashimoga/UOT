@@ -1172,21 +1172,59 @@ impl UotEngine {
     }
 
     /// Direct connection to a peer by address string (IP:port or IP).
+    /// Get actual bound listening port of TCP transport listener.
+    pub fn listening_port(&self) -> u16 {
+        if let Some(ref listener) = *self.listener.read() {
+            listener.port()
+        } else {
+            self.config.read().network_port.unwrap_or(tcp::DEFAULT_PORT)
+        }
+    }
+
+    /// Direct connection to a peer by address string (IP:port or IP).
     pub async fn connect_peer(&self, addr_str: &str) -> Result<DiscoveredDevice, UotError> {
-        let default_port = self.config.read().network_port.unwrap_or(tcp::DEFAULT_PORT);
+        let default_port = self.listening_port();
         let trimmed = addr_str.trim();
 
-        // Extract IP and target port list (only fallback ports if no explicit port supplied)
+        // Extract IP and target port list (try target port first, then candidate ports)
         let (ip_str, target_ports) = if trimmed.contains(':') {
             let parts: Vec<&str> = trimmed.split(':').collect();
             let ip = parts[0];
             let port_parsed = parts[1].parse::<u16>().unwrap_or(default_port);
-            (ip, vec![port_parsed])
+            let mut ports = vec![port_parsed];
+            for p in [42000, 42001, 42002, 42003, 8080, 50000] {
+                if p != port_parsed {
+                    ports.push(p);
+                }
+            }
+            (ip, ports)
         } else {
-            (trimmed, vec![default_port, 42000, 42001, 8080, 50000])
+            (
+                trimmed,
+                vec![default_port, 42000, 42001, 42002, 42003, 8080, 50000],
+            )
         };
 
-        // Try connecting to target ports with a 4-second timeout per port
+        // Prevent self-loopback connection to our own listening port
+        let my_ips = tcp::local_ips();
+        for &port in &target_ports {
+            if port == default_port {
+                for my_ip in &my_ips {
+                    if ip_str == my_ip.to_string() || ip_str == "127.0.0.1" || ip_str == "localhost"
+                    {
+                        return Err(UotError::Transport(
+                            crate::core::error::TransportError::ConnectionFailed {
+                                reason: format!(
+                                    "Cannot connect to your own device ({ip_str}:{port})"
+                                ),
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Try connecting to target ports with a 3-second timeout per port
         let mut last_err = String::new();
         let mut connected_stream = None;
         let mut final_socket_addr = None;
@@ -1195,7 +1233,7 @@ impl UotEngine {
             let full_addr_str = format!("{ip_str}:{port}");
             if let Ok(socket_addr) = full_addr_str.parse::<SocketAddr>() {
                 match tokio::time::timeout(
-                    std::time::Duration::from_secs(4),
+                    std::time::Duration::from_secs(3),
                     tcp::connect(socket_addr),
                 )
                 .await
@@ -1209,7 +1247,7 @@ impl UotEngine {
                         last_err = format!("Connect to {socket_addr} failed: {e}");
                     }
                     Err(_) => {
-                        last_err = format!("Connection to {socket_addr} timed out after 4 seconds (Windows Firewall / Wi-Fi filter)");
+                        last_err = format!("Connection to {socket_addr} timed out after 3 seconds (Windows Firewall / Wi-Fi filter)");
                     }
                 }
             }
@@ -1220,7 +1258,9 @@ impl UotEngine {
             None => {
                 return Err(UotError::Transport(
                     crate::core::error::TransportError::ConnectionFailed {
-                        reason: format!("{last_err}. Check that both devices are on the same Wi-Fi and port 42000 is allowed in Firewall."),
+                        reason: format!(
+                            "{last_err}. Check that both devices are on the same Wi-Fi network."
+                        ),
                     },
                 ));
             }

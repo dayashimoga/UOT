@@ -386,6 +386,12 @@ pub fn engine_get_local_ips() -> String {
     serde_json::to_string(&ips).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// Get the actual bound listening port of the local TCP transport engine.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_listening_port() -> u16 {
+    with_engine(|engine| engine.listening_port()).unwrap_or(42000)
+}
+
 /// Generate a 6-digit verification PIN with specified TTL in seconds.
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_generate_pin(ttl_secs: u64) -> String {

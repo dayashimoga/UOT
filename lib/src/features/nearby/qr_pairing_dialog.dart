@@ -60,9 +60,10 @@ class _QrPairingDialogState extends State<QrPairingDialog>
       } catch (_) {}
 
       final mainIp = ips.isNotEmpty ? ips.first.toString() : '127.0.0.1';
+      final port = engine.engineGetListeningPort();
 
       final qrData =
-          'uot://pair?ip=$mainIp&port=42000&pin=$pin&name=${Uri.encodeComponent(name)}';
+          'uot://pair?ip=$mainIp&port=$port&pin=$pin&name=${Uri.encodeComponent(name)}';
 
       setState(() {
         _pin = pin;
@@ -70,9 +71,10 @@ class _QrPairingDialogState extends State<QrPairingDialog>
         _qrPayload = qrData;
       });
     } catch (e) {
+      final port = engine.engineGetListeningPort();
       setState(() {
         _localIp = '127.0.0.1';
-        _qrPayload = 'uot://pair?ip=127.0.0.1&port=42000';
+        _qrPayload = 'uot://pair?ip=127.0.0.1&port=$port';
       });
     }
   }

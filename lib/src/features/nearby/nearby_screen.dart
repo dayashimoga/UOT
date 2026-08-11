@@ -820,7 +820,7 @@ class _MyDeviceBanner extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'IP: $localIp:42000',
+                        'IP: $localIp:${engine.engineGetListeningPort()}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
