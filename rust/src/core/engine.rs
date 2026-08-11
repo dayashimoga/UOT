@@ -401,9 +401,10 @@ impl UotEngine {
             qm.mark_started();
         }
 
-        // Connect to the device (always opens a fresh connection for file transfers
-        // since the transfer protocol requires its own key exchange session)
-        let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
+        // Connect to the device with port fallback (42000-42003)
+        let stream = Self::connect_with_port_fallback(addr)
+            .await
+            .map_err(UotError::Transport)?;
         let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
 
         // Perform X25519 key exchange for session encryption
@@ -1278,14 +1279,43 @@ impl UotEngine {
             }
         }
 
-        // Fallback: open fresh connection
-        let stream = tcp::connect(addr).await.map_err(UotError::Transport)?;
+        // Fallback: open fresh connection with candidate port fallbacks
+        let stream = Self::connect_with_port_fallback(addr)
+            .await
+            .map_err(UotError::Transport)?;
         let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
         proto::send_message(&conn, &msg)
             .await
             .map_err(UotError::Transport)?;
         log::info!("Clipboard sent to {device_id} via new connection: {text_len} bytes");
         Ok(())
+    }
+
+    /// Helper to connect to SocketAddr with fallback to standard ports (42000, 42001, 42002, 42003).
+    async fn connect_with_port_fallback(
+        addr: SocketAddr,
+    ) -> Result<tokio::net::TcpStream, TransportError> {
+        let ip = addr.ip();
+        let mut candidate_addrs = vec![addr];
+        for p in [42000, 42001, 42002, 42003] {
+            let alt = SocketAddr::new(ip, p);
+            if !candidate_addrs.contains(&alt) {
+                candidate_addrs.push(alt);
+            }
+        }
+
+        let mut last_err = None;
+        for target in candidate_addrs {
+            match tokio::time::timeout(std::time::Duration::from_secs(3), tcp::connect(target)).await {
+                Ok(Ok(stream)) => return Ok(stream),
+                Ok(Err(e)) => last_err = Some(e),
+                Err(_) => last_err = Some(TransportError::Connection(format!(
+                    "Connection to {target} timed out after 3 seconds (Windows Firewall / Wi-Fi filter)"
+                ))),
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| TransportError::Connection("Connection failed".to_string())))
     }
 
     /// Get recent events as serializable strings.
@@ -1364,10 +1394,10 @@ impl UotEngine {
         let (ip_str, target_ports) = if trimmed.contains(':') {
             let parts: Vec<&str> = trimmed.split(':').collect();
             let ip = parts[0];
-            let port_parsed = parts[1].parse::<u16>().unwrap_or(default_port);
+            let port_parsed = parts[1].parse::<u16>().unwrap_or(42000);
             (ip, vec![port_parsed])
         } else {
-            (trimmed, vec![default_port, 42000, 42001, 42002, 42003])
+            (trimmed, vec![42000, 42001, 42002, 42003, default_port])
         };
 
         // Prevent self-loopback connection to our own listening port

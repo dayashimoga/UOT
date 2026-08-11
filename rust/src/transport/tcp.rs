@@ -319,13 +319,37 @@ pub struct TcpTransportListener {
 }
 
 impl TcpTransportListener {
-    /// Start listening on the given port. Returns the listener and a receiver
+    /// Start listening on the given port (with automatic fallbacks to 42000-42004). Returns the listener and a receiver
     /// for incoming connections (each as a TcpStream).
     pub async fn bind(port: u16) -> Result<(Self, mpsc::Receiver<TcpStream>), TransportError> {
-        let addr = SocketAddr::from(([0, 0, 0, 0], port));
-        let listener = TcpListener::bind(addr)
-            .await
-            .map_err(|e| TransportError::Connection(format!("Bind failed on :{port}: {e}")))?;
+        let target_ports = if port == 0 {
+            vec![DEFAULT_PORT, 42001, 42002, 42003, 42004, 0]
+        } else {
+            vec![port, DEFAULT_PORT, 42001, 42002, 42003, 42004, 0]
+        };
+
+        let mut bound_listener = None;
+        let mut last_err = None;
+
+        for p in target_ports {
+            let addr = SocketAddr::from(([0, 0, 0, 0], p));
+            match TcpListener::bind(addr).await {
+                Ok(l) => {
+                    bound_listener = Some(l);
+                    break;
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                }
+            }
+        }
+
+        let listener = bound_listener.ok_or_else(|| {
+            TransportError::Connection(format!(
+                "Bind failed on requested port {port} and fallbacks: {:?}",
+                last_err
+            ))
+        })?;
 
         let local_addr = listener
             .local_addr()

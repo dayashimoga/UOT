@@ -87,7 +87,24 @@ class _QrPairingDialogState extends State<QrPairingDialog>
       return;
     }
 
-    final ipPart = rawInput.split(':').first;
+    String targetAddress = rawInput;
+    if (rawInput.startsWith('uot://pair') || rawInput.contains('ip=')) {
+      try {
+        final normalized = rawInput.startsWith('uot://pair?')
+            ? rawInput.replaceFirst('uot://pair?', 'uot://pair/?')
+            : rawInput;
+        final uri = Uri.parse(normalized);
+        final ip = uri.queryParameters['ip'];
+        final port = uri.queryParameters['port'] ?? '42000';
+        if (ip != null && ip.isNotEmpty) {
+          targetAddress = '$ip:$port';
+        }
+      } catch (_) {}
+    } else if (!targetAddress.contains(':')) {
+      targetAddress = '$targetAddress:42000';
+    }
+
+    final ipPart = targetAddress.split(':').first;
     final octets = ipPart.split('.');
     if (octets.length == 4) {
       for (final oct in octets) {
@@ -109,7 +126,7 @@ class _QrPairingDialogState extends State<QrPairingDialog>
     });
 
     try {
-      final res = await engine.engineConnectPeer(address: rawInput);
+      final res = await engine.engineConnectPeer(address: targetAddress);
       if (res.startsWith('error:')) {
         setState(() {
           _isConnecting = false;

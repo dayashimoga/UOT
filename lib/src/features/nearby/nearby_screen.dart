@@ -5,6 +5,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -214,6 +215,9 @@ class _NearbyScreenState extends State<NearbyScreen>
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                // Windows Firewall Quick Auto-Fix Banner
+                const _WindowsFirewallBanner(),
+
                 // Engine Status Card
                 _EngineStatusCard(
                   colorScheme: colorScheme,
@@ -968,6 +972,74 @@ void _showSendFeedback(
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WindowsFirewallBanner extends StatefulWidget {
+  const _WindowsFirewallBanner();
+
+  @override
+  State<_WindowsFirewallBanner> createState() => _WindowsFirewallBannerState();
+}
+
+class _WindowsFirewallBannerState extends State<_WindowsFirewallBanner> {
+  bool _configured = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (defaultTargetPlatform != TargetPlatform.windows) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _configured ? Colors.green.withOpacity(0.12) : Colors.blue.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _configured ? Colors.green.shade700.withOpacity(0.4) : Colors.blue.shade700.withOpacity(0.4),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _configured ? Icons.shield_outlined : Icons.security_rounded,
+            color: _configured ? Colors.green.shade700 : Colors.blue.shade700,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _configured
+                  ? 'Windows Firewall rules active (Inbound TCP ports 42000-42010 allowed).'
+                  : 'Windows Firewall: Ensure inbound network connections are allowed for UOT.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              final res = engine.engineFixWindowsFirewall();
+              setState(() => _configured = true);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    res.startsWith('ok')
+                        ? 'Windows Firewall rules applied successfully ✓'
+                        : 'Firewall status: $res',
+                  ),
+                  backgroundColor: res.startsWith('ok') ? Colors.green : Colors.orange,
+                ),
+              );
+            },
+            icon: const Icon(Icons.flash_on_rounded, size: 16),
+            label: Text(_configured ? 'Re-Apply' : 'Auto-Allow'),
           ),
         ],
       ),

@@ -6,11 +6,13 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'src/core/theme/app_theme.dart';
 import 'src/core/router/app_router.dart';
 import 'src/features/diagnostics/rust_init_failed_screen.dart';
 import 'src/rust/frb_generated.dart';
+import 'src/rust/api/engine_api.dart' as engine;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +65,17 @@ class _UotAppState extends State<UotApp> {
         setState(() {
           _engineState = _EngineInitState.ready;
         });
+
+        if (defaultTargetPlatform == TargetPlatform.windows) {
+          // Automatically trigger Windows Firewall rules for inbound UOT connections
+          Future.microtask(() {
+            try {
+              engine.engineFixWindowsFirewall();
+            } catch (e) {
+              debugPrint('Windows firewall rule auto-configuration status: $e');
+            }
+          });
+        }
       }
     } catch (e, stackTrace) {
       debugPrint('UOT RustLib initialization error: $e\n$stackTrace');
