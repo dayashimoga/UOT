@@ -158,10 +158,7 @@ pub enum EngineEvent {
         total_size: u64,
     },
     /// Clipboard/text data received from a remote peer.
-    ClipboardReceived {
-        from_device: String,
-        text: String,
-    },
+    ClipboardReceived { from_device: String, text: String },
     /// Peer connection state changed.
     PeerStateChanged {
         device_id: String,
@@ -718,11 +715,11 @@ impl UotEngine {
                             let _ = event_tx.send(EngineEvent::DeviceFound(dev)).await;
                             log::info!("HelloAck sent to {peer_name} at {remote}");
                         }
-                        WireMessage::ClipboardData {
-                            data,
-                            ..
-                        } => {
-                            log::info!("Received clipboard data from {remote}: {} bytes", data.len());
+                        WireMessage::ClipboardData { data, .. } => {
+                            log::info!(
+                                "Received clipboard data from {remote}: {} bytes",
+                                data.len()
+                            );
                             let _ = event_tx
                                 .send(EngineEvent::ClipboardReceived {
                                     from_device: remote.to_string(),
@@ -1416,15 +1413,13 @@ impl UotEngine {
             version: version::version_string(),
             capabilities: vec!["tcp_lan".to_string(), "clipboard".to_string()],
         };
-        proto::send_message(&conn, &hello)
-            .await
-            .map_err(|e| {
-                let _ = self.peer_states.write().insert(
-                    temp_device_id.clone(),
-                    PeerConnectionState::Error(format!("Hello send failed: {e}")),
-                );
-                UotError::Transport(e)
-            })?;
+        proto::send_message(&conn, &hello).await.map_err(|e| {
+            let _ = self.peer_states.write().insert(
+                temp_device_id.clone(),
+                PeerConnectionState::Error(format!("Hello send failed: {e}")),
+            );
+            UotError::Transport(e)
+        })?;
         self.set_peer_state(&temp_device_id, PeerConnectionState::HelloSent)
             .await;
         log::info!("Sent Hello to {socket_addr}");
@@ -1450,21 +1445,15 @@ impl UotEngine {
                     "Peer at {socket_addr} sent unexpected message instead of HelloAck: {other:?}"
                 );
                 log::error!("{err_msg}");
-                self.set_peer_state(
-                    &temp_device_id,
-                    PeerConnectionState::Error(err_msg.clone()),
-                )
-                .await;
+                self.set_peer_state(&temp_device_id, PeerConnectionState::Error(err_msg.clone()))
+                    .await;
                 return Err(UotError::Transport(TransportError::Protocol(err_msg)));
             }
             Ok(Err(e)) => {
                 let err_msg = format!("Failed to receive HelloAck from {socket_addr}: {e}");
                 log::error!("{err_msg}");
-                self.set_peer_state(
-                    &temp_device_id,
-                    PeerConnectionState::Error(err_msg.clone()),
-                )
-                .await;
+                self.set_peer_state(&temp_device_id, PeerConnectionState::Error(err_msg.clone()))
+                    .await;
                 return Err(UotError::Transport(TransportError::Protocol(err_msg)));
             }
             Err(_) => {
@@ -1472,11 +1461,8 @@ impl UotEngine {
                     "HelloAck timeout from {socket_addr} (5s). The remote may not be running UOT."
                 );
                 log::error!("{err_msg}");
-                self.set_peer_state(
-                    &temp_device_id,
-                    PeerConnectionState::Error(err_msg.clone()),
-                )
-                .await;
+                self.set_peer_state(&temp_device_id, PeerConnectionState::Error(err_msg.clone()))
+                    .await;
                 return Err(UotError::Transport(TransportError::Protocol(err_msg)));
             }
         };
@@ -1484,15 +1470,13 @@ impl UotEngine {
             .await;
 
         // === Phase 4: Ping liveness check ===
-        conn.send(Frame::ping())
-            .await
-            .map_err(|e| {
-                let _ = self.peer_states.write().insert(
-                    temp_device_id.clone(),
-                    PeerConnectionState::Error(format!("Ping failed: {e}")),
-                );
-                UotError::Transport(e)
-            })?;
+        conn.send(Frame::ping()).await.map_err(|e| {
+            let _ = self.peer_states.write().insert(
+                temp_device_id.clone(),
+                PeerConnectionState::Error(format!("Ping failed: {e}")),
+            );
+            UotError::Transport(e)
+        })?;
         // Note: Pong is handled internally by the receiver's reader task.
         // If the Ping frame was sent successfully and HelloAck was received,
         // the connection is bidirectionally verified.
@@ -1573,7 +1557,6 @@ impl UotEngine {
             .cloned()
             .unwrap_or(PeerConnectionState::Disconnected)
     }
-
 
     /// Fallback discovery: scan local subnet for UOT listeners.
     pub async fn subnet_scan(&self) -> Vec<std::net::SocketAddr> {

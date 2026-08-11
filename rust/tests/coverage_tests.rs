@@ -2278,7 +2278,11 @@ async fn test_engine_connect_peer_and_subnet_scan_branches() {
     });
 
     let connect_res = engine.connect_peer(&addr_str).await;
-    assert!(connect_res.is_ok(), "Direct connect should succeed: {:?}", connect_res.err());
+    assert!(
+        connect_res.is_ok(),
+        "Direct connect should succeed: {:?}",
+        connect_res.err()
+    );
     let dev = connect_res.unwrap();
     // Device ID now comes from HelloAck, not from IP
     assert_eq!(dev.device_id, "mock-server-id");
@@ -2291,7 +2295,10 @@ async fn test_engine_connect_peer_and_subnet_scan_branches() {
 
     // Check peer state is SessionReady
     let peer_state = engine.get_peer_state("mock-server-id");
-    assert_eq!(peer_state, rust_lib_uot_app::core::engine::PeerConnectionState::SessionReady);
+    assert_eq!(
+        peer_state,
+        rust_lib_uot_app::core::engine::PeerConnectionState::SessionReady
+    );
 
     // 4. Subnet scan invocation
     let scanned = engine.subnet_scan().await;
