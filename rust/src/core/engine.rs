@@ -407,6 +407,33 @@ impl UotEngine {
             .map_err(UotError::Transport)?;
         let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
 
+        // GAP 4 FIX: Send Hello handshake first so receiver identifies sender
+        let hello = WireMessage::Hello {
+            device_id: self.device_id.clone(),
+            device_name: self.config.read().device_name.clone(),
+            device_type: "Desktop".to_string(),
+            version: crate::core::version::version_string(),
+            capabilities: vec!["tcp_lan".to_string(), "file_transfer".to_string()],
+        };
+        proto::send_message(&conn, &hello)
+            .await
+            .map_err(UotError::Transport)?;
+
+        // Wait for HelloAck (5s timeout)
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            proto::recv_message(&conn),
+        )
+        .await
+        {
+            Ok(Ok(WireMessage::HelloAck { .. })) => {
+                log::info!("Transfer connection HelloAck received from {addr}");
+            }
+            _ => {
+                log::warn!("No HelloAck from {addr} for transfer connection, proceeding anyway");
+            }
+        }
+
         // Perform X25519 key exchange for session encryption
         let (our_private, our_public) =
             SessionCipher::create_key_exchange().map_err(UotError::Security)?;
@@ -642,7 +669,7 @@ impl UotEngine {
         conn: Arc<TcpConnection>,
         remote: &str,
         transfers: &Arc<RwLock<HashMap<Uuid, TransferRecord>>>,
-        _trackers: &Arc<RwLock<HashMap<Uuid, Arc<ProgressTracker>>>>,
+        trackers: &Arc<RwLock<HashMap<Uuid, Arc<ProgressTracker>>>>,
         event_tx: &mpsc::Sender<EngineEvent>,
         save_dir: &str,
         accepted_transfers: &Arc<RwLock<std::collections::HashSet<Uuid>>>,
@@ -653,6 +680,7 @@ impl UotEngine {
         let mut current_file: Option<(PathBuf, String, u64)> = None; // (path, name, size)
         let mut current_transfer_id: Option<Uuid> = None;
         let mut transfer_accepted = false;
+        let mut recv_tracker: Option<Arc<ProgressTracker>> = None;
         let mut session_cipher: Option<SessionCipher> = None;
 
         loop {
@@ -817,6 +845,13 @@ impl UotEngine {
                             };
                             transfers.write().insert(transfer_id, record);
 
+                            // GAP 6 FIX: Create receive-side progress tracker
+                            let item_count = offer_items.len();
+                            let tracker =
+                                Arc::new(ProgressTracker::new(transfer_id, total_size, item_count));
+                            trackers.write().insert(transfer_id, Arc::clone(&tracker));
+                            recv_tracker = Some(tracker);
+
                             let _ = event_tx
                                 .send(EngineEvent::IncomingOffer {
                                     transfer_id,
@@ -834,7 +869,8 @@ impl UotEngine {
                             // Wait up to 5 seconds for acceptance signal from UI
                             if let Some(tid) = current_transfer_id {
                                 let mut accepted = false;
-                                for _ in 0..50 {
+                                // Wait up to 120 seconds for user acceptance (GAP 7 fix)
+                                for _ in 0..1200 {
                                     if accepted_transfers.read().contains(&tid) {
                                         accepted = true;
                                         break;
@@ -1010,6 +1046,20 @@ impl UotEngine {
 
                         if let Err(e) = engine::write_chunk(path, offset, chunk_data, crc).await {
                             log::error!("Write chunk failed: {e}");
+                        } else {
+                            // GAP 6 FIX: Track receive progress
+                            let chunk_len = chunk_data.len() as u64;
+                            if let Some(ref tracker) = recv_tracker {
+                                tracker.add_bytes(chunk_len);
+                                let progress = tracker.snapshot();
+                                let _ = event_tx.try_send(EngineEvent::TransferProgress(progress));
+                            }
+                            // Update transfer record bytes
+                            if let Some(tid) = current_transfer_id {
+                                if let Some(record) = transfers.write().get_mut(&tid) {
+                                    record.transferred_bytes += chunk_len;
+                                }
+                            }
                         }
                     }
                 }
@@ -1026,6 +1076,37 @@ impl UotEngine {
     /// Get the device ID.
     pub fn device_id(&self) -> &str {
         &self.device_id
+    }
+
+    /// GAP 11: Get connection diagnostics for UI display.
+    pub fn get_diagnostics(&self) -> String {
+        let local_ips: Vec<String> = tcp::local_ips()
+            .into_iter()
+            .filter(|ip| ip.is_ipv4() && !ip.is_loopback())
+            .map(|ip| ip.to_string())
+            .collect();
+        let listening_port = self.listening_port();
+        let active_connections: Vec<String> = self.connections.read().keys().cloned().collect();
+        let peer_states: Vec<(String, String)> = self
+            .peer_states
+            .read()
+            .iter()
+            .map(|(id, state)| (id.clone(), state.to_string()))
+            .collect();
+        let device_count = self.devices.read().len();
+        let transfer_count = self.transfers.read().len();
+        let engine_state = format!("{:?}", *self.state.read());
+
+        format!(
+            r#"{{"engine_state":"{}","local_ips":{},"listening_port":{},"device_count":{},"active_connections":{},"peer_states":{},"transfer_count":{}}}"#,
+            engine_state,
+            serde_json::to_string(&local_ips).unwrap_or_else(|_| "[]".to_string()),
+            listening_port,
+            device_count,
+            serde_json::to_string(&active_connections).unwrap_or_else(|_| "[]".to_string()),
+            serde_json::to_string(&peer_states).unwrap_or_else(|_| "[]".to_string()),
+            transfer_count,
+        )
     }
 
     /// Get all discovered devices (filtering out self-device and local IP/ports).
@@ -1262,9 +1343,13 @@ impl UotEngine {
             data: text,
         };
 
+        // GAP 10 FIX: Try reusing existing connection by device_id OR addr string
         if let Some(existing_conn) = {
             let conns = self.connections.read();
-            conns.get(device_id).cloned()
+            conns
+                .get(device_id)
+                .or_else(|| conns.get(&addr.to_string()))
+                .cloned()
         } {
             if existing_conn.state() == TransportState::Connected {
                 match proto::send_message(&existing_conn, &msg).await {
@@ -1593,6 +1678,38 @@ impl UotEngine {
             .event_tx
             .send(EngineEvent::DeviceFound(device.clone()))
             .await;
+
+        // GAP 3 FIX: Spawn reader task so this peer can RECEIVE messages/files
+        // from the connected remote peer. Without this, only the listener side
+        // could receive incoming data.
+        {
+            let conn_for_handler = Arc::clone(&conn);
+            let remote_str = socket_addr.to_string();
+            let transfers = Arc::clone(&self.transfers);
+            let trackers = Arc::clone(&self.progress_trackers);
+            let event_tx = self.event_tx.clone();
+            let save_dir = self.config.read().transfer.save_directory.clone();
+            let accepted = Arc::clone(&self.accepted_transfers);
+            let devices = Arc::clone(&self.devices);
+            let our_id = self.device_id.clone();
+            let our_name = self.config.read().device_name.clone();
+
+            tokio::spawn(async move {
+                Self::handle_incoming_connection(
+                    conn_for_handler,
+                    &remote_str,
+                    &transfers,
+                    &trackers,
+                    &event_tx,
+                    &save_dir,
+                    &accepted,
+                    &devices,
+                    &our_id,
+                    &our_name,
+                )
+                .await;
+            });
+        }
 
         self.log_event(&format!(
             "Connected to {remote_device_name} at {socket_addr} (Hello+Ping verified)"

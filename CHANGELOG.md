@@ -3,6 +3,47 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.13] - 2026-08-11
+
+### Sprint 17 — Production Recovery: Evidence-Based Gap Analysis & Critical Fixes
+
+#### Gap Analysis (14 root-cause bugs identified)
+- Traced complete runtime path: Flutter UI → FRB → Rust API → discovery → connection → handshake → transfer
+- Identified that `event_rx` was discarded at init (GAP 1) — ALL engine events (IncomingOffer, TransferProgress, ClipboardReceived) were lost
+- Identified QR invitation hardcoded to `127.0.0.1` (GAP 2) — cross-device QR pairing always connected to self
+- Identified connect_peer didn't spawn reader task (GAP 3) — initiator couldn't receive messages/files
+- Identified send_files skipped Hello handshake (GAP 4) — receiver couldn't identify sender
+- Identified transfer acceptance timeout was 5s (GAP 7) — too short for user interaction
+- Identified non-elevated netsh in engine_init (GAP 8) — always silently failed
+
+#### Sprint A: Event Pipeline Fix
+- Stored `event_rx` in EngineHandle, added `event_forwarder` async task to serialize all 9 EngineEvent types to JSON
+- Added `engine_poll_events()` sync API with 500-event capped buffer
+- Wired Flutter `_pollEvents()` into 2-second refresh timer
+- IncomingOffer events now show Accept/Reject dialog with file list and size
+- ClipboardReceived events show notification with Copy action
+- Increased transfer acceptance timeout from 5s to 120s
+
+#### Sprint B: Connection Architecture Fix
+- connect_peer now spawns `handle_incoming_connection()` reader task for bidirectional communication
+- send_files now sends Hello/HelloAck handshake before KeyExchange
+
+#### Sprint C: QR & Firewall Fix
+- QR invitation now uses actual local IP from `tcp::local_ips()` and real listening port
+- Removed non-elevated netsh from engine_init (firewall handled by UAC-elevated engine_fix_windows_firewall)
+
+#### Sprint D: Remaining P1 Fixes
+- GAP 6: Added receive-side `ProgressTracker` in `handle_incoming_connection()` — receiver now tracks progress, speed, ETA
+- GAP 6: Data frame handler emits `TransferProgress` events and updates `transferred_bytes` on record
+- GAP 10: Fixed `send_clipboard` connection lookup to check both `device_id` and `IP:port` keys
+- GAP 11: Added `engine_get_diagnostics()` API (engine_state, local_ips, listening_port, peer_states, connection count)
+
+#### Verification
+- FRB codegen regenerated successfully
+- `cargo clippy -- -D warnings`: 0 warnings
+- `cargo test`: 250+ tests passed, 0 failed
+- `flutter analyze`: 0 issues
+
 ## [0.1.0-alpha.12] - 2026-08-11
 
 ### Sprint 16 — Automated E2E Validation System & Certification Quality Gate

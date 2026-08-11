@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `with_engine_runtime`, `with_engine`
+// These functions are ignored because they are not marked as `pub`: `event_forwarder`, `with_engine_runtime`, `with_engine`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `EngineHandle`
 
 /// Initialize the UOT engine. Call once at app startup.
@@ -71,6 +71,12 @@ Future<String> engineSendClipboard(
     RustLib.instance.api
         .crateApiEngineApiEngineSendClipboard(deviceId: deviceId, text: text);
 
+/// Poll buffered engine events as JSON array. Drains the buffer.
+/// Call this periodically from Flutter (e.g., every 1-2 seconds) to receive
+/// IncomingOffer, TransferProgress, ClipboardReceived, PeerStateChanged etc.
+String enginePollEvents() =>
+    RustLib.instance.api.crateApiEngineApiEnginePollEvents();
+
 /// Get event log (latest N events as JSON).
 String engineGetEvents({required int limit}) =>
     RustLib.instance.api.crateApiEngineApiEngineGetEvents(limit: limit);
@@ -130,6 +136,11 @@ Future<String> engineSubnetScan() =>
 Future<String> engineConnectPeer({required String address}) =>
     RustLib.instance.api.crateApiEngineApiEngineConnectPeer(address: address);
 
+/// Get connection diagnostics as JSON (GAP 11).
+/// Returns: engine_state, local_ips, listening_port, device_count, active_connections, peer_states, transfer_count.
+String engineGetDiagnostics() =>
+    RustLib.instance.api.crateApiEngineApiEngineGetDiagnostics();
+
 /// Get local IPv4 addresses as JSON list.
 String engineGetLocalIps() =>
     RustLib.instance.api.crateApiEngineApiEngineGetLocalIps();
@@ -137,6 +148,10 @@ String engineGetLocalIps() =>
 /// Get the actual bound listening port of the local TCP transport engine.
 int engineGetListeningPort() =>
     RustLib.instance.api.crateApiEngineApiEngineGetListeningPort();
+
+/// Get the connection state of a specific peer by device ID.
+String engineGetPeerState({required String deviceId}) => RustLib.instance.api
+    .crateApiEngineApiEngineGetPeerState(deviceId: deviceId);
 
 /// Generate a 6-digit verification PIN with specified TTL in seconds.
 String engineGeneratePin({required BigInt ttlSecs}) =>
@@ -147,7 +162,7 @@ String engineVerifyPin({required String deviceId, required String attempt}) =>
     RustLib.instance.api
         .crateApiEngineApiEngineVerifyPin(deviceId: deviceId, attempt: attempt);
 
-/// Trigger Windows UAC prompt to create firewall rule allowing inbound TCP port 42000.
+/// Trigger Windows UAC prompt to create firewall rule allowing inbound TCP ports 42000-42010 & UDP.
 String engineFixWindowsFirewall() =>
     RustLib.instance.api.crateApiEngineApiEngineFixWindowsFirewall();
 

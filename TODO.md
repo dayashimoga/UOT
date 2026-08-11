@@ -110,7 +110,23 @@
 - [x] Enabled candidate port fallback [42000, 42001, 42002, 42003, 8080, 50000] when connecting via explicit IP:port strings
 - [x] Verified 14/14 Flutter tests passing, 407/407 Rust tests passing, Flutter analyze 100% clean
 
+### Sprint 17 — Production Recovery: Critical Gap Fixes (Completed ✅)
+- [x] Evidence-based gap analysis: traced Flutter→FRB→Rust→discovery→connection→handshake→transfer runtime path
+- [x] GAP 1 FIX: Stored `event_rx` instead of discarding — engine events now flow to Flutter
+- [x] Added `engine_poll_events()` API + `event_forwarder` async task (9 event types → JSON)
+- [x] GAP 2 FIX: QR invitation uses actual local IP from `tcp::local_ips()` instead of `127.0.0.1`
+- [x] GAP 3 FIX: `connect_peer()` now spawns `handle_incoming_connection()` reader task — bidirectional comms
+- [x] GAP 4 FIX: `send_files()` sends Hello/HelloAck before KeyExchange — receiver identifies sender
+- [x] GAP 7 FIX: Transfer acceptance timeout increased from 5s to 120s
+- [x] GAP 8 FIX: Removed non-elevated netsh from `engine_init()` (firewall via UAC-elevated path only)
+- [x] Flutter: wired `_pollEvents()` into refresh timer — IncomingOffer → Accept dialog, ClipboardReceived → notification
+- [x] FRB codegen regenerated, cargo clippy clean, flutter analyze clean, 19/19 Rust tests pass
 
-
-
+### Remaining P1 Items (Next Sprint)
+- [ ] GAP 5: Unify connection map keys (device_id vs IP:port) 
+- [ ] GAP 6: Add receive-side ProgressTracker in handle_incoming_connection
+- [ ] GAP 9: Add recurring heartbeat Ping every 15s with disconnect detection
+- [ ] GAP 10: Fix send_clipboard connection lookup to check both device_id and IP:port
+- [ ] GAP 11: Add engine_get_diagnostics() API with connection health info
+- [ ] GAP 12-14: Streaming stubs, transport stubs, cross-session resume (P2)
 

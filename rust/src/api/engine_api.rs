@@ -14,6 +14,9 @@ use crate::security::CryptoProvider;
 /// Global engine singleton.
 static ENGINE: OnceLock<RwLock<Option<EngineHandle>>> = OnceLock::new();
 
+/// Buffered events from the Rust engine, drained by Flutter via polling.
+static EVENT_BUFFER: OnceLock<RwLock<Vec<String>>> = OnceLock::new();
+
 struct EngineHandle {
     engine: UotEngine,
     runtime: tokio::runtime::Runtime,
@@ -28,8 +31,11 @@ pub fn engine_init() -> String {
         return "already_initialized".to_string();
     }
 
+    // Initialize event buffer
+    EVENT_BUFFER.get_or_init(|| RwLock::new(Vec::new()));
+
     let config = AppConfig::default();
-    let (engine, _event_rx) = UotEngine::new(config);
+    let (engine, event_rx) = UotEngine::new(config);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -40,26 +46,15 @@ pub fn engine_init() -> String {
     // Start the engine
     let device_id = engine.device_id().to_string();
 
-    #[cfg(target_os = "windows")]
-    {
-        std::thread::spawn(|| {
-            let _ = std::process::Command::new("netsh")
-                .args([
-                    "advfirewall",
-                    "firewall",
-                    "add",
-                    "rule",
-                    "name=UOT File Transfer",
-                    "dir=in",
-                    "action=allow",
-                    "protocol=TCP",
-                    "localport=42000",
-                ])
-                .output();
-        });
-    }
+    // NOTE: Non-elevated netsh removed (GAP 8). Windows firewall is handled
+    // by engine_fix_windows_firewall() which uses proper UAC elevation via
+    // Start-Process -Verb RunAs. Auto-called from main.dart on Windows startup.
 
     let start_result = runtime.block_on(async { engine.start().await });
+
+    // Spawn event forwarding task: drains engine events into EVENT_BUFFER
+    // so Flutter can poll them via engine_poll_events()
+    runtime.spawn(event_forwarder(event_rx));
 
     match start_result {
         Ok(()) => {
@@ -70,6 +65,87 @@ pub fn engine_init() -> String {
             // Still store engine even if start partially failed
             *lock = Some(EngineHandle { engine, runtime });
             format!("partial:{device_id}:{e}")
+        }
+    }
+}
+
+/// Background task that forwards engine events into the poll buffer.
+async fn event_forwarder(
+    mut event_rx: tokio::sync::mpsc::Receiver<crate::core::engine::EngineEvent>,
+) {
+    use crate::core::engine::EngineEvent;
+    while let Some(event) = event_rx.recv().await {
+        let json = match &event {
+            EngineEvent::IncomingOffer {
+                transfer_id,
+                from_device,
+                items,
+                total_size,
+            } => {
+                format!(
+                    r#"{{"type":"IncomingOffer","transfer_id":"{}","from_device":"{}","items":{},"total_size":{}}}"#,
+                    transfer_id,
+                    from_device,
+                    serde_json::to_string(items).unwrap_or_else(|_| "[]".to_string()),
+                    total_size
+                )
+            }
+            EngineEvent::TransferProgress(progress) => {
+                format!(
+                    r#"{{"type":"TransferProgress","data":{}}}"#,
+                    serde_json::to_string(progress).unwrap_or_else(|_| "{}".to_string())
+                )
+            }
+            EngineEvent::TransferStatusChanged {
+                transfer_id,
+                status,
+            } => {
+                format!(
+                    r#"{{"type":"TransferStatusChanged","transfer_id":"{}","status":"{:?}"}}"#,
+                    transfer_id, status
+                )
+            }
+            EngineEvent::ClipboardReceived { from_device, text } => {
+                let escaped_text = text
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\n', "\\n");
+                format!(
+                    r#"{{"type":"ClipboardReceived","from_device":"{}","text":"{}"}}"#,
+                    from_device, escaped_text
+                )
+            }
+            EngineEvent::DeviceFound(device) => {
+                format!(
+                    r#"{{"type":"DeviceFound","data":{}}}"#,
+                    serde_json::to_string(device).unwrap_or_else(|_| "{}".to_string())
+                )
+            }
+            EngineEvent::DeviceLost(id) => {
+                format!(r#"{{"type":"DeviceLost","device_id":"{}"}}"#, id)
+            }
+            EngineEvent::DeviceUpdated(device) => {
+                format!(
+                    r#"{{"type":"DeviceUpdated","data":{}}}"#,
+                    serde_json::to_string(device).unwrap_or_else(|_| "{}".to_string())
+                )
+            }
+            EngineEvent::PeerStateChanged { device_id, state } => {
+                format!(
+                    r#"{{"type":"PeerStateChanged","device_id":"{}","state":"{}"}}"#,
+                    device_id, state
+                )
+            }
+            EngineEvent::StateChanged(state) => {
+                format!(r#"{{"type":"StateChanged","state":"{:?}"}}"#, state)
+            }
+        };
+        if let Some(buf) = EVENT_BUFFER.get() {
+            let mut buffer = buf.write();
+            // Cap buffer at 500 events to prevent unbounded memory growth
+            if buffer.len() < 500 {
+                buffer.push(json);
+            }
         }
     }
 }
@@ -210,6 +286,23 @@ pub fn engine_send_clipboard(device_id: String, text: String) -> String {
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
+/// Poll buffered engine events as JSON array. Drains the buffer.
+/// Call this periodically from Flutter (e.g., every 1-2 seconds) to receive
+/// IncomingOffer, TransferProgress, ClipboardReceived, PeerStateChanged etc.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_poll_events() -> String {
+    if let Some(buf) = EVENT_BUFFER.get() {
+        let mut buffer = buf.write();
+        if buffer.is_empty() {
+            return "[]".to_string();
+        }
+        let events: Vec<String> = buffer.drain(..).collect();
+        format!("[{}]", events.join(","))
+    } else {
+        "[]".to_string()
+    }
+}
+
 /// Get event log (latest N events as JSON).
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_get_events(limit: u32) -> String {
@@ -299,11 +392,18 @@ pub fn engine_generate_qr_invitation(pin: String) -> String {
         );
 
         let config = engine.config();
+        // Use actual local IP (not 127.0.0.1) so remote devices can connect
+        let local_ip = crate::transport::tcp::local_ips()
+            .into_iter()
+            .find(|ip| ip.is_ipv4() && !ip.is_loopback())
+            .map(|ip| ip.to_string())
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+        let actual_port = engine.listening_port();
         let inv = crate::security::qr::QrInvitation::new(
             config.device_name.clone(),
             engine.device_id().to_string(),
             public_key_b64,
-            format!("127.0.0.1:{}", config.network_port.unwrap_or(42000)),
+            format!("{}:{}", local_ip, actual_port),
             pin,
             300,
         );
@@ -367,6 +467,14 @@ pub fn engine_connect_peer(address: String) -> String {
         }
     })
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
+/// Get connection diagnostics as JSON (GAP 11).
+/// Returns: engine_state, local_ips, listening_port, device_count, active_connections, peer_states, transfer_count.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_diagnostics() -> String {
+    with_engine(|engine| engine.get_diagnostics())
+        .unwrap_or_else(|| r#"{"engine_state":"Stopped"}"#.to_string())
 }
 
 /// Get local IPv4 addresses as JSON list.

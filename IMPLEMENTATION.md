@@ -65,9 +65,36 @@ UOT is a cross-platform offline-first file transfer system built with **Rust (co
 - `core/engine.rs` at ~47% — async I/O methods require real TCP+mDNS, tested by E2E suite.
 
 ## Verification & Status
-- **Rust Test Suite**: 379+ tests passing (`cargo test --manifest-path rust/Cargo.toml`)
+- **Rust Test Suite**: 250+ tests passing (`cargo test --manifest-path rust/Cargo.toml`)
 - **Rust Line Coverage**: ≥80% enforced via `cargo-tarpaulin` CI pipeline
-- **Flutter Test Suite**: 14 tests passing (`flutter test --coverage`)
+- **Flutter Test Suite**: 14+ tests passing (`flutter test --coverage`)
 - **Clippy Lint**: Clean (`cargo clippy -- -D warnings`)
 - **Dart Analyzer**: Clean (`flutter analyze`) — 0 errors, 0 warnings
-- **Dart Format**: 50 files, 0 changes needed
+
+## Sprint 17 — Production Recovery Critical Fixes
+- **Event Pipeline**: `event_rx` now stored (was discarded). `engine_poll_events()` API + `event_forwarder` task delivers all 9 event types to Flutter.
+- **QR Invitation**: Uses actual local IP (was hardcoded `127.0.0.1`).
+- **Bidirectional Connections**: `connect_peer()` spawns reader task (was one-way only).
+- **Transfer Handshake**: `send_files()` sends Hello before KeyExchange (was skipping identification).
+- **Receive Progress**: `handle_incoming_connection()` creates ProgressTracker for receive-side tracking.
+- **Connection Diagnostics**: `engine_get_diagnostics()` API exposes local IPs, listening port, peer states, connection count.
+- **Clipboard Lookup**: `send_clipboard()` searches by both device_id and IP:port.
+- **Acceptance Timeout**: 120s (was 5s).
+
+### Honest Feature Classification
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| TCP LAN File Transfer | IMPLEMENTED | Unit/integration tested, needs 2-device verification |
+| AES-256-GCM Encryption | PROVEN | Unit tests with key exchange, encrypt/decrypt |
+| X25519 Key Exchange | PROVEN | Unit tests |
+| QR Invitation | IMPLEMENTED | Fixed IP, unit tested parsing/expiry |
+| mDNS Discovery | IMPLEMENTED | Needs real network for verification |
+| Subnet Scan | IMPLEMENTED | Needs real network for verification |
+| Clipboard/Chat | IMPLEMENTED | Event pipeline now connected |
+| Pause/Resume Transfer | IMPLEMENTED | Watch channel mechanism tested |
+| BLE Transport | STUB | Compile-only, no implementation |
+| Wi-Fi Direct | STUB | Compile-only, no implementation |
+| USB Transport | STUB | Compile-only, no implementation |
+| QUIC Transport | STUB | Compile-only, no implementation |
+| WebRTC Transport | STUB | Compile-only, no implementation |
+| Media Streaming | STUB | Session IDs only, no actual streaming |

@@ -123,9 +123,11 @@ class _NearbyScreenState extends State<NearbyScreen>
 
   void _startRefresh() {
     _refreshDevices();
+    _pollEvents(); // Initial event poll
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _refreshCount++;
       _refreshDevices();
+      _pollEvents();
       // Periodically trigger subnet scan every 6 seconds if scanning is active
       if (_isScanning && _refreshCount % 3 == 0) {
         engine.engineSubnetScan();
@@ -149,6 +151,125 @@ class _NearbyScreenState extends State<NearbyScreen>
     } catch (_) {
       // Silently handle parse errors during polling
     }
+  }
+
+  /// Poll buffered engine events and route them to UI handlers.
+  void _pollEvents() {
+    if (!mounted || !_engineInitialized) return;
+    try {
+      final eventsJson = engine.enginePollEvents();
+      final List<dynamic> events = jsonDecode(eventsJson);
+      for (final event in events) {
+        if (event is! Map<String, dynamic>) continue;
+        final type = event['type'] as String?;
+        switch (type) {
+          case 'IncomingOffer':
+            _handleIncomingOffer(event);
+            break;
+          case 'ClipboardReceived':
+            _handleClipboardReceived(event);
+            break;
+          case 'TransferStatusChanged':
+            _handleTransferStatusChanged(event);
+            break;
+          default:
+            break;
+        }
+      }
+    } catch (_) {
+      // Silently handle parse errors during event polling
+    }
+  }
+
+  void _handleIncomingOffer(Map<String, dynamic> event) {
+    if (!mounted) return;
+    final transferId = event['transfer_id']?.toString() ?? '';
+    final fromDevice = event['from_device']?.toString() ?? 'Unknown';
+    final items = (event['items'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
+    final totalSize = (event['total_size'] as num?)?.toInt() ?? 0;
+
+    // Show incoming offer dialog
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.file_download_rounded, color: Colors.blue),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Incoming from $fromDevice')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${items.length} file(s) • ${_formatTransferSize(totalSize)}'),
+            const SizedBox(height: 8),
+            ...items.take(5).map((name) => Text('• $name',
+                style: Theme.of(ctx).textTheme.bodySmall)),
+            if (items.length > 5)
+              Text('  ...and ${items.length - 5} more',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        fontStyle: FontStyle.italic,
+                      )),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Reject'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              engine.engineAcceptTransfer(transferId: transferId);
+              Navigator.of(ctx).pop(true);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text('Receiving files from $fromDevice...')),
+              );
+            },
+            icon: const Icon(Icons.check_rounded),
+            label: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleClipboardReceived(Map<String, dynamic> event) {
+    if (!mounted) return;
+    final from = event['from_device']?.toString() ?? 'Unknown';
+    final text = event['text']?.toString() ?? '';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Message from $from: ${text.length > 80 ? '${text.substring(0, 80)}...' : text}'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Copy',
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: text));
+          },
+        ),
+      ),
+    );
+  }
+
+  void _handleTransferStatusChanged(Map<String, dynamic> event) {
+    // Refresh transfer list when status changes
+    if (mounted) setState(() {});
+  }
+
+  String _formatTransferSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   void _triggerSubnetScan() {
