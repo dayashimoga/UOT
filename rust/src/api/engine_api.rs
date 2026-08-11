@@ -404,6 +404,30 @@ pub fn engine_verify_pin(device_id: String, attempt: String) -> String {
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
+/// Trigger Windows UAC prompt to create firewall rule allowing inbound TCP port 42000.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_fix_windows_firewall() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        let status = std::process::Command::new("powershell")
+            .args([
+                "-Command",
+                "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -Command New-NetFirewallRule -DisplayName \"UOT File Transfer\" -Direction Inbound -Protocol TCP -LocalPort 42000 -Action Allow'",
+            ])
+            .status();
+
+        match status {
+            Ok(s) if s.success() => "ok:firewall_rule_added".to_string(),
+            Ok(s) => format!("error:exit_code_{}", s.code().unwrap_or(-1)),
+            Err(e) => format!("error:{e}"),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "ok:not_windows".to_string()
+    }
+}
+
 /// Encode data payload into animated fountain packets (for zero-network Optical QR transfer).
 #[flutter_rust_bridge::frb(sync)]
 pub fn engine_fountain_encode(data_base64: String, block_size: u32) -> String {

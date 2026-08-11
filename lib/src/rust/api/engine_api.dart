@@ -143,6 +143,10 @@ String engineVerifyPin({required String deviceId, required String attempt}) =>
     RustLib.instance.api
         .crateApiEngineApiEngineVerifyPin(deviceId: deviceId, attempt: attempt);
 
+/// Trigger Windows UAC prompt to create firewall rule allowing inbound TCP port 42000.
+String engineFixWindowsFirewall() =>
+    RustLib.instance.api.crateApiEngineApiEngineFixWindowsFirewall();
+
 /// Encode data payload into animated fountain packets (for zero-network Optical QR transfer).
 String engineFountainEncode(
         {required String dataBase64, required int blockSize}) =>

@@ -95,7 +95,25 @@ This file is append-only - history is never overwritten.
 - **Flutter Tests**: 14/14 Passed
 - **Rust Test Suite**: 407/407 Passed across 8 test suites
 
+## [0.1.0-alpha.11] - 2026-08-11
+
+### Sprint 19 - Scan Loop Debouncing, Error State Pause & Windows Firewall Elevation Helper
+
+#### Camera QR Scan Debouncing & Error Pause
+- Resolved camera infinite connection retry loop in `QrScannerDialog` by introducing scan debouncing (`_scanPaused` flag & `_lastScannedPayload`).
+- Pauses scanning upon connection failure and displays a prominent `[Tap to Scan Again]` button on the camera viewfinder overlay.
+
+#### Windows Firewall Admin Elevation Helper
+- Exposed `engine_fix_windows_firewall()` in Rust FRB API to trigger Windows PowerShell UAC prompt allowing inbound TCP port 42000.
+- Added 1-tap `[Fix Windows Firewall (Allow Port 42000)]` action button in `QrScannerDialog` and `QrPairingDialog`.
+
+#### Verification
+- **Flutter Analyze**: 0 errors, 0 warnings (100% clean)
+- **Flutter Tests**: 14/14 Passed
+- **Rust Test Suite**: 407/407 Passed across 8 test suites
+
 ---
+
 
 
 

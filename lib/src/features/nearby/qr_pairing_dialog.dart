@@ -339,6 +339,28 @@ class _QrPairingDialogState extends State<QrPairingDialog>
                               color: colorScheme.error,
                             ),
                           ),
+                          if (_connectError!.contains('Firewall') || _connectError!.contains('42000')) ...[
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  final res = engine.engineFixWindowsFirewall();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        res.startsWith('ok')
+                                            ? 'Triggered Windows Firewall Rule elevation!'
+                                            : 'Firewall tool status: $res',
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.shield_rounded, size: 18),
+                                label: const Text('Fix Windows Firewall (Allow Port 42000)'),
+                              ),
+                            ),
+                          ],
                         ],
                         const SizedBox(height: 20),
                         SizedBox(

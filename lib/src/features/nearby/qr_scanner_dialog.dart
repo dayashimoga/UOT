@@ -1,10 +1,12 @@
 // Optical QR Scanner & Manual QR Link Pair Dialog
 //
-// Features camera viewfinder, camera permission request, QR image file picker,
+// Features mobile_scanner camera viewfinder, scan debouncing/pause on error to prevent
+// infinite scan loops, Windows Firewall UAC fix helper, QR image file picker,
 // manual QR payload paste/input, automatic URI parsing, and peer connection via engine_connect_peer.
 
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../platform/camera_qr_adapter.dart';
@@ -30,6 +32,8 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
   final TextEditingController _manualInputController = TextEditingController();
 
   bool _isConnecting = false;
+  bool _scanPaused = false;
+  String? _lastScannedPayload;
   String _statusMessage = 'Point camera at sender\'s QR Code, select file, or paste link';
   String? _errorMessage;
 
@@ -55,10 +59,14 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
   }
 
   Future<void> _processQrPayload(String rawPayload) async {
-    if (_isConnecting) return;
+    if (_isConnecting || _scanPaused || rawPayload == _lastScannedPayload) {
+      return;
+    }
 
     setState(() {
       _isConnecting = true;
+      _scanPaused = true;
+      _lastScannedPayload = rawPayload;
       _errorMessage = null;
       _statusMessage = 'Connecting to peer from QR code...';
     });
@@ -81,7 +89,7 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
         setState(() {
           _isConnecting = false;
           _errorMessage = res.replaceFirst('error:', '');
-          _statusMessage = 'Connection failed';
+          _statusMessage = 'Connection failed. Tap below to scan again.';
         });
       } else {
         _qrAdapter.stopScanning();
@@ -99,9 +107,19 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
       setState(() {
         _isConnecting = false;
         _errorMessage = e.toString();
-        _statusMessage = 'Error connecting to peer';
+        _statusMessage = 'Error connecting to peer. Tap below to retry.';
       });
     }
+  }
+
+  void _resetScanState() {
+    setState(() {
+      _scanPaused = false;
+      _isConnecting = false;
+      _lastScannedPayload = null;
+      _errorMessage = null;
+      _statusMessage = 'Point camera at sender\'s QR Code, select file, or paste link';
+    });
   }
 
   Future<void> _pickQrImageFile() async {
@@ -112,6 +130,7 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
       final path = result.files.first.path;
       final name = result.files.first.name;
       if (path != null) {
+        _resetScanState();
         _processQrPayload('uot://pair?ip=192.168.0.111&port=42000&name=$name');
       }
     }
@@ -130,6 +149,9 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDesktop = defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux;
 
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -146,7 +168,7 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              height: 180,
+              height: 190,
               width: double.infinity,
               decoration: BoxDecoration(
                 color: Colors.black,
@@ -158,38 +180,64 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    MobileScanner(
-                      onDetect: (capture) {
-                        final List<Barcode> barcodes = capture.barcodes;
-                        for (final barcode in barcodes) {
-                          if (barcode.rawValue != null && barcode.rawValue!.isNotEmpty) {
-                            _processQrPayload(barcode.rawValue!);
-                            break;
+                    if (!isDesktop)
+                      MobileScanner(
+                        onDetect: (capture) {
+                          if (_scanPaused || _isConnecting) return;
+                          final List<Barcode> barcodes = capture.barcodes;
+                          for (final barcode in barcodes) {
+                            if (barcode.rawValue != null && barcode.rawValue!.isNotEmpty) {
+                              _processQrPayload(barcode.rawValue!);
+                              break;
+                            }
                           }
-                        }
-                      },
-                    ),
+                        },
+                      )
+                    else
+                      Icon(
+                        Icons.camera_alt_outlined,
+                        size: 56,
+                        color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                      ),
                     if (_isConnecting)
                       const CircularProgressIndicator(color: Colors.white)
                     else
                       Positioned(
                         bottom: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.75),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            _statusMessage,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _statusMessage,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ),
-                          ),
+                            if (_scanPaused && !_isConnecting) ...[
+                              const SizedBox(height: 6),
+                              ElevatedButton.icon(
+                                onPressed: _resetScanState,
+                                icon: const Icon(Icons.refresh_rounded, size: 16),
+                                label: const Text('Tap to Scan Again'),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                   ],
@@ -226,6 +274,7 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
                   onPressed: () {
                     final text = _manualInputController.text.trim();
                     if (text.isNotEmpty) {
+                      _resetScanState();
                       _processQrPayload(text);
                     }
                   },
@@ -240,6 +289,28 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
                   color: colorScheme.error,
                 ),
               ),
+              if (_errorMessage!.contains('Firewall')) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {
+                      final res = engine.engineFixWindowsFirewall();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            res.startsWith('ok')
+                                ? 'Triggered Windows Firewall Rule elevation!'
+                                : 'Firewall tool status: $res',
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.shield_rounded, size: 18),
+                    label: const Text('Fix Windows Firewall (Allow Port 42000)'),
+                  ),
+                ),
+              ],
             ],
           ],
         ),

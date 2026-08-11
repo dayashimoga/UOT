@@ -116,5 +116,13 @@
 - [x] Integrated mobile_scanner ^7.4.0 in QrScannerDialog for live Android hardware camera QR scanning
 - [x] Verified 14/14 Flutter tests passing, 407/407 Rust tests passing, Flutter analyze 100% clean
 
+### Sprint 19 - Scan Loop Debouncing, Error State Pause & Windows Firewall Elevation Helper (Completed)
+- [x] Implemented QR scan debouncing and error state pause in QrScannerDialog to eliminate infinite camera scan loops
+- [x] Added "Tap to Scan Again" manual scan retry button on viewfinder overlay
+- [x] Added engine_fix_windows_firewall in Rust FRB API to trigger Windows PowerShell UAC prompt allowing port 42000
+- [x] Added 1-tap "Fix Windows Firewall" helper button in QrScannerDialog and QrPairingDialog
+- [x] Verified 14/14 Flutter tests passing, 407/407 Rust tests passing, Flutter analyze 100% clean
+
+
 
 
