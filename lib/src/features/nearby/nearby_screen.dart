@@ -1026,15 +1026,16 @@ class _WindowsFirewallBannerState extends State<_WindowsFirewallBanner> {
           TextButton.icon(
             onPressed: () {
               final res = engine.engineFixWindowsFirewall();
-              setState(() => _configured = true);
+              final isOk = res.startsWith('ok');
+              setState(() => _configured = isOk);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    res.startsWith('ok')
+                    isOk
                         ? 'Windows Firewall rules applied successfully ✓'
-                        : 'Firewall status: $res',
+                        : 'Firewall setup status: $res (Accept the UAC prompt if prompted)',
                   ),
-                  backgroundColor: res.startsWith('ok') ? Colors.green : Colors.orange,
+                  backgroundColor: isOk ? Colors.green : Colors.orange,
                 ),
               );
             },

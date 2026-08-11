@@ -425,21 +425,18 @@ pub fn engine_verify_pin(device_id: String, attempt: String) -> String {
 pub fn engine_fix_windows_firewall() -> String {
     #[cfg(target_os = "windows")]
     {
-        let exe_path = std::env::current_exe()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let script = format!(
-            "Remove-NetFirewallRule -DisplayName 'UOT File Transfer' -ErrorAction SilentlyContinue; \
-             New-NetFirewallRule -DisplayName 'UOT File Transfer' -Direction Inbound -Protocol TCP -LocalPort 42000-42010 -Action Allow -Profile Any -ErrorAction SilentlyContinue; \
-             New-NetFirewallRule -DisplayName 'UOT Multicast Discovery' -Direction Inbound -Protocol UDP -LocalPort 42000,5353 -Action Allow -Profile Any -ErrorAction SilentlyContinue; \
-             if ('{exe_path}' -ne '') {{ Remove-NetFirewallRule -DisplayName 'UOT App Exe' -ErrorAction SilentlyContinue; New-NetFirewallRule -DisplayName 'UOT App Exe' -Direction Inbound -Program '{exe_path}' -Action Allow -Profile Any -ErrorAction SilentlyContinue }}"
-        );
+        let cmd = "/c netsh advfirewall firewall delete rule name=\"UOT File Transfer\" & \
+                   netsh advfirewall firewall add rule name=\"UOT File Transfer\" dir=in action=allow protocol=TCP localport=42000-42010 profile=any & \
+                   netsh advfirewall firewall delete rule name=\"UOT Multicast Discovery\" & \
+                   netsh advfirewall firewall add rule name=\"UOT Multicast Discovery\" dir=in action=allow protocol=UDP localport=42000,5353 profile=any";
 
         let status = std::process::Command::new("powershell")
             .args([
+                "-NoProfile",
                 "-Command",
-                &format!("Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -Command {script}'"),
+                &format!(
+                    "Start-Process cmd.exe -Verb RunAs -ArgumentList '{cmd}' -WindowStyle Hidden"
+                ),
             ])
             .status();
 
