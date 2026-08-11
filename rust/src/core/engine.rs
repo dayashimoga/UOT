@@ -249,24 +249,31 @@ impl UotEngine {
                     // Spawn discovery event handler
                     let devices = Arc::clone(&self.devices);
                     let event_tx = self.event_tx.clone();
+                    let my_id = self.device_id.clone();
                     tokio::spawn(async move {
                         while let Some(event) = discovery_rx.recv().await {
                             match event {
                                 DiscoveryEvent::DeviceFound(device) => {
-                                    devices
-                                        .write()
-                                        .insert(device.device_id.clone(), device.clone());
-                                    let _ = event_tx.send(EngineEvent::DeviceFound(device)).await;
+                                    if device.device_id != my_id {
+                                        devices
+                                            .write()
+                                            .insert(device.device_id.clone(), device.clone());
+                                        let _ =
+                                            event_tx.send(EngineEvent::DeviceFound(device)).await;
+                                    }
                                 }
                                 DiscoveryEvent::DeviceLost(id) => {
                                     devices.write().remove(&id);
                                     let _ = event_tx.send(EngineEvent::DeviceLost(id)).await;
                                 }
                                 DiscoveryEvent::DeviceUpdated(device) => {
-                                    devices
-                                        .write()
-                                        .insert(device.device_id.clone(), device.clone());
-                                    let _ = event_tx.send(EngineEvent::DeviceUpdated(device)).await;
+                                    if device.device_id != my_id {
+                                        devices
+                                            .write()
+                                            .insert(device.device_id.clone(), device.clone());
+                                        let _ =
+                                            event_tx.send(EngineEvent::DeviceUpdated(device)).await;
+                                    }
                                 }
                             }
                         }
@@ -705,11 +712,15 @@ impl UotEngine {
                                 device_type,
                                 discovery_method: crate::discovery::types::DiscoveryMethod::Manual,
                                 address: Some(conn.remote_addr().to_string()),
-                                capabilities: vec!["tcp_lan".to_string()],
+                                capabilities: vec![
+                                    "tcp_lan".to_string(),
+                                    "connected".to_string(),
+                                    "session_ready".to_string(),
+                                ],
                                 signal_strength: Some(100),
                                 first_seen: now,
                                 last_seen: now,
-                                is_trusted: false,
+                                is_trusted: true,
                             };
                             devices.write().insert(peer_id.clone(), dev.clone());
                             let _ = event_tx.send(EngineEvent::DeviceFound(dev)).await;
@@ -1013,9 +1024,30 @@ impl UotEngine {
         &self.device_id
     }
 
-    /// Get all discovered devices.
+    /// Get all discovered devices (filtering out self-device and local IP/ports).
     pub fn discovered_devices(&self) -> Vec<DiscoveredDevice> {
-        self.devices.read().values().cloned().collect()
+        let my_id = &self.device_id;
+        let my_ips = tcp::local_ips();
+        let my_port = self.listening_port();
+
+        self.devices
+            .read()
+            .values()
+            .filter(|dev| {
+                if dev.device_id == *my_id {
+                    return false;
+                }
+                if let Some(ref addr_str) = dev.address {
+                    if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                        if addr.port() == my_port && my_ips.contains(&addr.ip()) {
+                            return false;
+                        }
+                    }
+                }
+                true
+            })
+            .cloned()
+            .collect()
     }
 
     /// Get a specific transfer's progress.
@@ -1500,11 +1532,15 @@ impl UotEngine {
             device_type,
             discovery_method: crate::discovery::types::DiscoveryMethod::Manual,
             address: Some(socket_addr.to_string()),
-            capabilities: vec!["tcp_lan".to_string()],
+            capabilities: vec![
+                "tcp_lan".to_string(),
+                "connected".to_string(),
+                "session_ready".to_string(),
+            ],
             signal_strength: Some(100),
             first_seen: now,
             last_seen: now,
-            is_trusted: false,
+            is_trusted: true,
         };
 
         let conn = Arc::new(conn);
@@ -1568,13 +1604,18 @@ impl UotEngine {
 
         // Get local IPs and scan each /24 subnet
         let local_ips = tcp::local_ips();
+        let my_port = self.listening_port();
         let mut all_found = Vec::new();
         let now = chrono::Utc::now();
-        for ip in local_ips {
+        for ip in &local_ips {
             if let std::net::IpAddr::V4(v4) = ip {
                 let octets = v4.octets();
                 let found = scanner.scan_subnet(octets).await;
                 for addr in &found {
+                    // Do not discover self
+                    if addr.port() == my_port && local_ips.contains(&addr.ip()) {
+                        continue;
+                    }
                     let dev_id = format!("lan-{}", addr.ip().to_string().replace('.', "-"));
                     let dev = DiscoveredDevice {
                         device_id: dev_id.clone(),

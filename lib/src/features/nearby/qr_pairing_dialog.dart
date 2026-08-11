@@ -5,6 +5,7 @@
 // 2. "Direct IP / Connect": Text input to connect directly to peer IP address (e.g. 192.168.1.50).
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -349,25 +350,56 @@ class _QrPairingDialogState extends State<QrPairingDialog>
                           ),
                           if (_connectError!.contains('Firewall') || _connectError!.contains('42000')) ...[
                             const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: () {
-                                  final res = engine.engineFixWindowsFirewall();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        res.startsWith('ok')
-                                            ? 'Triggered Windows Firewall Rule elevation!'
-                                            : 'Firewall tool status: $res',
+                            if (defaultTargetPlatform == TargetPlatform.windows) ...[
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    final res = engine.engineFixWindowsFirewall();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          res.startsWith('ok')
+                                              ? 'Triggered Windows Firewall Rule elevation!'
+                                              : 'Firewall tool status: $res',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.shield_rounded, size: 18),
+                                  label: const Text('Fix Windows Firewall (Allow Port 42000)'),
+                                ),
+                              ),
+                            ] else ...[
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: Colors.amber.shade700.withOpacity(0.4),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline_rounded,
+                                      color: Colors.amber.shade700,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Target Windows PC must allow incoming TCP connections on Port 42000. Click "Fix Windows Firewall" on the Windows PC.',
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: Colors.amber.shade900,
+                                        ),
                                       ),
                                     ),
-                                  );
-                                },
-                                icon: const Icon(Icons.shield_rounded, size: 18),
-                                label: const Text('Fix Windows Firewall (Allow Port 42000)'),
+                                  ],
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ],
                         const SizedBox(height: 20),

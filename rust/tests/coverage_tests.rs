@@ -2287,7 +2287,8 @@ async fn test_engine_connect_peer_and_subnet_scan_branches() {
     // Device ID now comes from HelloAck, not from IP
     assert_eq!(dev.device_id, "mock-server-id");
     assert_eq!(dev.device_name, "MockServer");
-    assert_eq!(dev.capabilities, vec!["tcp_lan".to_string()]);
+    assert!(dev.capabilities.contains(&"tcp_lan".to_string()));
+    assert!(dev.capabilities.contains(&"connected".to_string()));
 
     // Check device was registered in engine devices map
     let devices = engine.discovered_devices();

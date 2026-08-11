@@ -45,6 +45,9 @@ class DeviceInfo {
     );
   }
 
+  bool get isConnected =>
+      capabilities.contains('connected') || capabilities.contains('session_ready');
+
   IconData get icon {
     switch (deviceType) {
       case 'Phone':
@@ -266,12 +269,37 @@ class _NearbyScreenState extends State<NearbyScreen>
     );
   }
 
-  void _onDeviceTap(DeviceInfo device) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => _SendBottomSheet(device: device),
-    );
+  Future<void> _onDeviceTap(DeviceInfo device) async {
+    final isSessionReady = device.isConnected;
+
+    if (!isSessionReady && device.address != null && device.address!.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connecting & verifying Hello with ${device.deviceName} (${device.address})...'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      final res = await engine.engineConnectPeer(address: device.address!);
+      if (res.startsWith('error:')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Connection failed: ${res.replaceFirst("error:", "")}'),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    if (mounted) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) => _SendBottomSheet(device: device),
+      );
+    }
   }
 }
 
@@ -467,6 +495,8 @@ class _DeviceCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final hasAddress = device.address != null && device.address!.isNotEmpty;
+    final isConnected = device.isConnected;
+    final isConnecting = !isConnected && hasAddress;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -480,16 +510,20 @@ class _DeviceCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: hasAddress
+                  color: isConnected
                       ? Colors.green.withOpacity(0.15)
-                      : colorScheme.primaryContainer,
+                      : (isConnecting
+                          ? Colors.amber.withOpacity(0.15)
+                          : colorScheme.primaryContainer),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   device.icon,
-                  color: hasAddress
+                  color: isConnected
                       ? Colors.green.shade700
-                      : colorScheme.onPrimaryContainer,
+                      : (isConnecting
+                          ? Colors.amber.shade700
+                          : colorScheme.onPrimaryContainer),
                   size: 24,
                 ),
               ),
@@ -504,7 +538,7 @@ class _DeviceCard extends StatelessWidget {
                           child: Text(device.deviceName,
                               style: theme.textTheme.titleMedium),
                         ),
-                        if (hasAddress) ...[
+                        if (isConnected) ...[
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -517,6 +551,23 @@ class _DeviceCard extends StatelessWidget {
                               'Connected ✓',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: Colors.green.shade700,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ] else if (isConnecting) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Connecting…',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: Colors.amber.shade700,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -536,7 +587,10 @@ class _DeviceCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.send_rounded, color: colorScheme.primary),
+              Icon(
+                isConnected ? Icons.send_rounded : Icons.link_rounded,
+                color: isConnected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),

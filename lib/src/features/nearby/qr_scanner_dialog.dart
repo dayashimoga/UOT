@@ -298,25 +298,34 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
               ),
               if (_errorMessage!.contains('Firewall')) ...[
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    onPressed: () {
-                      final res = engine.engineFixWindowsFirewall();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            res.startsWith('ok')
-                                ? 'Triggered Windows Firewall Rule elevation!'
-                                : 'Firewall tool status: $res',
+                if (defaultTargetPlatform == TargetPlatform.windows) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonalIcon(
+                      onPressed: () {
+                        final res = engine.engineFixWindowsFirewall();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              res.startsWith('ok')
+                                  ? 'Triggered Windows Firewall Rule elevation!'
+                                  : 'Firewall tool status: $res',
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.shield_rounded, size: 18),
-                    label: const Text('Fix Windows Firewall (Allow Port 42000)'),
+                        );
+                      },
+                      icon: const Icon(Icons.shield_rounded, size: 18),
+                      label: const Text('Fix Windows Firewall (Allow Port 42000)'),
+                    ),
                   ),
-                ),
+                ] else ...[
+                  Text(
+                    'Note: If connecting to a Windows PC, click "Fix Windows Firewall" on the Windows PC to allow inbound connections on port 42000.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.amber.shade700,
+                    ),
+                  ),
+                ],
               ],
             ],
           ],

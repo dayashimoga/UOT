@@ -3,6 +3,8 @@
 // Enables sending live text messages, pings, and delivery receipts between
 // connected UOT devices to confirm 100% active connection.
 
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../rust/api/engine_api.dart' as engine;
 
@@ -37,15 +39,50 @@ class InstantChatDialog extends StatefulWidget {
 class _InstantChatDialogState extends State<InstantChatDialog> {
   final TextEditingController _msgController = TextEditingController();
   final List<Map<String, String>> _messages = [];
+  Timer? _pollTimer;
+  final Set<String> _seenEvents = {};
 
   @override
   void initState() {
     super.initState();
-    // Default connection ping test message
     _messages.add({
       'sender': 'System',
       'text': 'Connected to ${widget.deviceName}. Ready for messaging & file transfers.',
       'time': _formattedTime(),
+    });
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      try {
+        final eventsJson = engine.engineGetEvents(limit: 20);
+        final List<dynamic> events = jsonDecode(eventsJson);
+        for (final ev in events) {
+          final str = ev.toString();
+          if (_seenEvents.contains(str)) continue;
+          _seenEvents.add(str);
+
+          if (str.contains('ClipboardReceived') || str.contains('Received clipboard data')) {
+            String rawText = str;
+            if (str.contains('MESSAGE:')) {
+              final idx = str.indexOf('MESSAGE:');
+              rawText = str.substring(idx + 8);
+            }
+            rawText = rawText.replaceAll(RegExp(r'["}\\]+$'), '').trim();
+            if (rawText.isNotEmpty) {
+              setState(() {
+                _messages.add({
+                  'sender': widget.deviceName,
+                  'text': rawText,
+                  'time': _formattedTime(),
+                });
+              });
+            }
+          }
+        }
+      } catch (_) {}
     });
   }
 
@@ -66,10 +103,12 @@ class _InstantChatDialogState extends State<InstantChatDialog> {
     setState(() {
       _messages.add({
         'sender': 'Me',
-        'text': text,
+        'text': '$text  • Sending…',
         'time': timestamp,
       });
     });
+
+    final msgIndex = _messages.length - 1;
 
     try {
       final res = await engine.engineSendClipboard(
@@ -80,30 +119,30 @@ class _InstantChatDialogState extends State<InstantChatDialog> {
       if (mounted) {
         if (res.startsWith('ok')) {
           setState(() {
-            _messages.add({
-              'sender': widget.deviceName,
-              'text': '✓ Message received & verified on ${widget.deviceName}',
+            _messages[msgIndex] = {
+              'sender': 'Me',
+              'text': '$text  ✓ Sent',
               'time': timestamp,
-            });
+            };
           });
         } else {
           setState(() {
-            _messages.add({
-              'sender': 'System Error',
-              'text': 'Failed to send message: ${res.replaceFirst("error:", "")}',
+            _messages[msgIndex] = {
+              'sender': 'Me',
+              'text': '$text  ❌ (Failed: ${res.replaceFirst("error:", "")})',
               'time': timestamp,
-            });
+            };
           });
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _messages.add({
-            'sender': widget.deviceName,
-            'text': '✓ Connection Active: Ping acknowledged',
+          _messages[msgIndex] = {
+            'sender': 'Me',
+            'text': '$text  ❌ ($e)',
             'time': timestamp,
-          });
+          };
         });
       }
     }
@@ -111,6 +150,7 @@ class _InstantChatDialogState extends State<InstantChatDialog> {
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _msgController.dispose();
     super.dispose();
   }
