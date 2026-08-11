@@ -61,10 +61,22 @@ async fn test_qr_invitation_generation_parsing_and_expiry() {
     assert_eq!(pairs.get("port"), Some(&"42000".to_string()));
     assert_eq!(pairs.get("pin"), Some(&"123456".to_string()));
 
-    // 5. Test QR Expiration
-    tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+    // 5. Test QR Expiration (1s TTL)
+    let expired_inv = QrInvitation::new(
+        "Expired_Node".to_string(),
+        "id_expired".to_string(),
+        "pubkey".to_string(),
+        "127.0.0.1:42000".to_string(),
+        "000000".to_string(),
+        1, // 1-second TTL
+    );
     assert!(
-        parsed_inv.is_expired(),
-        "QR invitation must expire after 2s TTL"
+        !expired_inv.is_expired(),
+        "Fresh invitation must not be expired"
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+    assert!(
+        expired_inv.is_expired(),
+        "QR invitation must expire after 1s TTL"
     );
 }
