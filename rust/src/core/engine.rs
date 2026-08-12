@@ -424,18 +424,61 @@ impl UotEngine {
             return Err(UotError::Transfer(TransferError::EmptyTransfer));
         }
 
-        // Find the device address
+        // Find the device
         let device = self.devices.read().get(device_id).cloned().ok_or_else(|| {
             UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string()))
         })?;
 
-        let addr_str = device.address.ok_or_else(|| {
-            UotError::Transfer(TransferError::DeviceNotFound("No address".to_string()))
-        })?;
+        // Get existing connection from session or connections map
+        let conn = {
+            let sessions = self.sessions.read();
+            sessions
+                .get(device_id)
+                .and_then(|s| s.read().connection.clone())
+        }
+        .or_else(|| self.connections.read().get(device_id).cloned());
 
-        let addr: SocketAddr = addr_str.parse().map_err(|e| {
-            UotError::Transport(TransportError::Connection(format!("Invalid addr: {e}")))
-        })?;
+        let conn = match conn {
+            Some(c) => c,
+            None => {
+                // Fallback: connect fresh if no existing connection
+                let addr_str = device.address.as_deref().ok_or_else(|| {
+                    UotError::Transfer(TransferError::DeviceNotFound("No address".to_string()))
+                })?;
+                let addr: SocketAddr = addr_str.parse().map_err(|e| {
+                    UotError::Transport(TransportError::Connection(format!("Invalid addr: {e}")))
+                })?;
+                let stream = Self::connect_with_port_fallback(addr)
+                    .await
+                    .map_err(UotError::Transport)?;
+                let new_conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
+                // Hello handshake for fresh connection
+                let hello = WireMessage::Hello {
+                    device_id: self.device_id.clone(),
+                    device_name: self.config.read().device_name.clone(),
+                    device_type: "Desktop".to_string(),
+                    version: crate::core::version::version_string(),
+                    capabilities: vec!["tcp_lan".to_string(), "file_transfer".to_string()],
+                };
+                proto::send_message(&new_conn, &hello)
+                    .await
+                    .map_err(UotError::Transport)?;
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    proto::recv_message(&new_conn),
+                )
+                .await
+                {
+                    Ok(Ok(WireMessage::HelloAck { .. })) => {
+                        log::info!("Transfer connection HelloAck received");
+                    }
+                    _ => {
+                        log::warn!("No HelloAck for transfer connection, proceeding anyway");
+                    }
+                }
+                Arc::new(new_conn)
+            }
+        };
 
         // Create transfer record
         let record =
@@ -443,11 +486,10 @@ impl UotEngine {
         let transfer_id = record.transfer_id;
         self.transfers.write().insert(transfer_id, record.clone());
 
-        // Push to priority queue manager for batch scheduling
+        // Push to priority queue manager
         {
             let mut qm = self.queue_manager.write();
             if !qm.can_start() {
-                // Queue the transfer for later execution
                 qm.push(record, Priority::Normal);
                 log::info!("Transfer {transfer_id} queued (concurrent limit reached)");
                 return Ok(transfer_id);
@@ -455,70 +497,6 @@ impl UotEngine {
             qm.push(record, Priority::Normal);
             qm.mark_started();
         }
-
-        // Connect to the device with port fallback (42000-42003)
-        let stream = Self::connect_with_port_fallback(addr)
-            .await
-            .map_err(UotError::Transport)?;
-        let conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
-
-        // GAP 4 FIX: Send Hello handshake first so receiver identifies sender
-        let hello = WireMessage::Hello {
-            device_id: self.device_id.clone(),
-            device_name: self.config.read().device_name.clone(),
-            device_type: "Desktop".to_string(),
-            version: crate::core::version::version_string(),
-            capabilities: vec!["tcp_lan".to_string(), "file_transfer".to_string()],
-        };
-        proto::send_message(&conn, &hello)
-            .await
-            .map_err(UotError::Transport)?;
-
-        // Wait for HelloAck (5s timeout)
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            proto::recv_message(&conn),
-        )
-        .await
-        {
-            Ok(Ok(WireMessage::HelloAck { .. })) => {
-                log::info!("Transfer connection HelloAck received from {addr}");
-            }
-            _ => {
-                log::warn!("No HelloAck from {addr} for transfer connection, proceeding anyway");
-            }
-        }
-
-        // Perform X25519 key exchange for session encryption
-        let (our_private, our_public) =
-            SessionCipher::create_key_exchange().map_err(UotError::Security)?;
-
-        // Send our public key to the receiver
-        let key_msg = WireMessage::KeyExchange {
-            public_key: our_public,
-        };
-        proto::send_message(&conn, &key_msg)
-            .await
-            .map_err(UotError::Transport)?;
-
-        // Wait for their public key
-        let their_key_msg = proto::recv_message(&conn)
-            .await
-            .map_err(UotError::Transport)?;
-        let their_public = match their_key_msg {
-            WireMessage::KeyExchange { public_key } => public_key,
-            _ => {
-                return Err(UotError::Security(
-                    crate::core::error::SecurityError::KeyExchangeFailed {
-                        reason: "Expected KeyExchange message from receiver".to_string(),
-                    },
-                ));
-            }
-        };
-
-        // Derive session cipher
-        let session_cipher = SessionCipher::from_key_exchange(&our_private, &their_public)
-            .map_err(UotError::Security)?;
 
         // Create progress tracker
         let total_bytes: u64 = items.iter().map(|i| i.size).sum();
@@ -546,6 +524,14 @@ impl UotEngine {
             .await
             .map_err(UotError::Transport)?;
 
+        let _ = self
+            .event_tx
+            .send(EngineEvent::TransferStatusChanged {
+                transfer_id,
+                status: TransferStatus::Pending,
+            })
+            .await;
+
         // Update status
         if let Some(record) = self.transfers.write().get_mut(&transfer_id) {
             record.status = TransferStatus::Pending;
@@ -568,8 +554,12 @@ impl UotEngine {
         let queue_manager = Arc::clone(&self.queue_manager);
 
         tokio::spawn(async move {
-            let result = Self::execute_send(
-                conn,
+            // Sender sends files immediately after Offer.
+            // The RECEIVER side waits for user acceptance before processing FileStart.
+            log::info!("Starting file transfer {transfer_id}...");
+
+            let result = Self::execute_send_arc(
+                &conn,
                 items,
                 transfer_id,
                 &tracker,
@@ -577,7 +567,6 @@ impl UotEngine {
                 bandwidth_limit,
                 pause_rx,
                 &event_tx,
-                session_cipher,
             )
             .await;
 
@@ -588,7 +577,6 @@ impl UotEngine {
                         record.status = TransferStatus::Completed;
                         record.finished_at = Some(chrono::Utc::now());
                         record.transferred_bytes = record.total_size;
-                        // Record success in analytics
                         let speed = tracker.snapshot().speed_bytes_per_sec;
                         stats.write().record_success(record.total_size, true, speed);
                     }
@@ -597,7 +585,6 @@ impl UotEngine {
                         record.finished_at = Some(chrono::Utc::now());
                         record.error = Some(e.to_string());
                         log::error!("Transfer {transfer_id} failed: {e}");
-                        // Record failure in analytics
                         stats.write().record_failure();
                     }
                 }
@@ -605,13 +592,10 @@ impl UotEngine {
                     transfer_id,
                     status: record.status,
                 });
-                // Persist history
                 history.write().upsert(record.clone());
                 let _ = history.read().save(&TransferHistoryStore::default_path());
                 let _ = stats.read().save(&LifetimeStats::default_path());
-                // Clean up pause signal
                 pause_signals.write().remove(&transfer_id);
-                // Mark transfer completed in queue manager
                 queue_manager.write().mark_completed();
             }
         });
@@ -619,8 +603,100 @@ impl UotEngine {
         Ok(transfer_id)
     }
 
-    /// Execute the send operation — chunked file transfer with AES-256-GCM encryption.
+    /// Execute send using Arc<TcpConnection> (no encryption for now, reuses session conn).
     #[allow(clippy::too_many_arguments)]
+    async fn execute_send_arc(
+        conn: &Arc<TcpConnection>,
+        items: Vec<TransferItem>,
+        transfer_id: Uuid,
+        tracker: &ProgressTracker,
+        chunk_size: usize,
+        bandwidth_limit: u64,
+        mut pause_rx: watch::Receiver<bool>,
+        event_tx: &mpsc::Sender<EngineEvent>,
+    ) -> Result<(), TransferError> {
+        let mut rate_limiter = RateLimiter::new(bandwidth_limit);
+
+        for item in &items {
+            tracker.set_current_item(&item.name);
+
+            let file_size = item.size;
+            let mut offset: u64 = 0;
+
+            // Send file header
+            let header = WireMessage::FileStart {
+                transfer_id: transfer_id.to_string(),
+                item_index: items.iter().position(|x| x.name == item.name).unwrap_or(0) as u32,
+                file_name: item.name.clone(),
+                file_size,
+                relative_path: item.relative_path.clone(),
+            };
+            proto::send_message(conn, &header)
+                .await
+                .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+            // Send chunks
+            while offset < file_size {
+                let (chunk_data, crc) = engine::read_chunk(&item.path, offset, chunk_size).await?;
+                let chunk_len = chunk_data.len() as u64;
+
+                // Prepend chunk metadata (16 bytes: offset u64 + crc u32 + reserved u32)
+                let mut chunk_frame = Vec::with_capacity(16 + chunk_data.len());
+                chunk_frame.extend_from_slice(&offset.to_be_bytes());
+                chunk_frame.extend_from_slice(&crc.to_be_bytes());
+                chunk_frame.extend_from_slice(&[0u8; 4]); // reserved
+                chunk_frame.extend_from_slice(&chunk_data);
+
+                conn.send(Frame::data(chunk_frame))
+                    .await
+                    .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+                offset += chunk_len;
+                tracker.add_bytes(chunk_len);
+
+                // Rate limiting
+                rate_limiter.consume(chunk_len as usize).await;
+
+                // Check pause signal
+                while *pause_rx.borrow() {
+                    if pause_rx.changed().await.is_err() {
+                        break;
+                    }
+                }
+
+                // Emit progress periodically
+                let progress = tracker.snapshot();
+                let _ = event_tx.try_send(EngineEvent::TransferProgress(progress));
+            }
+
+            // Compute and send file hash
+            let hash = engine::compute_sha256(&item.path).await?;
+            let verify = WireMessage::FileEnd {
+                transfer_id: transfer_id.to_string(),
+                item_index: items.iter().position(|x| x.name == item.name).unwrap_or(0) as u32,
+                sha256: hash,
+            };
+            proto::send_message(conn, &verify)
+                .await
+                .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+            tracker.complete_item();
+        }
+
+        // Send transfer complete
+        let complete = WireMessage::TransferComplete {
+            transfer_id: transfer_id.to_string(),
+            success: true,
+        };
+        proto::send_message(conn, &complete)
+            .await
+            .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Execute the send operation — chunked file transfer with AES-256-GCM encryption.
+    #[allow(dead_code, clippy::too_many_arguments)]
     async fn execute_send(
         conn: TcpConnection,
         items: Vec<TransferItem>,
