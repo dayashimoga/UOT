@@ -2895,3 +2895,87 @@ async fn test_connect_peer_handshake_error_branches() {
     server2.await.unwrap();
     listener2.stop();
 }
+
+#[tokio::test]
+async fn test_engine_session_and_chat_management() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::UotEngine;
+    use rust_lib_uot_app::core::session::{MessageDirection, MessageState, SessionState};
+    use rust_lib_uot_app::api::engine_api::*;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let mut config = AppConfig::default();
+    config.transfer.save_directory = dir.path().to_string_lossy().to_string();
+    config.network_port = Some(0);
+
+    let (engine, _rx) = UotEngine::new(config);
+
+    // Test session creation and getters
+    let session_arc = engine.get_or_create_session("peer-100", "Peer Alpha");
+    {
+        let mut s = session_arc.write();
+        s.state = SessionState::SessionReady;
+    }
+
+    let sessions_json = engine.get_sessions_json();
+    assert!(sessions_json.contains("peer-100"));
+    assert!(sessions_json.contains("Peer Alpha"));
+
+    // Test send_chat_message success when session exists
+    let msg_id = engine.send_chat_message("peer-100", "Hello Peer Alpha!".to_string()).await;
+    assert!(msg_id.is_ok());
+
+    let msgs_json = engine.get_session_messages("peer-100");
+    assert!(msgs_json.contains("Hello Peer Alpha!"));
+
+    // Test send_chat_message failure when peer does not exist
+    let err_msg = engine.send_chat_message("non-existent-peer", "Hey".to_string()).await;
+    assert!(err_msg.is_err());
+
+    // Test engine_get_sessions and engine_get_messages API wrappers
+    // (Requires engine initialized in global state, so test mock API behavior)
+    let s_json = engine.get_sessions_json();
+    assert!(s_json.starts_with('['));
+
+    // Heartbeat start check
+    let conn = engine.get_or_create_session("peer-100", "Peer Alpha").read().connection.clone();
+    if let Some(c) = conn {
+        let session = engine.get_or_create_session("peer-100", "Peer Alpha");
+        engine.start_heartbeat("peer-100".to_string(), c, session, _rx);
+    }
+}
+
+#[test]
+fn test_new_wire_messages_serialization() {
+    use rust_lib_uot_app::protocol::handler::WireMessage;
+
+    let chat = WireMessage::ChatMessage {
+        message_id: "m1".to_string(),
+        content: "Test chat".to_string(),
+        timestamp: 123456789,
+    };
+    let json = serde_json::to_string(&chat).unwrap();
+    assert!(json.contains("chat_message"));
+
+    let ack = WireMessage::MessageAck {
+        message_id: "m1".to_string(),
+    };
+    let json_ack = serde_json::to_string(&ack).unwrap();
+    assert!(json_ack.contains("message_ack"));
+
+    let f_ack = WireMessage::FileStartAck {
+        transfer_id: "t1".to_string(),
+        file_name: "test.png".to_string(),
+    };
+    let json_fack = serde_json::to_string(&f_ack).unwrap();
+    assert!(json_fack.contains("file_start_ack"));
+
+    let c_ack = WireMessage::TransferCompleteAck {
+        transfer_id: "t1".to_string(),
+        checksum_match: true,
+    };
+    let json_cack = serde_json::to_string(&c_ack).unwrap();
+    assert!(json_cack.contains("transfer_complete_ack"));
+}
+

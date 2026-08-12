@@ -268,6 +268,25 @@ mod tests {
                 transfer_id: "tid".to_string(),
                 offset: 512,
             },
+            WireMessage::FileStartAck {
+                transfer_id: "tid".to_string(),
+                file_name: "f.txt".to_string(),
+            },
+            WireMessage::TransferCompleteAck {
+                transfer_id: "tid".to_string(),
+                checksum_match: true,
+            },
+            WireMessage::ChatMessage {
+                message_id: "mid-1".to_string(),
+                content: "Hello world".to_string(),
+                timestamp: 1600000000,
+            },
+            WireMessage::MessageAck {
+                message_id: "mid-1".to_string(),
+            },
+            WireMessage::KeyExchange {
+                public_key: vec![1, 2, 3, 4],
+            },
             WireMessage::ClipboardData {
                 content_type: "text/plain".to_string(),
                 data: "hello".to_string(),

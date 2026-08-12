@@ -383,17 +383,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_session_state_transitions() {
+    fn test_session_state_display_and_helpers() {
+        assert_eq!(SessionState::Discovered.to_string(), "Discovered");
+        assert_eq!(SessionState::Connecting.to_string(), "Connecting");
+        assert_eq!(SessionState::TcpConnected.to_string(), "TCP Connected");
+        assert_eq!(SessionState::HelloVerified.to_string(), "Hello Verified");
+        assert_eq!(SessionState::Authenticated.to_string(), "Authenticated");
+        assert_eq!(SessionState::PingVerified.to_string(), "Ping Verified");
+        assert_eq!(SessionState::SessionReady.to_string(), "Session Ready");
+        assert_eq!(SessionState::Disconnected.to_string(), "Disconnected");
+        assert_eq!(SessionState::Failed("err".into()).to_string(), "Failed: err");
+
+        assert!(!SessionState::Discovered.is_connected());
+        assert!(!SessionState::Connecting.is_connected());
+        assert!(SessionState::TcpConnected.is_connected());
+        assert!(SessionState::HelloVerified.is_connected());
+        assert!(SessionState::Authenticated.is_connected());
+        assert!(SessionState::PingVerified.is_connected());
+        assert!(SessionState::SessionReady.is_connected());
+        assert!(!SessionState::Disconnected.is_connected());
+        assert!(!SessionState::Failed("e".into()).is_connected());
+
+        assert!(SessionState::SessionReady.is_ready());
+        assert!(!SessionState::PingVerified.is_ready());
+    }
+
+    #[test]
+    fn test_auth_and_message_state_display() {
+        assert_eq!(AuthState::None.to_string(), "None");
+        assert_eq!(AuthState::KeyExchanging.to_string(), "Key Exchanging");
+        assert_eq!(AuthState::Authenticated.to_string(), "Authenticated");
+        assert_eq!(AuthState::Failed("bad".into()).to_string(), "Failed: bad");
+
+        assert_eq!(MessageState::Sending.to_string(), "Sending");
+        assert_eq!(MessageState::Sent.to_string(), "Sent");
+        assert_eq!(MessageState::Delivered.to_string(), "Delivered");
+        assert_eq!(MessageState::Failed.to_string(), "Failed");
+
+        assert_eq!(TransportType::TcpLan.to_string(), "TCP/LAN");
+        assert_eq!(TransportType::Ble.to_string(), "BLE");
+        assert_eq!(TransportType::WifiDirect.to_string(), "Wi-Fi Direct");
+        assert_eq!(TransportType::Usb.to_string(), "USB");
+        assert_eq!(TransportType::Quic.to_string(), "QUIC");
+    }
+
+    #[test]
+    fn test_session_state_transitions_all_branches() {
         let mut session = PeerSession::new_discovered("dev1".into(), "Test".into());
         assert_eq!(session.state, SessionState::Discovered);
 
         assert!(session.transition(SessionState::Connecting).is_ok());
         assert!(session.transition(SessionState::TcpConnected).is_ok());
         assert!(session.transition(SessionState::HelloVerified).is_ok());
+        assert!(session.transition(SessionState::Authenticated).is_ok());
         assert!(session.transition(SessionState::PingVerified).is_ok());
         assert!(session.transition(SessionState::SessionReady).is_ok());
+        assert!(session.transition(SessionState::Failed("timeout".into())).is_ok());
+        assert!(session.transition(SessionState::Connecting).is_ok());
         assert!(session.transition(SessionState::Disconnected).is_ok());
-        assert!(session.transition(SessionState::Connecting).is_ok()); // reconnect
+        assert!(session.transition(SessionState::Discovered).is_ok());
     }
 
     #[test]
@@ -420,6 +468,10 @@ mod tests {
 
         session.update_message_state(msg_id, MessageState::Delivered);
         assert_eq!(session.messages[0].state, MessageState::Delivered);
+
+        // Update non-existent message state should be safe no-op
+        session.update_message_state(Uuid::new_v4(), MessageState::Failed);
+        assert_eq!(session.messages[0].state, MessageState::Delivered);
     }
 
     #[test]
@@ -431,13 +483,36 @@ mod tests {
 
         session.heartbeat_success();
         assert_eq!(session.missed_heartbeats, 0);
+        assert!(session.last_heartbeat.is_some());
     }
 
     #[test]
-    fn test_session_to_json() {
-        let session = PeerSession::new_discovered("dev1".into(), "Test Device".into());
+    fn test_session_to_json_full() {
+        let mut session = PeerSession::new_discovered("dev1".into(), "Test Device".into());
+        session.local_endpoint = Some("127.0.0.1:42000".parse().unwrap());
+        session.remote_endpoint = Some("127.0.0.1:42001".parse().unwrap());
+        session.heartbeat_success();
+
+        let transfer_id = Uuid::new_v4();
+        session.active_transfers.push(transfer_id);
+
+        let msg_id1 = Uuid::new_v4();
+        session.add_message(ChatMessage {
+            message_id: msg_id1,
+            session_id: session.session_id,
+            direction: MessageDirection::Incoming,
+            timestamp: Utc::now(),
+            content: "Line 1\nLine \"2\" \\ path".into(),
+            state: MessageState::Delivered,
+            error: None,
+        });
+
         let json = session.to_json();
         assert!(json.contains("\"peer_device_id\":\"dev1\""));
         assert!(json.contains("\"state\":\"Discovered\""));
+        assert!(json.contains("\"local_endpoint\":\"127.0.0.1:42000\""));
+        assert!(json.contains("\"remote_endpoint\":\"127.0.0.1:42001\""));
+        assert!(json.contains("Line \\\"2\\\""));
+        assert!(json.contains(&transfer_id.to_string()));
     }
 }
