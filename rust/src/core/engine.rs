@@ -409,6 +409,67 @@ impl UotEngine {
         Ok(())
     }
 
+    /// Authoritative connection resolver for a peer by device ID, device name, or active socket.
+    pub fn get_peer_connection(&self, target: &str) -> Option<Arc<TcpConnection>> {
+        // 1. Direct lookup in sessions map
+        if let Some(session) = self.sessions.read().get(target) {
+            if let Some(ref conn) = session.read().connection {
+                return Some(Arc::clone(conn));
+            }
+        }
+
+        // 2. Direct lookup in connections map
+        if let Some(conn) = self.connections.read().get(target) {
+            return Some(Arc::clone(conn));
+        }
+
+        // 3. Search sessions map for session matching device_id, peer_name, or session_id
+        {
+            let sessions = self.sessions.read();
+            for session_arc in sessions.values() {
+                let s = session_arc.read();
+                if s.peer_device_id == target
+                    || s.peer_name == target
+                    || s.session_id.to_string() == target
+                {
+                    if let Some(ref conn) = s.connection {
+                        return Some(Arc::clone(conn));
+                    }
+                }
+            }
+        }
+
+        // 4. Search devices map and match address in connections map
+        {
+            let devices = self.devices.read();
+            let dev_opt = devices.get(target).cloned().or_else(|| {
+                devices
+                    .values()
+                    .find(|d| d.device_name == target || d.device_id == target)
+                    .cloned()
+            });
+            if let Some(dev) = dev_opt {
+                if let Some(ref addr) = dev.address {
+                    if let Some(conn) = self.connections.read().get(addr) {
+                        return Some(Arc::clone(conn));
+                    }
+                }
+            }
+        }
+
+        // 5. Fallback: If connections map has exactly 1 active connection, return it
+        {
+            let conns = self.connections.read();
+            if conns.len() == 1 {
+                if let Some(conn) = conns.values().next() {
+                    return Some(Arc::clone(conn));
+                }
+            }
+        }
+
+        None
+    }
+
     /// Send files to a connected device.
     pub async fn send_files(&self, device_id: &str, paths: Vec<PathBuf>) -> Result<Uuid, UotError> {
         // Collect file items
@@ -431,24 +492,29 @@ impl UotEngine {
             return Err(UotError::Transfer(TransferError::EmptyTransfer));
         }
 
-        // Find the device
-        let device = self.devices.read().get(device_id).cloned().ok_or_else(|| {
-            UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string()))
-        })?;
-
-        // Get existing connection from session or connections map
-        let conn = {
-            let sessions = self.sessions.read();
-            sessions
-                .get(device_id)
-                .and_then(|s| s.read().connection.clone())
-        }
-        .or_else(|| self.connections.read().get(device_id).cloned());
-
-        let conn = match conn {
-            Some(c) => c,
+        // Authoritative connection resolution: check active connections/sessions first
+        let (conn, target_name) = match self.get_peer_connection(device_id) {
+            Some(c) => {
+                let name = self
+                    .devices
+                    .read()
+                    .get(device_id)
+                    .map(|d| d.device_name.clone())
+                    .or_else(|| {
+                        self.sessions
+                            .read()
+                            .get(device_id)
+                            .map(|s| s.read().peer_name.clone())
+                    })
+                    .unwrap_or_else(|| device_id.to_string());
+                (c, name)
+            }
             None => {
-                // Fallback: connect fresh if no existing connection
+                // Device not connected yet — lookup address in discovered devices
+                let device = self.devices.read().get(device_id).cloned().ok_or_else(|| {
+                    UotError::Transfer(TransferError::DeviceNotFound(device_id.to_string()))
+                })?;
+                let name = device.device_name.clone();
                 let addr_str = device.address.as_deref().ok_or_else(|| {
                     UotError::Transfer(TransferError::DeviceNotFound("No address".to_string()))
                 })?;
@@ -459,7 +525,6 @@ impl UotEngine {
                     .await
                     .map_err(UotError::Transport)?;
                 let new_conn = TcpConnection::new(stream).map_err(UotError::Transport)?;
-                // Hello handshake for fresh connection
                 let hello = WireMessage::Hello {
                     device_id: self.device_id.clone(),
                     device_name: self.config.read().device_name.clone(),
@@ -483,13 +548,16 @@ impl UotEngine {
                         log::warn!("No HelloAck for transfer connection, proceeding anyway");
                     }
                 }
-                Arc::new(new_conn)
+                let c = Arc::new(new_conn);
+                self.connections
+                    .write()
+                    .insert(device_id.to_string(), Arc::clone(&c));
+                (c, name)
             }
         };
 
         // Create transfer record
-        let record =
-            engine::create_transfer_record(&items, TransferDirection::Send, &device.device_name);
+        let record = engine::create_transfer_record(&items, TransferDirection::Send, &target_name);
         let transfer_id = record.transfer_id;
         self.transfers.write().insert(transfer_id, record.clone());
 
@@ -1933,16 +2001,8 @@ impl UotEngine {
         };
 
         if let Some(ref dev_id) = remote_dev {
-            // Find active session connection and send OfferResponse
-            let conn = {
-                let sessions = self.sessions.read();
-                sessions
-                    .get(dev_id)
-                    .and_then(|s| s.read().connection.clone())
-            }
-            .or_else(|| self.connections.read().get(dev_id).cloned());
-
-            if let Some(conn) = conn {
+            // Find active session connection and send OfferResponse using authoritative resolver
+            if let Some(conn) = self.get_peer_connection(dev_id) {
                 let resp = WireMessage::OfferResponse {
                     transfer_id: uuid.to_string(),
                     accepted: true,
@@ -1951,6 +2011,10 @@ impl UotEngine {
                 let _ = proto::send_message(&conn, &resp).await;
                 log::info!(
                     "Sent OfferResponse (accepted=true) to {dev_id} for transfer {transfer_id}"
+                );
+            } else {
+                log::warn!(
+                    "No active connection found for device {dev_id} when accepting transfer {transfer_id}"
                 );
             }
             Ok(())
