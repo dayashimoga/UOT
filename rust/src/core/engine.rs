@@ -138,6 +138,8 @@ pub struct UotEngine {
     peer_states: Arc<RwLock<HashMap<String, PeerConnectionState>>>,
     /// Authoritative peer sessions keyed by device_id.
     sessions: SessionMap,
+    /// Pending offer response consent gating channels (transfer_id -> oneshot::Sender<bool>).
+    pending_offer_responses: Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -251,6 +253,7 @@ impl UotEngine {
                 connection_manager: Arc::new(ConnectionManager::default()),
                 peer_states: Arc::new(RwLock::new(HashMap::new())),
                 sessions: Arc::new(RwLock::new(HashMap::new())),
+                pending_offer_responses: Arc::new(RwLock::new(HashMap::new())),
             },
             event_rx,
         )
@@ -343,6 +346,7 @@ impl UotEngine {
         let our_device_name_for_handler = device_name_clone;
         let sessions_for_handler = Arc::clone(&self.sessions);
         let connections_for_handler = Arc::clone(&self.connections);
+        let pending_responses_for_handler = Arc::clone(&self.pending_offer_responses);
 
         tokio::spawn(async move {
             while let Some(stream) = incoming_streams.recv().await {
@@ -371,6 +375,7 @@ impl UotEngine {
                 let our_name = our_device_name_for_handler.clone();
                 let sessions_clone = Arc::clone(&sessions_for_handler);
                 let connections_clone = Arc::clone(&connections_for_handler);
+                let pending_clone = Arc::clone(&pending_responses_for_handler);
 
                 tokio::spawn(async move {
                     Self::handle_incoming_connection(
@@ -387,6 +392,7 @@ impl UotEngine {
                         &sessions_clone,
                         &connections_clone,
                         None,
+                        &pending_clone,
                     )
                     .await;
                 });
@@ -506,6 +512,12 @@ impl UotEngine {
             .write()
             .insert(transfer_id, Arc::clone(&tracker));
 
+        // Create oneshot channel for offer acceptance consent gating
+        let (offer_tx, offer_rx) = tokio::sync::oneshot::channel::<bool>();
+        self.pending_offer_responses
+            .write()
+            .insert(transfer_id, offer_tx);
+
         // Send offer message
         let offer = WireMessage::Offer {
             transfer_id: transfer_id.to_string(),
@@ -553,11 +565,44 @@ impl UotEngine {
         let stats = Arc::clone(&self.lifetime_stats);
         let history = Arc::clone(&self.history_store);
         let queue_manager = Arc::clone(&self.queue_manager);
+        let pending_offer_responses = Arc::clone(&self.pending_offer_responses);
 
         tokio::spawn(async move {
-            // Sender sends files immediately after Offer.
-            // The RECEIVER side waits for user acceptance before processing FileStart.
-            log::info!("Starting file transfer {transfer_id}...");
+            log::info!("Transfer {transfer_id} offer sent; waiting for remote acceptance ACK...");
+
+            // Wait up to 120 seconds for user acceptance ACK from remote
+            let accepted = match tokio::time::timeout(std::time::Duration::from_secs(120), offer_rx)
+                .await
+            {
+                Ok(Ok(accepted)) => accepted,
+                _ => {
+                    log::warn!("Transfer {transfer_id} offer timed out or channel closed waiting for acceptance");
+                    false
+                }
+            };
+
+            pending_offer_responses.write().remove(&transfer_id);
+
+            if !accepted {
+                log::warn!("Transfer {transfer_id} was rejected or timed out");
+                let mut transfers = transfers.write();
+                if let Some(record) = transfers.get_mut(&transfer_id) {
+                    record.status = TransferStatus::Failed;
+                    record.finished_at = Some(chrono::Utc::now());
+                    record.error = Some("Transfer offer rejected or timed out".to_string());
+                }
+                let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                    transfer_id,
+                    status: TransferStatus::Failed,
+                });
+                pause_signals.write().remove(&transfer_id);
+                queue_manager.write().mark_completed();
+                return;
+            }
+
+            log::info!(
+                "Transfer {transfer_id} ACCEPTED by remote! Starting file data transmission..."
+            );
 
             let result = Self::execute_send_arc(
                 &conn,
@@ -811,10 +856,10 @@ impl UotEngine {
         sessions: &SessionMap,
         connections: &Arc<RwLock<HashMap<String, Arc<TcpConnection>>>>,
         known_peer_id: Option<String>,
+        pending_offer_responses: &Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
     ) {
-        let mut current_file: Option<(PathBuf, String, u64)> = None; // (path, name, size)
+        let mut current_file: Option<(PathBuf, PathBuf, String, u64)> = None; // (part_path, target_path, name, size)
         let mut current_transfer_id: Option<Uuid> = None;
-        let mut transfer_accepted = false;
         let mut recv_tracker: Option<Arc<ProgressTracker>> = None;
         let mut session_cipher: Option<SessionCipher> = None;
         let mut remote_peer_id: Option<String> = known_peer_id;
@@ -1043,7 +1088,9 @@ impl UotEngine {
 
                             let record = TransferRecord {
                                 transfer_id,
-                                remote_device: device_name.clone(),
+                                remote_device: remote_peer_id
+                                    .clone()
+                                    .unwrap_or_else(|| device_name.clone()),
                                 direction: TransferDirection::Receive,
                                 status: TransferStatus::Pending,
                                 total_size,
@@ -1056,7 +1103,7 @@ impl UotEngine {
                             };
                             transfers.write().insert(transfer_id, record);
 
-                            // GAP 6 FIX: Create receive-side progress tracker
+                            // Receive-side progress tracker
                             let item_count = offer_items.len();
                             let tracker =
                                 Arc::new(ProgressTracker::new(transfer_id, total_size, item_count));
@@ -1074,99 +1121,12 @@ impl UotEngine {
 
                             log::info!("Received offer {transfer_id} from {remote}");
                         }
-                        WireMessage::FileStart { .. } | WireMessage::FileEnd { .. }
-                            if !transfer_accepted =>
-                        {
-                            // Wait up to 5 seconds for acceptance signal from UI
-                            if let Some(tid) = current_transfer_id {
-                                let mut accepted = false;
-                                // Wait up to 120 seconds for user acceptance (GAP 7 fix)
-                                for _ in 0..1200 {
-                                    if accepted_transfers.read().contains(&tid) {
-                                        accepted = true;
-                                        break;
-                                    }
-                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                                }
-
-                                if accepted {
-                                    transfer_accepted = true;
-                                    if let Some(record) = transfers.write().get_mut(&tid) {
-                                        record.status = TransferStatus::InProgress;
-                                        record.started_at = Some(chrono::Utc::now());
-                                    }
-                                    log::info!("Transfer {tid} accepted, processing files");
-
-                                    match wire_msg {
-                                        WireMessage::FileStart {
-                                            file_name,
-                                            file_size,
-                                            relative_path,
-                                            ..
-                                        } => {
-                                            let path_validator = StrictPathValidator::new(Some(
-                                                PathBuf::from(save_dir),
-                                            ));
-                                            let sanitized = match path_validator
-                                                .validate_relative_path(&relative_path)
-                                            {
-                                                Ok(clean) => clean,
-                                                Err(e) => {
-                                                    log::error!(
-                                                        "Path validation failed for {relative_path}: {e}"
-                                                    );
-                                                    path_validator.sanitize_filename(&file_name)
-                                                }
-                                            };
-                                            let file_path =
-                                                PathBuf::from(save_dir).join(&sanitized);
-                                            if file_path.exists() && file_path.is_symlink() {
-                                                log::error!(
-                                                    "Refusing to write to symlink: {}",
-                                                    file_path.display()
-                                                );
-                                            } else {
-                                                current_file =
-                                                    Some((file_path, file_name.clone(), file_size));
-                                                log::info!(
-                                                    "Receiving file: {file_name} ({file_size} bytes)"
-                                                );
-                                            }
-                                        }
-                                        WireMessage::FileEnd { sha256, .. } => {
-                                            if let Some((ref path, ref name, _)) = current_file {
-                                                match engine::compute_sha256(path).await {
-                                                    Ok(actual_hash) => {
-                                                        if actual_hash == sha256 {
-                                                            log::info!("File {name} verified ✓");
-                                                        } else {
-                                                            log::error!("File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}");
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        log::error!("Cannot verify {name}: {e}")
-                                                    }
-                                                }
-                                            }
-                                            current_file = None;
-                                        }
-                                        _ => {}
-                                    }
-                                } else {
-                                    log::warn!(
-                                        "File frame for unaccepted transfer {tid} timed out"
-                                    );
-                                    continue;
-                                }
-                            }
-                        }
                         WireMessage::FileStart {
                             file_name,
                             file_size,
                             relative_path,
                             ..
                         } => {
-                            // Sanitize path (security: strict path validation)
                             let path_validator =
                                 StrictPathValidator::new(Some(PathBuf::from(save_dir)));
                             let sanitized = match path_validator
@@ -1178,34 +1138,93 @@ impl UotEngine {
                                     path_validator.sanitize_filename(&file_name)
                                 }
                             };
-                            let file_path = PathBuf::from(save_dir).join(&sanitized);
+                            let target_file_path = PathBuf::from(save_dir).join(&sanitized);
 
-                            // Security: check for symlink at target
-                            if file_path.exists() && file_path.is_symlink() {
+                            if target_file_path.exists() && target_file_path.is_symlink() {
                                 log::error!(
                                     "Refusing to write to symlink: {}",
-                                    file_path.display()
+                                    target_file_path.display()
                                 );
                                 continue;
                             }
 
-                            current_file = Some((file_path, file_name.clone(), file_size));
+                            if let Some(parent) = target_file_path.parent() {
+                                let _ = tokio::fs::create_dir_all(parent).await;
+                            }
+
+                            let ext_str = target_file_path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .unwrap_or("file");
+                            let part_path =
+                                target_file_path.with_extension(format!("{ext_str}.part"));
+
+                            current_file =
+                                Some((part_path, target_file_path, file_name.clone(), file_size));
                             log::info!("Receiving file: {file_name} ({file_size} bytes)");
                         }
                         WireMessage::FileEnd { sha256, .. } => {
-                            if let Some((ref path, ref name, _)) = current_file {
-                                match engine::compute_sha256(path).await {
+                            if let Some((part_path, target_path, name, _)) = current_file.take() {
+                                match engine::compute_sha256(&part_path).await {
                                     Ok(actual_hash) => {
                                         if actual_hash == sha256 {
-                                            log::info!("File {name} verified ✓");
+                                            log::info!("File {name} verified ✓ (SHA-256 match)");
+                                            // Handle duplicate target path if file already exists
+                                            let final_path = if target_path.exists() {
+                                                let stem = target_path
+                                                    .file_stem()
+                                                    .and_then(|s| s.to_str())
+                                                    .unwrap_or("file");
+                                                let ext = target_path
+                                                    .extension()
+                                                    .and_then(|e| e.to_str())
+                                                    .unwrap_or("");
+                                                let parent = target_path
+                                                    .parent()
+                                                    .unwrap_or_else(|| std::path::Path::new("."));
+                                                let mut counter = 1;
+                                                let mut new_path = parent.join(if ext.is_empty() {
+                                                    format!("{stem} ({counter})")
+                                                } else {
+                                                    format!("{stem} ({counter}).{ext}")
+                                                });
+                                                while new_path.exists() {
+                                                    counter += 1;
+                                                    new_path = parent.join(if ext.is_empty() {
+                                                        format!("{stem} ({counter})")
+                                                    } else {
+                                                        format!("{stem} ({counter}).{ext}")
+                                                    });
+                                                }
+                                                new_path
+                                            } else {
+                                                target_path
+                                            };
+
+                                            if let Err(e) =
+                                                tokio::fs::rename(&part_path, &final_path).await
+                                            {
+                                                log::error!(
+                                                    "Failed to rename temporary part file for {name}: {e}"
+                                                );
+                                            } else {
+                                                log::info!(
+                                                    "Saved file to {}",
+                                                    final_path.display()
+                                                );
+                                            }
                                         } else {
-                                            log::error!("File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}");
+                                            log::error!(
+                                                "File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}"
+                                            );
+                                            let _ = tokio::fs::remove_file(&part_path).await;
                                         }
                                     }
-                                    Err(e) => log::error!("Cannot verify {name}: {e}"),
+                                    Err(e) => {
+                                        log::error!("Cannot verify SHA-256 for {name}: {e}");
+                                    }
                                 }
                             }
-                            current_file = None;
                         }
                         WireMessage::TransferComplete {
                             transfer_id: ref tid_str,
@@ -1335,6 +1354,9 @@ impl UotEngine {
                                 "OfferResponse for {transfer_id}: accepted={accepted} from {remote}"
                             );
                             if let Ok(tid) = Uuid::parse_str(transfer_id) {
+                                if let Some(tx) = pending_offer_responses.write().remove(&tid) {
+                                    let _ = tx.send(accepted);
+                                }
                                 if accepted {
                                     accepted_transfers.write().insert(tid);
                                     let _ = event_tx
@@ -1362,7 +1384,7 @@ impl UotEngine {
                     }
                 }
                 FrameType::Data => {
-                    if let Some((ref path, _, _)) = current_file {
+                    if let Some((ref part_path, _, _, _)) = current_file {
                         // Decrypt the frame payload if session cipher is established
                         let decrypted = if let Some(ref mut cipher) = session_cipher {
                             match cipher.decrypt_frame(&frame.payload) {
@@ -1386,10 +1408,12 @@ impl UotEngine {
                         let crc = u32::from_be_bytes(decrypted[8..12].try_into().unwrap());
                         let chunk_data = &decrypted[16..];
 
-                        if let Err(e) = engine::write_chunk(path, offset, chunk_data, crc).await {
+                        if let Err(e) =
+                            engine::write_chunk(part_path, offset, chunk_data, crc).await
+                        {
                             log::error!("Write chunk failed: {e}");
                         } else {
-                            // GAP 6 FIX: Track receive progress
+                            // Track receive progress
                             let chunk_len = chunk_data.len() as u64;
                             if let Some(ref tracker) = recv_tracker {
                                 tracker.add_bytes(chunk_len);
@@ -2375,6 +2399,7 @@ impl UotEngine {
             let our_name = self.config.read().device_name.clone();
             let sessions = Arc::clone(&self.sessions);
             let connections = Arc::clone(&self.connections);
+            let pending_responses = Arc::clone(&self.pending_offer_responses);
 
             let known_peer = remote_device_id.clone();
             tokio::spawn(async move {
@@ -2392,6 +2417,7 @@ impl UotEngine {
                     &sessions,
                     &connections,
                     Some(known_peer),
+                    &pending_responses,
                 )
                 .await;
             });

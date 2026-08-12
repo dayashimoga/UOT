@@ -3,6 +3,24 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.15] - 2026-08-12
+
+### Sprint 19 — File-Transfer Consent Gating & Atomic Storage Pipeline
+
+#### Consent Gating & Protocol Enforcement
+- Enforced strict consent gating on file transfers: `send_files()` registers a `oneshot` channel and waits for `WireMessage::OfferResponse { accepted: true }` ACK before starting file data transmission.
+- Eliminated 120s polling sleep loop in receiver's `handle_incoming_connection` that previously blocked socket frame consumption.
+- Corrected `remote_device` identity in `TransferRecord` to store the sender's canonical `peer_device_id` (not `device_name`), enabling `accept_transfer()` to reliably locate active connections.
+
+#### Atomic Storage & Integrity Pipeline
+- Receiver streams incoming file chunks to temporary `.part` files (`filename.ext.part`) with strict path sanitization and symlink checks.
+- Verifies SHA-256 digest on `FileEnd`. On match, atomically renames `.part` to target destination file.
+- Added duplicate filename resolution (`filename (1).ext`, `filename (2).ext`) to preserve existing receiver files.
+
+#### Verification & Automated E2E Suite
+- Created `e2e_transfer_transaction.rs` verifying bidirectional transfer (Windows↔Android node simulation), Unicode filenames (`über_dokument_2026.txt`), 1MB binary payloads, duplicate name resolution, and post-transfer session chat persistence.
+- Verified 100% test pass rate across Rust suite (432+ passed tests), Clippy (0 warnings), Rustfmt (0 diffs), and Flutter analyze (0 issues).
+
 ## [0.1.0-alpha.14] - 2026-08-12
 
 ### Sprint 18 — Session, Chat & Transfer Architecture
