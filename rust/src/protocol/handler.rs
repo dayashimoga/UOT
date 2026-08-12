@@ -47,6 +47,11 @@ pub enum WireMessage {
         file_size: u64,
         relative_path: String,
     },
+    /// Acknowledge file start — receiver is ready.
+    FileStartAck {
+        transfer_id: String,
+        file_name: String,
+    },
     /// Signal end of a file with hash.
     FileEnd {
         transfer_id: String,
@@ -55,6 +60,11 @@ pub enum WireMessage {
     },
     /// Signal transfer complete.
     TransferComplete { transfer_id: String, success: bool },
+    /// Acknowledge transfer complete with checksum result.
+    TransferCompleteAck {
+        transfer_id: String,
+        checksum_match: bool,
+    },
     /// Request to cancel a transfer.
     Cancel {
         transfer_id: String,
@@ -64,8 +74,16 @@ pub enum WireMessage {
     Pause { transfer_id: String },
     /// Request to resume a transfer.
     Resume { transfer_id: String, offset: u64 },
-    /// Clipboard/text data.
+    /// Clipboard/text data (legacy).
     ClipboardData { content_type: String, data: String },
+    /// Chat message with ID and timestamp for ACK tracking.
+    ChatMessage {
+        message_id: String,
+        content: String,
+        timestamp: i64,
+    },
+    /// Acknowledge receipt of a chat message.
+    MessageAck { message_id: String },
     /// X25519 public key exchange for session encryption.
     KeyExchange { public_key: Vec<u8> },
 }

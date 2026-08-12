@@ -123,10 +123,33 @@
 - [x] FRB codegen regenerated, cargo clippy clean, flutter analyze clean, 19/19 Rust tests pass
 
 ### Remaining P1 Items (Next Sprint)
-- [ ] GAP 5: Unify connection map keys (device_id vs IP:port) 
-- [ ] GAP 6: Add receive-side ProgressTracker in handle_incoming_connection
-- [ ] GAP 9: Add recurring heartbeat Ping every 15s with disconnect detection
-- [ ] GAP 10: Fix send_clipboard connection lookup to check both device_id and IP:port
-- [ ] GAP 11: Add engine_get_diagnostics() API with connection health info
+- [x] GAP 5: Unify connection map keys (device_id vs IP:port) 
+- [x] GAP 6: Add receive-side ProgressTracker in handle_incoming_connection
+- [x] GAP 9: Add recurring heartbeat Ping every 15s with disconnect detection
+- [x] GAP 10: Fix send_clipboard connection lookup to check both device_id and IP:port
+- [x] GAP 11: Add engine_get_diagnostics() API with connection health info
 - [ ] GAP 12-14: Streaming stubs, transport stubs, cross-session resume (P2)
+
+### Sprint 18 — Session, Chat & Transfer Architecture (In Progress)
+- [x] Phase 1: Created `PeerSession` model (`session.rs`) with full state machine (Discovered→SessionReady)
+- [x] Phase 1: Added `sessions` map to `UotEngine` with get_or_create_session, get_sessions_json, get_session_messages
+- [x] Phase 1: Added `send_chat_message()` with MessageState tracking (Sending→Sent→Delivered→Failed)
+- [x] Phase 1: Added heartbeat task (15s Ping, 3-miss disconnect detection)
+- [x] Phase 2: Expanded EngineEvent to 22 types (SessionStateChanged, IncomingMessage, MessageDelivered, HeartbeatChanged, OfferAccepted, etc.)
+- [x] Phase 2: Updated event_forwarder to serialize all 22 event types
+- [x] Phase 3: Added WireMessage variants (ChatMessage, MessageAck, FileStartAck, TransferCompleteAck)
+- [x] Phase 3: Added ChatMessage handler with automatic MessageAck reply
+- [x] Phase 3: Added OfferResponse handler for ACK-based offer acceptance
+- [x] Phase 5: Created unified ChatScreen with chronological conversation, delivery states, message input
+- [x] Phase 5: Added _PeerActionSheet (Chat / Send Files options on device tap)
+- [x] Phase 5: Added IncomingMessage event routing with "Open Chat" SnackBar action
+- [x] Phase API: Added engine_get_sessions(), engine_get_messages(), engine_send_message() APIs
+- [x] FRB codegen regenerated, cargo clippy clean, flutter analyze clean, 419 tests pass
+
+### Remaining Sprint 18 Items
+- [ ] Phase 4: Transfer transaction model with full state machine (Preparing→Completed)
+- [ ] Phase 4: Temp file + SHA-256 + atomic rename for data integrity
+- [ ] Phase 5: Transfer detail screen with progress, speed, ETA
+- [ ] Phase 6: 27-step E2E dual-engine test
+- [ ] Phase 6: Documentation updates
 

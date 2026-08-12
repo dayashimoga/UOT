@@ -15,6 +15,9 @@ use uuid::Uuid;
 
 use crate::core::config::AppConfig;
 use crate::core::error::{TransferError, TransportError, UotError};
+use crate::core::session::{
+    ChatMessage, MessageDirection, MessageState, PeerSession, SessionState,
+};
 use crate::core::version;
 use crate::discovery::mdns::{DiscoveryEvent, MdnsDiscovery};
 use crate::discovery::types::{DeviceType, DiscoveredDevice};
@@ -130,6 +133,8 @@ pub struct UotEngine {
     connection_manager: Arc<ConnectionManager>,
     /// Per-peer connection state tracking (keyed by device_id).
     peer_states: Arc<RwLock<HashMap<String, PeerConnectionState>>>,
+    /// Authoritative peer sessions keyed by device_id.
+    sessions: Arc<RwLock<HashMap<String, Arc<RwLock<PeerSession>>>>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -157,12 +162,52 @@ pub enum EngineEvent {
         items: Vec<String>,
         total_size: u64,
     },
-    /// Clipboard/text data received from a remote peer.
+    /// Clipboard/text data received from a remote peer (legacy).
     ClipboardReceived { from_device: String, text: String },
-    /// Peer connection state changed.
+    /// Peer connection state changed (legacy, kept for compatibility).
     PeerStateChanged {
         device_id: String,
         state: PeerConnectionState,
+    },
+
+    // ── Phase 2: Session-aware events ──
+    /// Peer session state changed.
+    SessionStateChanged {
+        session_id: Uuid,
+        device_id: String,
+        state: String,
+    },
+    /// Incoming chat message received.
+    IncomingMessage {
+        session_id: Uuid,
+        message_id: Uuid,
+        from_device: String,
+        content: String,
+        timestamp: i64,
+    },
+    /// Outgoing message acknowledged by peer.
+    MessageDelivered { session_id: Uuid, message_id: Uuid },
+    /// Heartbeat state changed.
+    HeartbeatChanged {
+        session_id: Uuid,
+        device_id: String,
+        alive: bool,
+    },
+    /// Offer accepted by receiver.
+    OfferAccepted { session_id: Uuid, transfer_id: Uuid },
+    /// Offer rejected by receiver.
+    OfferRejected {
+        session_id: Uuid,
+        transfer_id: Uuid,
+        reason: String,
+    },
+    /// Transfer completed successfully.
+    TransferCompleted { session_id: Uuid, transfer_id: Uuid },
+    /// Transfer failed.
+    TransferFailed {
+        session_id: Uuid,
+        transfer_id: Uuid,
+        error: String,
     },
 }
 
@@ -202,6 +247,7 @@ impl UotEngine {
                 stream_manager: Arc::new(RwLock::new(StreamManager::new())),
                 connection_manager: Arc::new(ConnectionManager::default()),
                 peer_states: Arc::new(RwLock::new(HashMap::new())),
+                sessions: Arc::new(RwLock::new(HashMap::new())),
             },
             event_rx,
         )
@@ -1014,6 +1060,87 @@ impl UotEngine {
                             }
                             log::info!("Transfer complete from {remote}");
                         }
+                        // ── Phase 2+3: Chat, ACK, and OfferResponse handlers ──
+                        WireMessage::ChatMessage {
+                            message_id: ref mid_str,
+                            ref content,
+                            timestamp,
+                        } => {
+                            let msg_id =
+                                Uuid::parse_str(mid_str).unwrap_or_else(|_| Uuid::new_v4());
+                            log::info!(
+                                "Chat message from {remote}: {}",
+                                &content[..content.len().min(50)]
+                            );
+
+                            // Send MessageAck
+                            let ack = WireMessage::MessageAck {
+                                message_id: mid_str.clone(),
+                            };
+                            let _ = proto::send_message(&conn, &ack).await;
+
+                            // Emit IncomingMessage event
+                            let _ = event_tx
+                                .send(EngineEvent::IncomingMessage {
+                                    session_id: Uuid::nil(), // Will be set when session lookup is wired
+                                    message_id: msg_id,
+                                    from_device: remote.to_string(),
+                                    content: content.clone(),
+                                    timestamp,
+                                })
+                                .await;
+
+                            // Also emit as legacy ClipboardReceived for backward compat
+                            let _ = event_tx
+                                .send(EngineEvent::ClipboardReceived {
+                                    from_device: remote.to_string(),
+                                    text: content.clone(),
+                                })
+                                .await;
+                        }
+                        WireMessage::MessageAck {
+                            message_id: ref mid_str,
+                        } => {
+                            log::info!("MessageAck received for {mid_str} from {remote}");
+                            if let Ok(msg_id) = Uuid::parse_str(mid_str) {
+                                let _ = event_tx
+                                    .send(EngineEvent::MessageDelivered {
+                                        session_id: Uuid::nil(),
+                                        message_id: msg_id,
+                                    })
+                                    .await;
+                            }
+                        }
+                        WireMessage::OfferResponse {
+                            ref transfer_id,
+                            accepted,
+                            ref reason,
+                        } => {
+                            log::info!(
+                                "OfferResponse for {transfer_id}: accepted={accepted} from {remote}"
+                            );
+                            if let Ok(tid) = Uuid::parse_str(transfer_id) {
+                                if accepted {
+                                    accepted_transfers.write().insert(tid);
+                                    let _ = event_tx
+                                        .send(EngineEvent::OfferAccepted {
+                                            session_id: Uuid::nil(),
+                                            transfer_id: tid,
+                                        })
+                                        .await;
+                                } else {
+                                    let _ = event_tx
+                                        .send(EngineEvent::OfferRejected {
+                                            session_id: Uuid::nil(),
+                                            transfer_id: tid,
+                                            reason: reason
+                                                .clone()
+                                                .unwrap_or_else(|| "Rejected".to_string()),
+                                        })
+                                        .await;
+                                }
+                            }
+                        }
                         other => {
                             log::debug!("Unhandled message type from {remote}: {other:?}");
                         }
@@ -1107,6 +1234,213 @@ impl UotEngine {
             serde_json::to_string(&peer_states).unwrap_or_else(|_| "[]".to_string()),
             transfer_count,
         )
+    }
+
+    // ── Session Management Methods ──
+
+    /// Get or create a session for a peer device.
+    pub fn get_or_create_session(
+        &self,
+        peer_device_id: &str,
+        peer_name: &str,
+    ) -> Arc<RwLock<PeerSession>> {
+        let mut sessions = self.sessions.write();
+        if let Some(session) = sessions.get(peer_device_id) {
+            return Arc::clone(session);
+        }
+        let session = Arc::new(RwLock::new(PeerSession::new_discovered(
+            peer_device_id.to_string(),
+            peer_name.to_string(),
+        )));
+        sessions.insert(peer_device_id.to_string(), Arc::clone(&session));
+        session
+    }
+
+    /// Get all sessions as JSON array.
+    pub fn get_sessions_json(&self) -> String {
+        let sessions = self.sessions.read();
+        let items: Vec<String> = sessions.values().map(|s| s.read().to_json()).collect();
+        format!("[{}]", items.join(","))
+    }
+
+    /// Get messages for a specific peer session as JSON.
+    pub fn get_session_messages(&self, peer_device_id: &str) -> String {
+        let sessions = self.sessions.read();
+        if let Some(session) = sessions.get(peer_device_id) {
+            let s = session.read();
+            let msgs: Vec<String> = s
+                .messages
+                .iter()
+                .map(|m| {
+                    let escaped = m
+                        .content
+                        .replace('\\', "\\\\")
+                        .replace('"', "\\\"")
+                        .replace('\n', "\\n");
+                    format!(
+                        r#"{{"message_id":"{}","direction":"{}","timestamp":"{}","content":"{}","state":"{}"}}"#,
+                        m.message_id,
+                        if m.direction == MessageDirection::Outgoing {
+                            "out"
+                        } else {
+                            "in"
+                        },
+                        m.timestamp.to_rfc3339(),
+                        escaped,
+                        m.state,
+                    )
+                })
+                .collect();
+            format!("[{}]", msgs.join(","))
+        } else {
+            "[]".to_string()
+        }
+    }
+
+    /// Send a chat message to a peer via their session connection.
+    pub async fn send_chat_message(
+        &self,
+        peer_device_id: &str,
+        text: String,
+    ) -> Result<Uuid, UotError> {
+        let message_id = Uuid::new_v4();
+        let now = chrono::Utc::now();
+
+        // Get session
+        let session_arc = {
+            let sessions = self.sessions.read();
+            sessions.get(peer_device_id).cloned().ok_or_else(|| {
+                UotError::Transfer(TransferError::DeviceNotFound(peer_device_id.to_string()))
+            })?
+        };
+
+        // Add message to session as Sending
+        let session_id = {
+            let mut session = session_arc.write();
+            let sid = session.session_id;
+            session.add_message(ChatMessage {
+                message_id,
+                session_id: sid,
+                direction: MessageDirection::Outgoing,
+                timestamp: now,
+                content: text.clone(),
+                state: MessageState::Sending,
+                error: None,
+            });
+            sid
+        };
+
+        // Get connection from session or connections map
+        let conn = {
+            let session = session_arc.read();
+            session.connection.clone()
+        }
+        .or_else(|| self.connections.read().get(peer_device_id).cloned());
+
+        let conn = conn.ok_or_else(|| {
+            // Mark message as failed
+            session_arc
+                .write()
+                .update_message_state(message_id, MessageState::Failed);
+            UotError::Transfer(TransferError::DeviceNotFound(format!(
+                "No connection to {}",
+                peer_device_id
+            )))
+        })?;
+
+        // Send ChatMessage wire message
+        let wire_msg = WireMessage::ChatMessage {
+            message_id: message_id.to_string(),
+            content: text,
+            timestamp: now.timestamp(),
+        };
+
+        match proto::send_message(&conn, &wire_msg).await {
+            Ok(()) => {
+                session_arc
+                    .write()
+                    .update_message_state(message_id, MessageState::Sent);
+                let device_name = self.config.read().device_name.clone();
+                let _ = self
+                    .event_tx
+                    .send(EngineEvent::IncomingMessage {
+                        session_id,
+                        message_id,
+                        from_device: device_name,
+                        content: String::new(), // outgoing, content already in session
+                        timestamp: now.timestamp(),
+                    })
+                    .await;
+                log::info!("Chat message {message_id} sent to {peer_device_id}");
+                Ok(message_id)
+            }
+            Err(e) => {
+                session_arc
+                    .write()
+                    .update_message_state(message_id, MessageState::Failed);
+                log::error!("Failed to send chat message to {peer_device_id}: {e}");
+                Err(UotError::Transport(e))
+            }
+        }
+    }
+
+    /// Start heartbeat task for a session.
+    pub fn start_heartbeat(
+        &self,
+        peer_device_id: String,
+        conn: Arc<TcpConnection>,
+        session: Arc<RwLock<PeerSession>>,
+        event_tx: mpsc::Sender<EngineEvent>,
+    ) {
+        let _sessions = Arc::clone(&self.sessions);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+            loop {
+                interval.tick().await;
+
+                // Check if session still connected
+                {
+                    let s = session.read();
+                    if !s.state.is_connected() {
+                        log::info!("Heartbeat stopping for {} (disconnected)", peer_device_id);
+                        break;
+                    }
+                }
+
+                // Send Ping
+                let ping_frame = Frame {
+                    frame_type: FrameType::Ping,
+                    payload: Vec::new(),
+                };
+                if conn.send_frame(ping_frame).await.is_err() {
+                    let should_disconnect = session.write().heartbeat_missed(3);
+                    if should_disconnect {
+                        let session_id = session.read().session_id;
+                        let _ = session.write().transition(SessionState::Disconnected);
+                        let _ = event_tx
+                            .send(EngineEvent::HeartbeatChanged {
+                                session_id,
+                                device_id: peer_device_id.clone(),
+                                alive: false,
+                            })
+                            .await;
+                        let _ = event_tx
+                            .send(EngineEvent::PeerStateChanged {
+                                device_id: peer_device_id.clone(),
+                                state: PeerConnectionState::Disconnected,
+                            })
+                            .await;
+                        log::warn!(
+                            "Heartbeat timeout for {} — session disconnected",
+                            peer_device_id
+                        );
+                        break;
+                    }
+                } else {
+                    session.write().heartbeat_success();
+                }
+            }
+        });
     }
 
     /// Get all discovered devices (filtering out self-device and local IP/ports).

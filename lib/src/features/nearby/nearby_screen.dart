@@ -16,6 +16,7 @@ import 'optical_qr_sender_dialog.dart';
 import 'active_transfer_dialog.dart';
 import 'confirm_send_dialog.dart';
 import 'instant_chat_dialog.dart';
+import '../chat/chat_screen.dart';
 
 // Device model parsed from JSON.
 class DeviceInfo {
@@ -171,6 +172,19 @@ class _NearbyScreenState extends State<NearbyScreen>
             break;
           case 'TransferStatusChanged':
             _handleTransferStatusChanged(event);
+            break;
+          case 'IncomingMessage':
+            _handleIncomingMessage(event);
+            break;
+          case 'MessageDelivered':
+          case 'SessionStateChanged':
+          case 'HeartbeatChanged':
+          case 'OfferAccepted':
+          case 'OfferRejected':
+          case 'TransferCompleted':
+          case 'TransferFailed':
+            // These events trigger UI refresh via setState in _refreshDevices
+            if (mounted) setState(() {});
             break;
           default:
             break;
@@ -422,9 +436,149 @@ class _NearbyScreenState extends State<NearbyScreen>
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
-        builder: (ctx) => _SendBottomSheet(device: device),
+        builder: (ctx) => _PeerActionSheet(
+          device: device,
+          onChat: () {
+            Navigator.pop(ctx);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(
+                  peerDeviceId: device.deviceId,
+                  peerName: device.deviceName,
+                ),
+              ),
+            );
+          },
+          onSendFiles: () {
+            Navigator.pop(ctx);
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              builder: (ctx2) => _SendBottomSheet(device: device),
+            );
+          },
+        ),
       );
     }
+  }
+
+  void _handleIncomingMessage(Map<String, dynamic> event) {
+    if (!mounted) return;
+    final from = event['from_device']?.toString() ?? 'Unknown';
+    final content = event['content']?.toString() ?? '';
+    if (content.isEmpty) return; // Outgoing echo, skip
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('💬 $from: ${content.length > 50 ? '${content.substring(0, 50)}...' : content}'),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: 'Open Chat',
+          onPressed: () {
+            // Find device by from address
+            final device = _devices.firstWhere(
+              (d) => d.address == from || d.deviceId == from,
+              orElse: () => DeviceInfo(deviceId: from, deviceName: from, deviceType: 'Unknown'),
+            );
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(
+                  peerDeviceId: device.deviceId,
+                  peerName: device.deviceName,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// Bottom sheet with peer action options (Chat, Send Files).
+class _PeerActionSheet extends StatelessWidget {
+  final DeviceInfo device;
+  final VoidCallback onChat;
+  final VoidCallback onSendFiles;
+
+  const _PeerActionSheet({
+    required this.device,
+    required this.onChat,
+    required this.onSendFiles,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurface.withAlpha(50),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Row(
+              children: [
+                Icon(device.icon, size: 32, color: theme.colorScheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(device.deviceName,
+                          style: theme.textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold)),
+                      Text(device.deviceType,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.colorScheme.onSurface.withAlpha(150))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withAlpha(30),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.chat_bubble_outline, color: theme.colorScheme.primary),
+              ),
+              title: const Text('Chat'),
+              subtitle: const Text('Send messages'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onChat,
+            ),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withAlpha(30),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.send_rounded, color: Colors.green),
+              ),
+              title: const Text('Send Files'),
+              subtitle: const Text('Share files and folders'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onSendFiles,
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 }
 

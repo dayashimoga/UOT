@@ -139,6 +139,90 @@ async fn event_forwarder(
             EngineEvent::StateChanged(state) => {
                 format!(r#"{{"type":"StateChanged","state":"{:?}"}}"#, state)
             }
+            // Phase 2: Session-aware events
+            EngineEvent::SessionStateChanged {
+                session_id,
+                device_id,
+                state,
+            } => {
+                format!(
+                    r#"{{"type":"SessionStateChanged","session_id":"{}","device_id":"{}","state":"{}"}}"#,
+                    session_id, device_id, state
+                )
+            }
+            EngineEvent::IncomingMessage {
+                session_id,
+                message_id,
+                from_device,
+                content,
+                timestamp,
+            } => {
+                let escaped = content
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\n', "\\n");
+                format!(
+                    r#"{{"type":"IncomingMessage","session_id":"{}","message_id":"{}","from_device":"{}","content":"{}","timestamp":{}}}"#,
+                    session_id, message_id, from_device, escaped, timestamp
+                )
+            }
+            EngineEvent::MessageDelivered {
+                session_id,
+                message_id,
+            } => {
+                format!(
+                    r#"{{"type":"MessageDelivered","session_id":"{}","message_id":"{}"}}"#,
+                    session_id, message_id
+                )
+            }
+            EngineEvent::HeartbeatChanged {
+                session_id,
+                device_id,
+                alive,
+            } => {
+                format!(
+                    r#"{{"type":"HeartbeatChanged","session_id":"{}","device_id":"{}","alive":{}}}"#,
+                    session_id, device_id, alive
+                )
+            }
+            EngineEvent::OfferAccepted {
+                session_id,
+                transfer_id,
+            } => {
+                format!(
+                    r#"{{"type":"OfferAccepted","session_id":"{}","transfer_id":"{}"}}"#,
+                    session_id, transfer_id
+                )
+            }
+            EngineEvent::OfferRejected {
+                session_id,
+                transfer_id,
+                reason,
+            } => {
+                format!(
+                    r#"{{"type":"OfferRejected","session_id":"{}","transfer_id":"{}","reason":"{}"}}"#,
+                    session_id, transfer_id, reason
+                )
+            }
+            EngineEvent::TransferCompleted {
+                session_id,
+                transfer_id,
+            } => {
+                format!(
+                    r#"{{"type":"TransferCompleted","session_id":"{}","transfer_id":"{}"}}"#,
+                    session_id, transfer_id
+                )
+            }
+            EngineEvent::TransferFailed {
+                session_id,
+                transfer_id,
+                error,
+            } => {
+                format!(
+                    r#"{{"type":"TransferFailed","session_id":"{}","transfer_id":"{}","error":"{}"}}"#,
+                    session_id, transfer_id, error
+                )
+            }
         };
         if let Some(buf) = EVENT_BUFFER.get() {
             let mut buffer = buf.write();
@@ -475,6 +559,30 @@ pub fn engine_connect_peer(address: String) -> String {
 pub fn engine_get_diagnostics() -> String {
     with_engine(|engine| engine.get_diagnostics())
         .unwrap_or_else(|| r#"{"engine_state":"Stopped"}"#.to_string())
+}
+
+/// Get all peer sessions as JSON array.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_sessions() -> String {
+    with_engine(|engine| engine.get_sessions_json()).unwrap_or_else(|| "[]".to_string())
+}
+
+/// Get chat messages for a peer session as JSON array.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_get_messages(peer_device_id: String) -> String {
+    with_engine(|engine| engine.get_session_messages(&peer_device_id))
+        .unwrap_or_else(|| "[]".to_string())
+}
+
+/// Send a chat message to a peer. Returns message_id or error.
+pub fn engine_send_message(peer_device_id: String, text: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.send_chat_message(&peer_device_id, text).await }) {
+            Ok(msg_id) => format!("ok:{msg_id}"),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
 /// Get local IPv4 addresses as JSON list.
