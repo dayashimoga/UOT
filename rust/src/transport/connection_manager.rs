@@ -183,7 +183,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_connection_manager_connect_success() {
-        let (mut listener, _incoming) = crate::transport::tcp::TcpTransportListener::bind(0)
+        let (listener, _incoming) = crate::transport::tcp::TcpTransportListener::bind(0)
             .await
             .unwrap();
         let port = listener.port();
