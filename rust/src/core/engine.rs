@@ -56,6 +56,9 @@ pub enum EngineState {
     ShuttingDown,
 }
 
+/// Type alias for the sessions map (avoids clippy type_complexity).
+type SessionMap = Arc<RwLock<HashMap<String, Arc<parking_lot::RwLock<PeerSession>>>>>;
+
 /// Per-peer connection state — tracks the handshake and liveness lifecycle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PeerConnectionState {
@@ -134,7 +137,7 @@ pub struct UotEngine {
     /// Per-peer connection state tracking (keyed by device_id).
     peer_states: Arc<RwLock<HashMap<String, PeerConnectionState>>>,
     /// Authoritative peer sessions keyed by device_id.
-    sessions: Arc<RwLock<HashMap<String, Arc<RwLock<PeerSession>>>>>,
+    sessions: SessionMap,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -338,6 +341,8 @@ impl UotEngine {
         let devices_for_handler = Arc::clone(&self.devices);
         let our_device_id = self.device_id.clone();
         let our_device_name_for_handler = device_name_clone;
+        let sessions_for_handler = Arc::clone(&self.sessions);
+        let connections_for_handler = Arc::clone(&self.connections);
 
         tokio::spawn(async move {
             while let Some(stream) = incoming_streams.recv().await {
@@ -364,6 +369,8 @@ impl UotEngine {
                 let devices_clone = Arc::clone(&devices_for_handler);
                 let our_id = our_device_id.clone();
                 let our_name = our_device_name_for_handler.clone();
+                let sessions_clone = Arc::clone(&sessions_for_handler);
+                let connections_clone = Arc::clone(&connections_for_handler);
 
                 tokio::spawn(async move {
                     Self::handle_incoming_connection(
@@ -377,6 +384,8 @@ impl UotEngine {
                         &devices_clone,
                         &our_id,
                         &our_name,
+                        &sessions_clone,
+                        &connections_clone,
                     )
                     .await;
                 });
@@ -722,6 +731,8 @@ impl UotEngine {
         devices: &Arc<RwLock<HashMap<String, DiscoveredDevice>>>,
         our_device_id: &str,
         our_device_name: &str,
+        sessions: &SessionMap,
+        connections: &Arc<RwLock<HashMap<String, Arc<TcpConnection>>>>,
     ) {
         let mut current_file: Option<(PathBuf, String, u64)> = None; // (path, name, size)
         let mut current_transfer_id: Option<Uuid> = None;
@@ -798,6 +809,36 @@ impl UotEngine {
                                 is_trusted: true,
                             };
                             devices.write().insert(peer_id.clone(), dev.clone());
+                            // Store connection by peer device_id
+                            connections
+                                .write()
+                                .insert(peer_id.clone(), Arc::clone(&conn));
+                            // Create PeerSession for incoming connection
+                            {
+                                let mut sessions_map = sessions.write();
+                                let session =
+                                    sessions_map.entry(peer_id.clone()).or_insert_with(|| {
+                                        Arc::new(parking_lot::RwLock::new(
+                                            PeerSession::new_discovered(
+                                                peer_id.clone(),
+                                                peer_name.clone(),
+                                            ),
+                                        ))
+                                    });
+                                let mut s = session.write();
+                                s.connection = Some(Arc::clone(&conn));
+                                s.state = SessionState::SessionReady;
+                                s.peer_name = peer_name.clone();
+                                if let Ok(addr) = remote.parse() {
+                                    s.remote_endpoint = Some(addr);
+                                }
+                                log::info!(
+                                    "Incoming session {} created for {} ({})",
+                                    s.session_id,
+                                    peer_name,
+                                    peer_id
+                                );
+                            }
                             let _ = event_tx.send(EngineEvent::DeviceFound(dev)).await;
                             log::info!("HelloAck sent to {peer_name} at {remote}");
                         }
@@ -1306,13 +1347,36 @@ impl UotEngine {
         let message_id = Uuid::new_v4();
         let now = chrono::Utc::now();
 
-        // Get session
+        // Get or auto-create session from connections map
         let session_arc = {
             let sessions = self.sessions.read();
-            sessions.get(peer_device_id).cloned().ok_or_else(|| {
-                UotError::Transfer(TransferError::DeviceNotFound(peer_device_id.to_string()))
-            })?
-        };
+            sessions.get(peer_device_id).cloned()
+        }
+        .or_else(|| {
+            // Try to find connection by device_id and create session on-demand
+            let conn = self.connections.read().get(peer_device_id).cloned();
+            if let Some(conn) = conn {
+                let device_name = self
+                    .devices
+                    .read()
+                    .get(peer_device_id)
+                    .map(|d| d.device_name.clone())
+                    .unwrap_or_else(|| peer_device_id.to_string());
+                let session = self.get_or_create_session(peer_device_id, &device_name);
+                {
+                    let mut s = session.write();
+                    s.connection = Some(conn);
+                    s.state = SessionState::SessionReady;
+                }
+                Some(session)
+            } else {
+                None
+            }
+        });
+
+        let session_arc = session_arc.ok_or_else(|| {
+            UotError::Transfer(TransferError::DeviceNotFound(peer_device_id.to_string()))
+        })?;
 
         // Add message to session as Sending
         let session_id = {
@@ -2008,6 +2072,23 @@ impl UotEngine {
         self.set_peer_state(&remote_device_id, PeerConnectionState::SessionReady)
             .await;
 
+        // Create PeerSession so chat/transfer can find this peer
+        {
+            let session = self.get_or_create_session(&remote_device_id, &remote_device_name);
+            let mut s = session.write();
+            s.connection = Some(Arc::clone(&conn));
+            s.remote_endpoint = Some(socket_addr);
+            // Force state to SessionReady (skip intermediate states for outbound connect)
+            s.state = SessionState::SessionReady;
+            s.peer_name = remote_device_name.clone();
+            log::info!(
+                "Session {} created for {} ({})",
+                s.session_id,
+                remote_device_name,
+                remote_device_id
+            );
+        }
+
         let _ = self
             .event_tx
             .send(EngineEvent::DeviceFound(device.clone()))
@@ -2027,6 +2108,8 @@ impl UotEngine {
             let devices = Arc::clone(&self.devices);
             let our_id = self.device_id.clone();
             let our_name = self.config.read().device_name.clone();
+            let sessions = Arc::clone(&self.sessions);
+            let connections = Arc::clone(&self.connections);
 
             tokio::spawn(async move {
                 Self::handle_incoming_connection(
@@ -2040,6 +2123,8 @@ impl UotEngine {
                     &devices,
                     &our_id,
                     &our_name,
+                    &sessions,
+                    &connections,
                 )
                 .await;
             });
