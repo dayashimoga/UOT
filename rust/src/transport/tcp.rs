@@ -149,9 +149,10 @@ impl TcpConnection {
         // Writer task
         tokio::spawn(Self::writer_task(writer, rx));
 
-        // Reader task
+        // Reader task (with write_tx for automatic Pong replies)
         tokio::spawn(Self::reader_task(
             reader,
+            tx.clone(),
             incoming_tx,
             read_state,
             read_stats,
@@ -237,6 +238,7 @@ impl TcpConnection {
     /// Reader task: reads frames from TCP and sends to channel.
     async fn reader_task(
         mut reader: tokio::net::tcp::OwnedReadHalf,
+        write_tx: mpsc::Sender<Frame>,
         tx: mpsc::Sender<Frame>,
         state: Arc<RwLock<TransportState>>,
         stats: Arc<RwLock<TransportStats>>,
@@ -290,7 +292,11 @@ impl TcpConnection {
 
                 // Handle ping/pong internally
                 if frame.frame_type == FrameType::Ping {
-                    // Pong is sent back via a different mechanism if needed
+                    let _ = write_tx.try_send(Frame::pong());
+                    continue;
+                }
+                if frame.frame_type == FrameType::Pong {
+                    log::trace!("Pong received");
                     continue;
                 }
 
