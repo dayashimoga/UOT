@@ -465,21 +465,24 @@ class _NearbyScreenState extends State<NearbyScreen>
 
   void _handleIncomingMessage(Map<String, dynamic> event) {
     if (!mounted) return;
-    final from = event['from_device']?.toString() ?? 'Unknown';
+    final fromId = event['from_device']?.toString() ?? 'Unknown';
     final content = event['content']?.toString() ?? '';
     if (content.isEmpty) return; // Outgoing echo, skip
+
+    final device = _devices.firstWhere(
+      (d) => d.deviceId == fromId || d.address == fromId,
+      orElse: () =>
+          DeviceInfo(deviceId: fromId, deviceName: fromId, deviceType: 'Unknown'),
+    );
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('💬 $from: ${content.length > 50 ? '${content.substring(0, 50)}...' : content}'),
-        duration: const Duration(seconds: 3),
+        content: Text(
+            '💬 ${device.deviceName}: ${content.length > 50 ? '${content.substring(0, 50)}...' : content}'),
+        duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'Open Chat',
           onPressed: () {
-            // Find device by from address
-            final device = _devices.firstWhere(
-              (d) => d.address == from || d.deviceId == from,
-              orElse: () => DeviceInfo(deviceId: from, deviceName: from, deviceType: 'Unknown'),
-            );
             Navigator.push(
               context,
               MaterialPageRoute(

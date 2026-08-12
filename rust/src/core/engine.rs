@@ -815,6 +815,7 @@ impl UotEngine {
         let mut transfer_accepted = false;
         let mut recv_tracker: Option<Arc<ProgressTracker>> = None;
         let mut session_cipher: Option<SessionCipher> = None;
+        let mut remote_peer_id: Option<String> = None;
 
         loop {
             // 60-second idle timeout per frame
@@ -847,6 +848,7 @@ impl UotEngine {
                             version: peer_version,
                             ..
                         } => {
+                            remote_peer_id = Some(peer_id.clone());
                             log::info!("Received Hello from {peer_name} ({peer_id}) v{peer_version} at {remote}");
                             // Send HelloAck back
                             let ack = WireMessage::HelloAck {
@@ -1190,28 +1192,57 @@ impl UotEngine {
                                 &content[..content.len().min(50)]
                             );
 
-                            // Send MessageAck
+                            // Send MessageAck back immediately
                             let ack = WireMessage::MessageAck {
                                 message_id: mid_str.clone(),
                             };
                             let _ = proto::send_message(&conn, &ack).await;
 
-                            // Emit IncomingMessage event
+                            // Resolve peer_device_id
+                            let peer_id_opt = remote_peer_id.clone().or_else(|| {
+                                connections.read().iter().find_map(|(id, c)| {
+                                    if Arc::ptr_eq(c, &conn) {
+                                        Some(id.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                            });
+
+                            let (from_dev_id, sid) = if let Some(ref pid) = peer_id_opt {
+                                let session_arc = sessions.read().get(pid).cloned();
+                                if let Some(session_arc) = session_arc {
+                                    let mut session = session_arc.write();
+                                    let sid = session.session_id;
+                                    let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(
+                                        timestamp, 0,
+                                    )
+                                    .unwrap_or_else(chrono::Utc::now);
+                                    session.add_message(ChatMessage {
+                                        message_id: msg_id,
+                                        session_id: sid,
+                                        direction: MessageDirection::Incoming,
+                                        timestamp: dt,
+                                        content: content.clone(),
+                                        state: MessageState::Delivered,
+                                        error: None,
+                                    });
+                                    (pid.clone(), sid)
+                                } else {
+                                    (pid.clone(), Uuid::nil())
+                                }
+                            } else {
+                                (remote.to_string(), Uuid::nil())
+                            };
+
+                            // Emit IncomingMessage event with resolved device_id and session_id
                             let _ = event_tx
                                 .send(EngineEvent::IncomingMessage {
-                                    session_id: Uuid::nil(), // Will be set when session lookup is wired
+                                    session_id: sid,
                                     message_id: msg_id,
-                                    from_device: remote.to_string(),
+                                    from_device: from_dev_id.clone(),
                                     content: content.clone(),
                                     timestamp,
-                                })
-                                .await;
-
-                            // Also emit as legacy ClipboardReceived for backward compat
-                            let _ = event_tx
-                                .send(EngineEvent::ClipboardReceived {
-                                    from_device: remote.to_string(),
-                                    text: content.clone(),
                                 })
                                 .await;
                         }
@@ -1220,9 +1251,30 @@ impl UotEngine {
                         } => {
                             log::info!("MessageAck received for {mid_str} from {remote}");
                             if let Ok(msg_id) = Uuid::parse_str(mid_str) {
+                                let peer_id_opt = remote_peer_id.clone().or_else(|| {
+                                    connections.read().iter().find_map(|(id, c)| {
+                                        if Arc::ptr_eq(c, &conn) {
+                                            Some(id.clone())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                });
+                                let sid = if let Some(ref pid) = peer_id_opt {
+                                    if let Some(session_arc) = sessions.read().get(pid).cloned() {
+                                        let mut session = session_arc.write();
+                                        session
+                                            .update_message_state(msg_id, MessageState::Delivered);
+                                        session.session_id
+                                    } else {
+                                        Uuid::nil()
+                                    }
+                                } else {
+                                    Uuid::nil()
+                                };
                                 let _ = event_tx
                                     .send(EngineEvent::MessageDelivered {
-                                        session_id: Uuid::nil(),
+                                        session_id: sid,
                                         message_id: msg_id,
                                     })
                                     .await;

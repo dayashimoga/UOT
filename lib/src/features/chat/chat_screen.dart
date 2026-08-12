@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uot_app/src/rust/api/engine_api.dart';
 
@@ -29,7 +30,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _loadMessages();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _loadMessages();
     });
   }
@@ -91,6 +92,39 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _pickAndSendFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      if (result == null || result.paths.isEmpty) return;
+      final paths = result.paths.whereType<String>().toList();
+      if (paths.isEmpty) return;
+
+      final transferId = await engineSendFiles(
+        deviceId: widget.peerDeviceId,
+        filePaths: paths,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Sending ${paths.length} file(s)... (ID: ${transferId.substring(0, 8)})'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('File send error: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -112,16 +146,23 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(widget.peerName,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             Text(
-              'Session active',
+              'Verified session ready',
               style: TextStyle(fontSize: 12, color: Colors.green.shade300),
             ),
           ],
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.attach_file_rounded),
+            tooltip: 'Send Files',
+            onPressed: _pickAndSendFiles,
+          ),
+          IconButton(
             icon: const Icon(Icons.info_outline),
+            tooltip: 'Session Info',
             onPressed: () {
               _showSessionInfo(context);
             },
