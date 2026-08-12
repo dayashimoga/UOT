@@ -392,7 +392,10 @@ mod tests {
         assert_eq!(SessionState::PingVerified.to_string(), "Ping Verified");
         assert_eq!(SessionState::SessionReady.to_string(), "Session Ready");
         assert_eq!(SessionState::Disconnected.to_string(), "Disconnected");
-        assert_eq!(SessionState::Failed("err".into()).to_string(), "Failed: err");
+        assert_eq!(
+            SessionState::Failed("err".into()).to_string(),
+            "Failed: err"
+        );
 
         assert!(!SessionState::Discovered.is_connected());
         assert!(!SessionState::Connecting.is_connected());
@@ -438,7 +441,9 @@ mod tests {
         assert!(session.transition(SessionState::Authenticated).is_ok());
         assert!(session.transition(SessionState::PingVerified).is_ok());
         assert!(session.transition(SessionState::SessionReady).is_ok());
-        assert!(session.transition(SessionState::Failed("timeout".into())).is_ok());
+        assert!(session
+            .transition(SessionState::Failed("timeout".into()))
+            .is_ok());
         assert!(session.transition(SessionState::Connecting).is_ok());
         assert!(session.transition(SessionState::Disconnected).is_ok());
         assert!(session.transition(SessionState::Discovered).is_ok());

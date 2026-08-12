@@ -2898,10 +2898,10 @@ async fn test_connect_peer_handshake_error_branches() {
 
 #[tokio::test]
 async fn test_engine_session_and_chat_management() {
+    use rust_lib_uot_app::api::engine_api::*;
     use rust_lib_uot_app::core::config::AppConfig;
     use rust_lib_uot_app::core::engine::UotEngine;
     use rust_lib_uot_app::core::session::{MessageDirection, MessageState, SessionState};
-    use rust_lib_uot_app::api::engine_api::*;
     use tempfile::tempdir;
 
     let dir = tempdir().unwrap();
@@ -2923,14 +2923,18 @@ async fn test_engine_session_and_chat_management() {
     assert!(sessions_json.contains("Peer Alpha"));
 
     // Test send_chat_message success when session exists
-    let msg_id = engine.send_chat_message("peer-100", "Hello Peer Alpha!".to_string()).await;
+    let msg_id = engine
+        .send_chat_message("peer-100", "Hello Peer Alpha!".to_string())
+        .await;
     assert!(msg_id.is_ok());
 
     let msgs_json = engine.get_session_messages("peer-100");
     assert!(msgs_json.contains("Hello Peer Alpha!"));
 
     // Test send_chat_message failure when peer does not exist
-    let err_msg = engine.send_chat_message("non-existent-peer", "Hey".to_string()).await;
+    let err_msg = engine
+        .send_chat_message("non-existent-peer", "Hey".to_string())
+        .await;
     assert!(err_msg.is_err());
 
     // Test engine_get_sessions and engine_get_messages API wrappers
@@ -2939,7 +2943,11 @@ async fn test_engine_session_and_chat_management() {
     assert!(s_json.starts_with('['));
 
     // Heartbeat start check
-    let conn = engine.get_or_create_session("peer-100", "Peer Alpha").read().connection.clone();
+    let conn = engine
+        .get_or_create_session("peer-100", "Peer Alpha")
+        .read()
+        .connection
+        .clone();
     if let Some(c) = conn {
         let session = engine.get_or_create_session("peer-100", "Peer Alpha");
         engine.start_heartbeat("peer-100".to_string(), c, session, _rx);
@@ -2978,4 +2986,3 @@ fn test_new_wire_messages_serialization() {
     let json_cack = serde_json::to_string(&c_ack).unwrap();
     assert!(json_cack.contains("transfer_complete_ack"));
 }
-
