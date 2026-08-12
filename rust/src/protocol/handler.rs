@@ -47,6 +47,11 @@ pub enum WireMessage {
         file_size: u64,
         relative_path: String,
     },
+    /// Acknowledge file start — receiver is ready.
+    FileStartAck {
+        transfer_id: String,
+        file_name: String,
+    },
     /// Signal end of a file with hash.
     FileEnd {
         transfer_id: String,
@@ -55,6 +60,11 @@ pub enum WireMessage {
     },
     /// Signal transfer complete.
     TransferComplete { transfer_id: String, success: bool },
+    /// Acknowledge transfer complete with checksum result.
+    TransferCompleteAck {
+        transfer_id: String,
+        checksum_match: bool,
+    },
     /// Request to cancel a transfer.
     Cancel {
         transfer_id: String,
@@ -64,8 +74,16 @@ pub enum WireMessage {
     Pause { transfer_id: String },
     /// Request to resume a transfer.
     Resume { transfer_id: String, offset: u64 },
-    /// Clipboard/text data.
+    /// Clipboard/text data (legacy).
     ClipboardData { content_type: String, data: String },
+    /// Chat message with ID and timestamp for ACK tracking.
+    ChatMessage {
+        message_id: String,
+        content: String,
+        timestamp: i64,
+    },
+    /// Acknowledge receipt of a chat message.
+    MessageAck { message_id: String },
     /// X25519 public key exchange for session encryption.
     KeyExchange { public_key: Vec<u8> },
 }
@@ -249,6 +267,25 @@ mod tests {
             WireMessage::Resume {
                 transfer_id: "tid".to_string(),
                 offset: 512,
+            },
+            WireMessage::FileStartAck {
+                transfer_id: "tid".to_string(),
+                file_name: "f.txt".to_string(),
+            },
+            WireMessage::TransferCompleteAck {
+                transfer_id: "tid".to_string(),
+                checksum_match: true,
+            },
+            WireMessage::ChatMessage {
+                message_id: "mid-1".to_string(),
+                content: "Hello world".to_string(),
+                timestamp: 1600000000,
+            },
+            WireMessage::MessageAck {
+                message_id: "mid-1".to_string(),
+            },
+            WireMessage::KeyExchange {
+                public_key: vec![1, 2, 3, 4],
             },
             WireMessage::ClipboardData {
                 content_type: "text/plain".to_string(),

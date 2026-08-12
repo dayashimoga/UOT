@@ -141,6 +141,20 @@ Future<String> engineConnectPeer({required String address}) =>
 String engineGetDiagnostics() =>
     RustLib.instance.api.crateApiEngineApiEngineGetDiagnostics();
 
+/// Get all peer sessions as JSON array.
+String engineGetSessions() =>
+    RustLib.instance.api.crateApiEngineApiEngineGetSessions();
+
+/// Get chat messages for a peer session as JSON array.
+String engineGetMessages({required String peerDeviceId}) => RustLib.instance.api
+    .crateApiEngineApiEngineGetMessages(peerDeviceId: peerDeviceId);
+
+/// Send a chat message to a peer. Returns message_id or error.
+Future<String> engineSendMessage(
+        {required String peerDeviceId, required String text}) =>
+    RustLib.instance.api.crateApiEngineApiEngineSendMessage(
+        peerDeviceId: peerDeviceId, text: text);
+
 /// Get local IPv4 addresses as JSON list.
 String engineGetLocalIps() =>
     RustLib.instance.api.crateApiEngineApiEngineGetLocalIps();

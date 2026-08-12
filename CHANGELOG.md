@@ -3,6 +3,37 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.14] - 2026-08-12
+
+### Sprint 18 — Session, Chat & Transfer Architecture
+
+#### Phase 1: PeerSession Model
+- Created `core/session.rs` with `PeerSession`, `SessionState` (8-state machine), `ChatMessage`, `MessageState`
+- Added `sessions` map to `UotEngine` keyed by device_id (canonical identity)
+- `get_or_create_session()`, `get_sessions_json()`, `get_session_messages()`, `send_chat_message()`
+- Heartbeat task: Ping every 15s, 3-miss disconnect detection with `HeartbeatChanged` event
+
+#### Phase 2: Event Pipeline Expansion
+- Expanded `EngineEvent` from 9 to 22 types: SessionStateChanged, IncomingMessage, MessageDelivered, HeartbeatChanged, OfferAccepted, OfferRejected, TransferCompleted, TransferFailed
+- Updated event_forwarder with serialization for all 22 event types
+
+#### Phase 3: Protocol ACKs
+- Added `WireMessage` variants: ChatMessage, MessageAck, FileStartAck, TransferCompleteAck
+- ChatMessage handler sends automatic MessageAck on receipt
+- OfferResponse handler replaces polling-based offer acceptance with ACK flow
+
+#### Phase 5: Flutter UI
+- Created unified `ChatScreen` with chronological conversation, delivery state icons, message input bar
+- Added `_PeerActionSheet` bottom sheet (Chat / Send Files options on device tap)
+- IncomingMessage event routing with "Open Chat" SnackBar notification
+- Added `engine_get_sessions()`, `engine_get_messages()`, `engine_send_message()` API functions
+
+#### Verification
+- FRB codegen regenerated successfully
+- `cargo clippy -- -D warnings`: 0 warnings
+- `cargo test`: 419 passed, 0 failed (255+121+9+4+1+2+4+3+1+19)
+- `flutter analyze`: 0 issues
+
 ## [0.1.0-alpha.13] - 2026-08-11
 
 ### Sprint 17 — Production Recovery: Evidence-Based Gap Analysis & Critical Fixes
