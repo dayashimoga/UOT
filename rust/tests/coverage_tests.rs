@@ -2898,11 +2898,13 @@ async fn test_connect_peer_handshake_error_branches() {
 
 #[tokio::test]
 async fn test_engine_session_and_chat_management() {
-    use rust_lib_uot_app::api::engine_api::*;
     use rust_lib_uot_app::core::config::AppConfig;
     use rust_lib_uot_app::core::engine::UotEngine;
-    use rust_lib_uot_app::core::session::{MessageDirection, MessageState, SessionState};
+    use rust_lib_uot_app::core::session::SessionState;
+    use rust_lib_uot_app::protocol::handler as proto;
+    use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
     use tempfile::tempdir;
+    use tokio::sync::mpsc;
 
     let dir = tempdir().unwrap();
     let mut config = AppConfig::default();
@@ -2922,14 +2924,15 @@ async fn test_engine_session_and_chat_management() {
     assert!(sessions_json.contains("peer-100"));
     assert!(sessions_json.contains("Peer Alpha"));
 
-    // Test send_chat_message success when session exists
-    let msg_id = engine
-        .send_chat_message("peer-100", "Hello Peer Alpha!".to_string())
+    // Test send_chat_message without connection -> returns Err and marks message Failed
+    let msg_err = engine
+        .send_chat_message("peer-100", "Hello disconnected!".to_string())
         .await;
-    assert!(msg_id.is_ok());
+    assert!(msg_err.is_err());
 
     let msgs_json = engine.get_session_messages("peer-100");
-    assert!(msgs_json.contains("Hello Peer Alpha!"));
+    assert!(msgs_json.contains("Hello disconnected!"));
+    assert!(msgs_json.contains("Failed"));
 
     // Test send_chat_message failure when peer does not exist
     let err_msg = engine
@@ -2937,21 +2940,34 @@ async fn test_engine_session_and_chat_management() {
         .await;
     assert!(err_msg.is_err());
 
-    // Test engine_get_sessions and engine_get_messages API wrappers
-    // (Requires engine initialized in global state, so test mock API behavior)
-    let s_json = engine.get_sessions_json();
-    assert!(s_json.starts_with('['));
+    // Test send_chat_message success with mock connected TCP listener
+    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let port = listener.port();
+    let peer_task = tokio::spawn(async move {
+        if let Some(stream) = incoming.recv().await {
+            let conn = TcpConnection::new(stream).unwrap();
+            let _ = proto::recv_message(&conn).await;
+        }
+    });
+
+    let client_stream =
+        rust_lib_uot_app::transport::tcp::connect(format!("127.0.0.1:{port}").parse().unwrap())
+            .await
+            .unwrap();
+    let client_conn = std::sync::Arc::new(TcpConnection::new(client_stream).unwrap());
+    session_arc.write().connection = Some(std::sync::Arc::clone(&client_conn));
+
+    let send_res = engine
+        .send_chat_message("peer-100", "Hello connected!".to_string())
+        .await;
+    assert!(send_res.is_ok());
+
+    peer_task.await.unwrap();
+    listener.stop();
 
     // Heartbeat start check
-    let conn = engine
-        .get_or_create_session("peer-100", "Peer Alpha")
-        .read()
-        .connection
-        .clone();
-    if let Some(c) = conn {
-        let session = engine.get_or_create_session("peer-100", "Peer Alpha");
-        engine.start_heartbeat("peer-100".to_string(), c, session, _rx);
-    }
+    let (tx, _rx_dummy) = mpsc::channel(10);
+    engine.start_heartbeat("peer-100".to_string(), client_conn, session_arc, tx);
 }
 
 #[test]
