@@ -140,6 +140,8 @@ pub struct UotEngine {
     sessions: SessionMap,
     /// Pending offer response consent gating channels (transfer_id -> oneshot::Sender<bool>).
     pending_offer_responses: Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
+    /// Map of transfer_id to the exact TcpConnection used for the Offer.
+    transfer_connections: Arc<RwLock<HashMap<Uuid, Arc<TcpConnection>>>>,
 }
 
 /// Events emitted by the engine for UI consumption.
@@ -254,6 +256,7 @@ impl UotEngine {
                 peer_states: Arc::new(RwLock::new(HashMap::new())),
                 sessions: Arc::new(RwLock::new(HashMap::new())),
                 pending_offer_responses: Arc::new(RwLock::new(HashMap::new())),
+                transfer_connections: Arc::new(RwLock::new(HashMap::new())),
             },
             event_rx,
         )
@@ -347,6 +350,7 @@ impl UotEngine {
         let sessions_for_handler = Arc::clone(&self.sessions);
         let connections_for_handler = Arc::clone(&self.connections);
         let pending_responses_for_handler = Arc::clone(&self.pending_offer_responses);
+        let transfer_connections_for_handler = Arc::clone(&self.transfer_connections);
 
         tokio::spawn(async move {
             while let Some(stream) = incoming_streams.recv().await {
@@ -376,6 +380,7 @@ impl UotEngine {
                 let sessions_clone = Arc::clone(&sessions_for_handler);
                 let connections_clone = Arc::clone(&connections_for_handler);
                 let pending_clone = Arc::clone(&pending_responses_for_handler);
+                let transfer_conns_clone = Arc::clone(&transfer_connections_for_handler);
 
                 tokio::spawn(async move {
                     Self::handle_incoming_connection(
@@ -393,6 +398,7 @@ impl UotEngine {
                         &connections_clone,
                         None,
                         &pending_clone,
+                        &transfer_conns_clone,
                     )
                     .await;
                 });
@@ -584,6 +590,7 @@ impl UotEngine {
                     let sessions = Arc::clone(&self.sessions);
                     let connections = Arc::clone(&self.connections);
                     let pending_responses = Arc::clone(&self.pending_offer_responses);
+                    let transfer_connections = Arc::clone(&self.transfer_connections);
 
                     tokio::spawn(async move {
                         Self::handle_incoming_connection(
@@ -601,6 +608,7 @@ impl UotEngine {
                             &connections,
                             Some(remote_str.clone()),
                             &pending_responses,
+                            &transfer_connections,
                         )
                         .await;
                     });
@@ -978,6 +986,7 @@ impl UotEngine {
         connections: &Arc<RwLock<HashMap<String, Arc<TcpConnection>>>>,
         known_peer_id: Option<String>,
         pending_offer_responses: &Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
+        transfer_connections: &Arc<RwLock<HashMap<Uuid, Arc<TcpConnection>>>>,
     ) {
         let mut current_file: Option<(PathBuf, PathBuf, String, u64)> = None; // (part_path, target_path, name, size)
         let mut current_transfer_id: Option<Uuid> = None;
@@ -1193,6 +1202,9 @@ impl UotEngine {
                                 offer_items.iter().map(|i| i.name.clone()).collect();
 
                             current_transfer_id = Some(transfer_id);
+                            transfer_connections
+                                .write()
+                                .insert(transfer_id, Arc::clone(&conn));
 
                             let item_records: Vec<TransferItemRecord> = offer_items
                                 .iter()
@@ -2074,8 +2086,15 @@ impl UotEngine {
         };
 
         if let Some(ref dev_id) = remote_dev {
-            // Find active session connection and send OfferResponse using authoritative resolver
-            if let Some(conn) = self.get_peer_connection(dev_id) {
+            // First check transfer_connections for the EXACT TcpConnection used for this offer!
+            let target_conn = self
+                .transfer_connections
+                .read()
+                .get(&uuid)
+                .cloned()
+                .or_else(|| self.get_peer_connection(dev_id));
+
+            if let Some(conn) = target_conn {
                 let resp = WireMessage::OfferResponse {
                     transfer_id: uuid.to_string(),
                     accepted: true,
@@ -2537,6 +2556,7 @@ impl UotEngine {
             let sessions = Arc::clone(&self.sessions);
             let connections = Arc::clone(&self.connections);
             let pending_responses = Arc::clone(&self.pending_offer_responses);
+            let transfer_connections = Arc::clone(&self.transfer_connections);
 
             let known_peer = remote_device_id.clone();
             tokio::spawn(async move {
@@ -2555,6 +2575,7 @@ impl UotEngine {
                     &connections,
                     Some(known_peer),
                     &pending_responses,
+                    &transfer_connections,
                 )
                 .await;
             });
