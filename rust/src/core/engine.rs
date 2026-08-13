@@ -552,6 +552,43 @@ impl UotEngine {
                 self.connections
                     .write()
                     .insert(device_id.to_string(), Arc::clone(&c));
+
+                // Spawn reader task on fallback connection so incoming control frames are read
+                {
+                    let conn_clone = Arc::clone(&c);
+                    let remote_str = device_id.to_string();
+                    let transfers = Arc::clone(&self.transfers);
+                    let trackers = Arc::clone(&self.progress_trackers);
+                    let event_tx = self.event_tx.clone();
+                    let save_dir = self.config.read().transfer.save_directory.clone();
+                    let accepted = Arc::clone(&self.accepted_transfers);
+                    let devices = Arc::clone(&self.devices);
+                    let our_id = self.device_id.clone();
+                    let our_name = self.config.read().device_name.clone();
+                    let sessions = Arc::clone(&self.sessions);
+                    let connections = Arc::clone(&self.connections);
+                    let pending_responses = Arc::clone(&self.pending_offer_responses);
+
+                    tokio::spawn(async move {
+                        Self::handle_incoming_connection(
+                            conn_clone,
+                            &remote_str,
+                            &transfers,
+                            &trackers,
+                            &event_tx,
+                            &save_dir,
+                            &accepted,
+                            &devices,
+                            &our_id,
+                            &our_name,
+                            &sessions,
+                            &connections,
+                            Some(remote_str.clone()),
+                            &pending_responses,
+                        )
+                        .await;
+                    });
+                }
                 (c, name)
             }
         };

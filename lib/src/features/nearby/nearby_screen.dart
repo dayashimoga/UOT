@@ -238,13 +238,22 @@ class _NearbyScreenState extends State<NearbyScreen>
             child: const Text('Reject'),
           ),
           FilledButton.icon(
-            onPressed: () {
-              engine.engineAcceptTransfer(transferId: transferId);
-              Navigator.of(ctx).pop(true);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content: Text('Receiving files from $fromDevice...')),
-              );
+            onPressed: () async {
+              final res = await engine.engineAcceptTransfer(transferId: transferId);
+              if (ctx.mounted) {
+                Navigator.of(ctx).pop(true);
+              }
+              if (context.mounted) {
+                final isOk = res.startsWith('ok');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(isOk
+                        ? 'Receiving files from $fromDevice...'
+                        : 'Failed to accept: ${res.replaceFirst("error:", "")}'),
+                    backgroundColor: isOk ? null : Colors.red.shade700,
+                  ),
+                );
+              }
             },
             icon: const Icon(Icons.check_rounded),
             label: const Text('Accept'),

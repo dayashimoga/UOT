@@ -49,6 +49,7 @@ class IncomingOfferDialog extends StatefulWidget {
 class _IncomingOfferDialogState extends State<IncomingOfferDialog> {
   final TextEditingController _pinController = TextEditingController();
   String? _errorText;
+  bool _isLoading = false;
 
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
@@ -59,7 +60,7 @@ class _IncomingOfferDialogState extends State<IncomingOfferDialog> {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
-  void _onAccept() {
+  Future<void> _onAccept() async {
     if (widget.requirePin && _pinController.text.trim().length < 4) {
       setState(() {
         _errorText = 'Please enter a valid 4-digit or 6-digit PIN';
@@ -67,19 +68,43 @@ class _IncomingOfferDialogState extends State<IncomingOfferDialog> {
       return;
     }
 
-    try {
-      engineAcceptTransfer(transferId: widget.transferId);
-    } catch (_) {}
+    setState(() => _isLoading = true);
 
-    Navigator.of(context).pop(true);
+    try {
+      final result = await engineAcceptTransfer(transferId: widget.transferId);
+      if (result.startsWith('error:')) {
+        if (mounted) {
+          setState(() {
+            _errorText = 'Accept error: ${result.replaceFirst('error:', '')}';
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorText = 'Accept exception: $e';
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
-  void _onDecline() {
+  Future<void> _onDecline() async {
+    setState(() => _isLoading = true);
     try {
-      engineCancelTransfer(transferId: widget.transferId);
+      await engineCancelTransfer(transferId: widget.transferId);
     } catch (_) {}
 
-    Navigator.of(context).pop(false);
+    if (mounted) {
+      Navigator.of(context).pop(false);
+    }
   }
 
   @override
