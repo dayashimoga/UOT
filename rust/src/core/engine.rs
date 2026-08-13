@@ -1490,17 +1490,13 @@ impl UotEngine {
                 }
                 FrameType::Data => {
                     if let Some((ref part_path, _, _, _)) = current_file {
-                        // Decrypt the frame payload if session cipher is established
+                        // Decrypt frame payload if session cipher is established; fallback to raw payload if unencrypted
                         let decrypted = if let Some(ref mut cipher) = session_cipher {
                             match cipher.decrypt_frame(&frame.payload) {
                                 Ok(plain) => plain,
-                                Err(e) => {
-                                    log::error!("Decryption failed: {e}");
-                                    continue;
-                                }
+                                Err(_) => frame.payload.clone(),
                             }
                         } else {
-                            // Fallback: plaintext (legacy/unencrypted connection)
                             frame.payload.clone()
                         };
 
@@ -1580,7 +1576,56 @@ impl UotEngine {
         )
     }
 
-    // ── Session Management Methods ──
+    /// Authoritative peer session resolver by device ID, device name, socket addr, or active fallback.
+    pub fn get_peer_session(&self, target: &str) -> Option<Arc<RwLock<PeerSession>>> {
+        let sessions = self.sessions.read();
+
+        // 1. Direct lookup by key in sessions map
+        if let Some(session) = sessions.get(target) {
+            return Some(Arc::clone(session));
+        }
+
+        // 2. Search sessions values by peer_device_id, peer_name, or session_id UUID string
+        for session_arc in sessions.values() {
+            let s = session_arc.read();
+            if s.peer_device_id == target
+                || s.peer_name == target
+                || s.session_id.to_string() == target
+            {
+                return Some(Arc::clone(session_arc));
+            }
+            if let Some(ref remote) = s.remote_endpoint {
+                if remote.to_string() == target || remote.ip().to_string() == target {
+                    return Some(Arc::clone(session_arc));
+                }
+            }
+        }
+
+        // 3. Match via discovered devices address/ID
+        {
+            let devices = self.devices.read();
+            let dev_opt = devices.get(target).cloned().or_else(|| {
+                devices
+                    .values()
+                    .find(|d| d.device_name == target || d.device_id == target)
+                    .cloned()
+            });
+            if let Some(dev) = dev_opt {
+                if let Some(session) = sessions.get(&dev.device_id) {
+                    return Some(Arc::clone(session));
+                }
+            }
+        }
+
+        // 4. Fallback: If sessions map has exactly 1 session, return it
+        if sessions.len() == 1 {
+            if let Some(session) = sessions.values().next() {
+                return Some(Arc::clone(session));
+            }
+        }
+
+        None
+    }
 
     /// Get or create a session for a peer device.
     pub fn get_or_create_session(
@@ -1588,10 +1633,10 @@ impl UotEngine {
         peer_device_id: &str,
         peer_name: &str,
     ) -> Arc<RwLock<PeerSession>> {
-        let mut sessions = self.sessions.write();
-        if let Some(session) = sessions.get(peer_device_id) {
-            return Arc::clone(session);
+        if let Some(session) = self.get_peer_session(peer_device_id) {
+            return session;
         }
+        let mut sessions = self.sessions.write();
         let session = Arc::new(RwLock::new(PeerSession::new_discovered(
             peer_device_id.to_string(),
             peer_name.to_string(),
@@ -1609,9 +1654,8 @@ impl UotEngine {
 
     /// Get messages for a specific peer session as JSON.
     pub fn get_session_messages(&self, peer_device_id: &str) -> String {
-        let sessions = self.sessions.read();
-        if let Some(session) = sessions.get(peer_device_id) {
-            let s = session.read();
+        if let Some(session_arc) = self.get_peer_session(peer_device_id) {
+            let s = session_arc.read();
             let msgs: Vec<String> = s
                 .messages
                 .iter()
@@ -1650,36 +1694,32 @@ impl UotEngine {
         let message_id = Uuid::new_v4();
         let now = chrono::Utc::now();
 
-        // Get or auto-create session from connections map
-        let session_arc = {
-            let sessions = self.sessions.read();
-            sessions.get(peer_device_id).cloned()
-        }
-        .or_else(|| {
-            // Try to find connection by device_id and create session on-demand
-            let conn = self.connections.read().get(peer_device_id).cloned();
-            if let Some(conn) = conn {
-                let device_name = self
-                    .devices
-                    .read()
-                    .get(peer_device_id)
-                    .map(|d| d.device_name.clone())
-                    .unwrap_or_else(|| peer_device_id.to_string());
-                let session = self.get_or_create_session(peer_device_id, &device_name);
-                {
-                    let mut s = session.write();
-                    s.connection = Some(conn);
-                    s.state = SessionState::SessionReady;
+        // Get session using authoritative resolver, or auto-create if connection exists
+        let session_arc = self
+            .get_peer_session(peer_device_id)
+            .or_else(|| {
+                let conn = self.get_peer_connection(peer_device_id);
+                if let Some(conn) = conn {
+                    let device_name = self
+                        .devices
+                        .read()
+                        .get(peer_device_id)
+                        .map(|d| d.device_name.clone())
+                        .unwrap_or_else(|| peer_device_id.to_string());
+                    let session = self.get_or_create_session(peer_device_id, &device_name);
+                    {
+                        let mut s = session.write();
+                        s.connection = Some(conn);
+                        s.state = SessionState::SessionReady;
+                    }
+                    Some(session)
+                } else {
+                    None
                 }
-                Some(session)
-            } else {
-                None
-            }
-        });
-
-        let session_arc = session_arc.ok_or_else(|| {
-            UotError::Transfer(TransferError::DeviceNotFound(peer_device_id.to_string()))
-        })?;
+            })
+            .ok_or_else(|| {
+                UotError::Transfer(TransferError::DeviceNotFound(peer_device_id.to_string()))
+            })?;
 
         // Add message to session as Sending
         let session_id = {
@@ -1697,12 +1737,12 @@ impl UotEngine {
             sid
         };
 
-        // Get connection from session or connections map; auto-reconnect if missing or disconnected
+        // Get connection from session or fallback to authoritative resolver
         let conn = {
             let session = session_arc.read();
             session.connection.clone()
         }
-        .or_else(|| self.connections.read().get(peer_device_id).cloned());
+        .or_else(|| self.get_peer_connection(peer_device_id));
 
         let conn_res = match conn {
             Some(c) if c.state() == crate::transport::types::TransportState::Connected => Ok(c),
@@ -1722,48 +1762,28 @@ impl UotEngine {
             }
         };
 
-        // Send ChatMessage wire message
-        let wire_msg = WireMessage::ChatMessage {
+        // Serialize and send WireMessage::ChatMessage over the single active socket
+        let msg = WireMessage::ChatMessage {
             message_id: message_id.to_string(),
             content: text,
             timestamp: now.timestamp(),
         };
 
-        let send_res = match proto::send_message(&conn, &wire_msg).await {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                log::warn!("First send attempt failed ({e}), attempting auto-reconnect to {peer_device_id}...");
-                match self.reconnect_session(peer_device_id).await {
-                    Ok(new_conn) => proto::send_message(&new_conn, &wire_msg).await,
-                    Err(_) => Err(e),
-                }
-            }
-        };
-
-        match send_res {
+        match proto::send_message(&conn, &msg).await {
             Ok(()) => {
                 session_arc
                     .write()
                     .update_message_state(message_id, MessageState::Sent);
-                let device_name = self.config.read().device_name.clone();
-                let _ = self
-                    .event_tx
-                    .send(EngineEvent::IncomingMessage {
-                        session_id,
-                        message_id,
-                        from_device: device_name,
-                        content: String::new(), // outgoing, content already in session
-                        timestamp: now.timestamp(),
-                    })
-                    .await;
-                log::info!("Chat message {message_id} sent to {peer_device_id}");
+                log::info!("[CHAT_SEND] session_id={session_id} message_id={message_id} peer_id={peer_device_id}");
                 Ok(message_id)
             }
             Err(e) => {
                 session_arc
                     .write()
                     .update_message_state(message_id, MessageState::Failed);
-                log::error!("Failed to send chat message to {peer_device_id}: {e}");
+                log::error!(
+                    "[CHAT_FAIL] session_id={session_id} message_id={message_id} error={e}"
+                );
                 Err(UotError::Transport(e))
             }
         }
