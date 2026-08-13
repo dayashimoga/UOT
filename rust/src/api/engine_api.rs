@@ -265,7 +265,46 @@ pub fn engine_get_devices() -> String {
 pub fn engine_get_transfers() -> String {
     with_engine(|engine| {
         let transfers = engine.get_transfers();
-        serde_json::to_string(&transfers).unwrap_or_else(|_| "[]".to_string())
+        let value_list: Vec<serde_json::Value> = transfers
+            .into_iter()
+            .map(|t| {
+                let first_file = t
+                    .items
+                    .first()
+                    .map(|i| i.name.clone())
+                    .unwrap_or_else(|| "File transfer".to_string());
+                let total_size = t.total_size;
+                let transferred_bytes = t.transferred_bytes;
+                let progress = if total_size > 0 {
+                    (transferred_bytes as f64) / (total_size as f64)
+                } else {
+                    0.0
+                };
+
+                let mut val = match serde_json::to_value(&t) {
+                    Ok(v) => v,
+                    Err(_) => return serde_json::json!({}),
+                };
+
+                if let Some(obj) = val.as_object_mut() {
+                    obj.insert(
+                        "id".to_string(),
+                        serde_json::json!(t.transfer_id.to_string()),
+                    );
+                    obj.insert("file_name".to_string(), serde_json::json!(first_file));
+                    obj.insert(
+                        "remote_name".to_string(),
+                        serde_json::json!(t.remote_device),
+                    );
+                    obj.insert("total_bytes".to_string(), serde_json::json!(total_size));
+                    obj.insert("progress".to_string(), serde_json::json!(progress));
+                }
+
+                val
+            })
+            .collect();
+
+        serde_json::to_string(&value_list).unwrap_or_else(|_| "[]".to_string())
     })
     .unwrap_or_else(|| "[]".to_string())
 }

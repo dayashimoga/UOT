@@ -436,10 +436,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildTransferCard(Map<String, dynamic> t, ThemeData theme) {
     final status = t['status']?.toString() ?? 'Pending';
-    final fileName = t['file_name']?.toString() ?? 'File transfer';
-    final totalBytes = (t['total_bytes'] as num?)?.toInt() ?? 0;
+    final items = t['items'] as List<dynamic>?;
+    final firstItemName = (items != null && items.isNotEmpty && items.first is Map)
+        ? items.first['name']?.toString()
+        : null;
+    final fileName = t['file_name']?.toString() ??
+        firstItemName ??
+        t['name']?.toString() ??
+        'File transfer';
+    final totalBytes = (t['total_bytes'] as num?)?.toInt() ??
+        (t['total_size'] as num?)?.toInt() ??
+        0;
     final transferredBytes = (t['transferred_bytes'] as num?)?.toInt() ?? 0;
-    final progress = (t['progress'] as num?)?.toDouble() ?? (totalBytes > 0 ? transferredBytes / totalBytes : 0.0);
+    final progress = (t['progress'] as num?)?.toDouble() ??
+        (totalBytes > 0 ? transferredBytes / totalBytes : 0.0);
     final direction = t['direction']?.toString() ?? 'Send';
     final isSend = direction == 'Send';
 
