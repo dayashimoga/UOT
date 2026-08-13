@@ -266,10 +266,19 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemCount: _messages.length + _transfers.length,
                     itemBuilder: (context, index) {
                       if (index < _messages.length) {
-                        return _buildMessageBubble(_messages[index], theme);
+                        final msg = _messages[index];
+                        final msgKey = msg['id'] ?? msg['message_id'] ?? 'msg_$index';
+                        return KeyedSubtree(
+                          key: ValueKey(msgKey),
+                          child: _buildMessageBubble(msg, theme),
+                        );
                       } else {
                         final t = _transfers[index - _messages.length];
-                        return _buildTransferCard(t, theme);
+                        final transferKey = t['id'] ?? t['transfer_id'] ?? 'transfer_$index';
+                        return KeyedSubtree(
+                          key: ValueKey(transferKey),
+                          child: _buildTransferCard(t, theme),
+                        );
                       }
                     },
                   ),
