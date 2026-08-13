@@ -409,21 +409,26 @@ impl UotEngine {
         Ok(())
     }
 
-    /// Authoritative connection resolver for a peer by device ID, device name, or active socket.
+    /// Authoritative connection resolver: Resolves TcpConnection for a peer.
     pub fn get_peer_connection(&self, target: &str) -> Option<Arc<TcpConnection>> {
-        // 1. Direct lookup in sessions map
-        if let Some(session) = self.sessions.read().get(target) {
-            if let Some(ref conn) = session.read().connection {
-                return Some(Arc::clone(conn));
+        // 1. Direct lookup via authoritative peer session
+        if let Some(session_arc) = self.get_peer_session(target) {
+            if let Some(ref conn) = session_arc.read().connection {
+                if conn.state() == crate::transport::types::TransportState::Connected {
+                    return Some(Arc::clone(conn));
+                }
             }
         }
 
         // 2. Direct lookup in connections map
-        if let Some(conn) = self.connections.read().get(target) {
-            return Some(Arc::clone(conn));
+        let conns = self.connections.read();
+        if let Some(conn) = conns.get(target) {
+            if conn.state() == crate::transport::types::TransportState::Connected {
+                return Some(Arc::clone(conn));
+            }
         }
 
-        // 3. Search sessions map for session matching device_id, peer_name, or session_id
+        // 3. Search all sessions map for matching peer_device_id, peer_name, or session_id
         {
             let sessions = self.sessions.read();
             for session_arc in sessions.values() {
@@ -433,7 +438,9 @@ impl UotEngine {
                     || s.session_id.to_string() == target
                 {
                     if let Some(ref conn) = s.connection {
-                        return Some(Arc::clone(conn));
+                        if conn.state() == crate::transport::types::TransportState::Connected {
+                            return Some(Arc::clone(conn));
+                        }
                     }
                 }
             }
@@ -450,19 +457,30 @@ impl UotEngine {
             });
             if let Some(dev) = dev_opt {
                 if let Some(ref addr) = dev.address {
-                    if let Some(conn) = self.connections.read().get(addr) {
-                        return Some(Arc::clone(conn));
+                    if let Some(conn) = conns.get(addr) {
+                        if conn.state() == crate::transport::types::TransportState::Connected {
+                            return Some(Arc::clone(conn));
+                        }
                     }
                 }
             }
         }
 
-        // 5. Fallback: If connections map has exactly 1 active connection, return it
+        // 5. Fallback: Search all active connections in connections map or sessions for ANY connected TcpConnection
+        for conn in conns.values() {
+            if conn.state() == crate::transport::types::TransportState::Connected {
+                return Some(Arc::clone(conn));
+            }
+        }
+
         {
-            let conns = self.connections.read();
-            if conns.len() == 1 {
-                if let Some(conn) = conns.values().next() {
-                    return Some(Arc::clone(conn));
+            let sessions = self.sessions.read();
+            for session_arc in sessions.values() {
+                let s = session_arc.read();
+                if let Some(ref conn) = s.connection {
+                    if conn.state() == crate::transport::types::TransportState::Connected {
+                        return Some(Arc::clone(conn));
+                    }
                 }
             }
         }
@@ -496,15 +514,13 @@ impl UotEngine {
         let (conn, target_name) = match self.get_peer_connection(device_id) {
             Some(c) => {
                 let name = self
-                    .devices
-                    .read()
-                    .get(device_id)
-                    .map(|d| d.device_name.clone())
+                    .get_peer_session(device_id)
+                    .map(|s| s.read().peer_name.clone())
                     .or_else(|| {
-                        self.sessions
+                        self.devices
                             .read()
                             .get(device_id)
-                            .map(|s| s.read().peer_name.clone())
+                            .map(|d| d.device_name.clone())
                     })
                     .unwrap_or_else(|| device_id.to_string());
                 (c, name)

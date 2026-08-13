@@ -99,19 +99,31 @@ class _ChatScreenState extends State<ChatScreen> {
       final paths = result.paths.whereType<String>().toList();
       if (paths.isEmpty) return;
 
-      final transferId = await engineSendFiles(
+      final res = await engineSendFiles(
         deviceId: widget.peerDeviceId,
         filePaths: paths,
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Sending ${paths.length} file(s)... (ID: ${transferId.substring(0, 8)})'),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        if (res.startsWith('error:')) {
+          final err = res.replaceFirst('error:', '');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('File send error: $err'),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          final tid = res.replaceFirst('ok:', '');
+          final shortId = tid.length >= 8 ? tid.substring(0, 8) : tid;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Sending ${paths.length} file(s)... (ID: $shortId)'),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
