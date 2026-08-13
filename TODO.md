@@ -1,20 +1,12 @@
-- [x] Built `FakeWifiDirectAdapter` with discover/group/connect/disconnect + failure injection
-- [x] Built `FountainEncoder`/`FountainDecoder` for QR fountain code E2E with frame loss resilience
-- [x] Built `SyntheticVideoSource`/`SyntheticAudioSource` for streaming simulation
-- [x] Built `FakeCameraAdapter` for QR scan simulation
-- [x] Created `VirtualUotNode` two-node E2E harness with full protocol flow (discovery→key exchange→offer→accept→transfer→SHA-256→complete)
-- [x] Implemented checkpoint/resume simulation (fail at N%, save checkpoint, reconnect, resume, SHA-256 match)
-- [x] Created 10 chaos test scenarios (clean, multi-file, zero-byte, Unicode, resume, migration, large file, batch, duplicates)
-- [x] Created `docs/HARDWARE_CERTIFICATION.md` with SOFTWARE PROVEN / EMULATOR PROVEN / HARDWARE PENDING matrix
-- [x] 38+ new testing module tests, all passing
-- [x] Raised coverage threshold to 90%, excluded `frb_generated.rs`
+### Sprint 20 — File Transfer OfferResponse Socket Routing & Inline UI Overhaul (Completed ✅)
+- [x] Resolved critical file transfer failure by introducing `transfer_connections` socket map in `UotEngine`
+- [x] Routed `OfferResponse` on the exact `TcpConnection` instance that delivered the `Offer` message
+- [x] Upgraded `chat_screen.dart` to poll engine events (`IncomingOffer`, `TransferProgress`, `TransferStatusChanged`)
+- [x] Built inline `IncomingOffer` banner with instant Accept/Reject action buttons
+- [x] Built inline `TransferCard` widgets displaying real-time progress bars, speed, ETA, direction, and file details in the unified chat timeline
+- [x] Verified full loopback transfer with `test_e2e_offer_response_accept_file_transfer` (1MB payload, SHA-256 integrity match, atomic rename)
+- [x] All 261 Rust tests passed (100%), Clippy 0 warnings, Rustfmt 0 diffs, Flutter analyze 0 issues
 
-### Sprint 12 — Production Blocker & Certification Fix (Completed ✅)
-- [x] Android crash fix: diagnostic recovery screen (`RustInitFailedScreen`) on `RustLib.init()` failure
-- [x] Android: guarded Kotlin plugin registration with `hasSystemFeature()` checks
-- [x] Android: `network_security_config.xml` restricts cleartext to LAN only (replaces blanket `usesCleartextTraffic`)
-- [x] Windows CI: pinned `windows-2022` runner, added `flutter clean`/`flutter doctor -v`/artifact validation
-- [x] CI: coverage enforcement now mandatory (removed `continue-on-error: true`)
 - [x] **Platform Truth Audit**: corrected documentation crypto from "Noise XX / ChaCha20-Poly1305" to actual AES-256-GCM + X25519
 - [x] Created `docs/TRANSPORT_MATRIX.md` with honest transport status
 - [x] Rewrote `docs/PLATFORM_SUPPORT.md`, `docs/PRODUCTION_READINESS.md`, `docs/GAP_ANALYSIS.md`, `docs/SECURITY.md`, `docs/PROTOCOL.md`

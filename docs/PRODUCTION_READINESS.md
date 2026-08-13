@@ -1,12 +1,12 @@
 # UOT Production Readiness & Evidence Matrix
 
-> Audited against actual source code and automated test evidence on 2026-08-11.
+> Audited against actual source code and automated test evidence on 2026-08-13.
 
 ## Classification Summary
 
 | Feature | Status | Automated Evidence |
 |---------|--------|-------------------|
-| **TCP/LAN File Transfer** | `PROVEN` | `e2e_two_peer_workflow.rs` automated dual-engine transfer with SHA-256 byte-for-byte hash equality |
+| **TCP/LAN File Transfer** | `PROVEN` | `e2e_session_lifecycle.rs` & `e2e_two_peer_workflow.rs` automated dual-engine transfer with `transfer_connections` socket routing & SHA-256 byte-for-byte hash equality |
 | **AES-256-GCM + X25519 Encryption** | `PROVEN` | `security_tests.rs` full key exchange, encryption, decryption, tamper detection tests |
 | **Hello/HelloAck Handshake** | `PROVEN` | `e2e_two_peer_workflow.rs` & `coverage_tests.rs` 5s handshake verification |
 | **SHA-256 File Integrity Verification** | `PROVEN` | Source and destination file hashes match byte-for-byte in automated E2E test |

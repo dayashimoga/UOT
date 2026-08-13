@@ -3,6 +3,25 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.16] - 2026-08-13
+
+### Sprint 20 — File Transfer OfferResponse Socket Routing & Inline UI Overhaul
+
+#### Socket Routing & Root-Cause Resolution
+- Resolved critical file transfer failure where `OfferResponse` was sent over an unmonitored TCP socket: Added `transfer_connections: Arc<RwLock<HashMap<Uuid, Arc<TcpConnection>>>>` to `UotEngine`.
+- When `WireMessage::Offer` arrives, `handle_incoming_connection` stores the exact `TcpConnection` instance in `transfer_connections`.
+- `accept_transfer(transfer_id)` retrieves that exact socket instance first, ensuring `OfferResponse` is delivered directly to the sender's oneshot listener.
+
+#### Flutter UI & Unified Timeline Overhaul
+- Updated `chat_screen.dart` to poll engine events (`IncomingOffer`, `TransferProgress`, `TransferStatusChanged`) in real-time.
+- **Inline Incoming Offer Card**: Shows an offer banner directly inside the chat timeline with Accept/Reject action buttons.
+- **Real-Time Transfer Progress Cards**: Renders active file transfers inline with progress bars, byte counters, file names, direction indicators (Send/Receive), and status badges (Transferring, Completed, Failed).
+
+#### Automated Verification & Production Readiness
+- Added `test_e2e_offer_response_accept_file_transfer` in `e2e_session_lifecycle.rs` proving loopback Offer → Accept → OfferResponse socket routing → chunked transfer → SHA-256 integrity verification → atomic storage.
+- All 261 Rust unit & integration tests passed.
+- Clippy: 0 warnings. Rustfmt: 0 diffs. Flutter analyze: 0 issues.
+
 ## [0.1.0-alpha.15] - 2026-08-12
 
 ### Sprint 19 — File-Transfer Consent Gating & Atomic Storage Pipeline
