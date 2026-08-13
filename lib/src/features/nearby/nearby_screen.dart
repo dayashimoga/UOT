@@ -239,21 +239,20 @@ class _NearbyScreenState extends State<NearbyScreen>
           ),
           FilledButton.icon(
             onPressed: () async {
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
               final res = await engine.engineAcceptTransfer(transferId: transferId);
               if (ctx.mounted) {
                 Navigator.of(ctx).pop(true);
               }
-              if (context.mounted) {
-                final isOk = res.startsWith('ok');
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(isOk
-                        ? 'Receiving files from $fromDevice...'
-                        : 'Failed to accept: ${res.replaceFirst("error:", "")}'),
-                    backgroundColor: isOk ? null : Colors.red.shade700,
-                  ),
-                );
-              }
+              final isOk = res.startsWith('ok');
+              scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  content: Text(isOk
+                      ? 'Receiving files from $fromDevice...'
+                      : 'Failed to accept: ${res.replaceFirst("error:", "")}'),
+                  backgroundColor: isOk ? null : Colors.red.shade700,
+                ),
+              );
             },
             icon: const Icon(Icons.check_rounded),
             label: const Text('Accept'),

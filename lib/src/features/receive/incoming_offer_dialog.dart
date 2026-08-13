@@ -246,14 +246,20 @@ class _IncomingOfferDialogState extends State<IncomingOfferDialog> {
       ),
       actions: [
         OutlinedButton.icon(
-          onPressed: _onDecline,
+          onPressed: _isLoading ? null : _onDecline,
           icon: Icon(Icons.close_rounded, color: colorScheme.error),
           label: Text('Decline', style: TextStyle(color: colorScheme.error)),
         ),
         FilledButton.icon(
-          onPressed: _onAccept,
-          icon: const Icon(Icons.check_rounded),
-          label: const Text('Accept'),
+          onPressed: _isLoading ? null : _onAccept,
+          icon: _isLoading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.check_rounded),
+          label: Text(_isLoading ? 'Accepting...' : 'Accept'),
         ),
       ],
     );
