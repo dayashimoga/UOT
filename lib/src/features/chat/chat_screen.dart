@@ -4,6 +4,15 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uot_app/src/rust/api/engine_api.dart';
 
+String _formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+}
+
 /// Unified chat screen for a single peer session.
 /// Shows chronological messages (incoming + outgoing) with delivery states.
 class ChatScreen extends StatefulWidget {
@@ -24,14 +33,17 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _transfers = [];
+  Map<String, dynamic>? _pendingOffer;
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _loadMessages();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _loadMessages();
+    _loadData();
+    _refreshTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
+      _loadData();
+      _pollEvents();
     });
   }
 
@@ -43,18 +55,51 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  void _loadMessages() {
+  void _loadData() {
     try {
-      final json = engineGetMessages(peerDeviceId: widget.peerDeviceId);
-      final List<dynamic> parsed = jsonDecode(json);
+      final jsonMsgs = engineGetMessages(peerDeviceId: widget.peerDeviceId);
+      final List<dynamic> parsedMsgs = jsonDecode(jsonMsgs);
+
+      final jsonTransfers = engineGetTransfers();
+      final List<dynamic> parsedTransfers = jsonDecode(jsonTransfers);
+
       if (mounted) {
         setState(() {
-          _messages = parsed.cast<Map<String, dynamic>>();
+          _messages = parsedMsgs.cast<Map<String, dynamic>>();
+          _transfers = parsedTransfers
+              .cast<Map<String, dynamic>>()
+              .where((t) =>
+                  t['remote_name'] == widget.peerName ||
+                  t['remote_device'] == widget.peerDeviceId ||
+                  t['remote_device'] == widget.peerName)
+              .toList();
         });
       }
     } catch (e) {
-      debugPrint('Failed to load messages: $e');
+      debugPrint('Failed to load data: $e');
     }
+  }
+
+  void _pollEvents() {
+    if (!mounted) return;
+    try {
+      final eventsJson = enginePollEvents();
+      final List<dynamic> events = jsonDecode(eventsJson);
+      for (final event in events) {
+        if (event is! Map<String, dynamic>) continue;
+        final type = event['type'] as String?;
+        if (type == 'IncomingOffer') {
+          final fromDevice = event['from_device']?.toString() ?? '';
+          if (fromDevice == widget.peerName || fromDevice == widget.peerDeviceId) {
+            setState(() {
+              _pendingOffer = event;
+            });
+          }
+        } else if (type == 'TransferStatusChanged' || type == 'TransferProgress') {
+          _loadData();
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _sendMessage() async {
@@ -78,7 +123,7 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
       }
-      _loadMessages();
+      _loadData();
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
@@ -99,19 +144,32 @@ class _ChatScreenState extends State<ChatScreen> {
       final paths = result.paths.whereType<String>().toList();
       if (paths.isEmpty) return;
 
-      final transferId = await engineSendFiles(
+      final res = await engineSendFiles(
         deviceId: widget.peerDeviceId,
         filePaths: paths,
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Sending ${paths.length} file(s)... (ID: ${transferId.substring(0, 8)})'),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        if (res.startsWith('error:')) {
+          final err = res.replaceFirst('error:', '');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('File send error: $err'),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          final tid = res.replaceFirst('ok:', '');
+          final shortId = tid.length >= 8 ? tid.substring(0, 8) : tid;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Sending ${paths.length} file(s)... (ID: $shortId)'),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+          _loadData();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -171,9 +229,12 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          // Pending Offer Banner
+          if (_pendingOffer != null) _buildPendingOfferCard(theme),
+
           // Messages list
           Expanded(
-            child: _messages.isEmpty
+            child: _messages.isEmpty && _transfers.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -202,9 +263,23 @@ class _ChatScreenState extends State<ChatScreen> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: _messages.length,
+                    itemCount: _messages.length + _transfers.length,
                     itemBuilder: (context, index) {
-                      return _buildMessageBubble(_messages[index], theme);
+                      if (index < _messages.length) {
+                        final msg = _messages[index];
+                        final msgKey = msg['id'] ?? msg['message_id'] ?? 'msg_$index';
+                        return KeyedSubtree(
+                          key: ValueKey(msgKey),
+                          child: _buildMessageBubble(msg, theme),
+                        );
+                      } else {
+                        final t = _transfers[index - _messages.length];
+                        final transferKey = t['id'] ?? t['transfer_id'] ?? 'transfer_$index';
+                        return KeyedSubtree(
+                          key: ValueKey(transferKey),
+                          child: _buildTransferCard(t, theme),
+                        );
+                      }
                     },
                   ),
           ),
@@ -223,6 +298,11 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline_rounded),
+                  tooltip: 'Send Files',
+                  onPressed: _pickAndSendFiles,
+                ),
                 Expanded(
                   child: TextField(
                     controller: _messageController,
@@ -251,6 +331,179 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPendingOfferCard(ThemeData theme) {
+    final offer = _pendingOffer!;
+    final transferId = offer['transfer_id']?.toString() ?? '';
+    final items = (offer['items'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+    final totalSize = (offer['total_size'] as num?)?.toInt() ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.file_download_rounded, color: theme.colorScheme.onPrimaryContainer, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Incoming from ${widget.peerName}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${items.length} file(s) • ${_formatBytes(totalSize)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onPrimaryContainer.withOpacity(0.8),
+            ),
+          ),
+          if (items.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '• ${items.first}${items.length > 1 ? ' (and ${items.length - 1} more)' : ''}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer.withOpacity(0.8),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () async {
+                  setState(() {
+                    _pendingOffer = null;
+                  });
+                  try {
+                    await engineCancelTransfer(transferId: transferId);
+                  } catch (_) {}
+                },
+                child: Text('Reject', style: TextStyle(color: theme.colorScheme.error)),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: () async {
+                  setState(() {
+                    _pendingOffer = null;
+                  });
+                  final res = await engineAcceptTransfer(transferId: transferId);
+                  if (mounted) {
+                    final isOk = res.startsWith('ok');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(isOk
+                            ? 'Receiving files...'
+                            : 'Failed to accept: ${res.replaceFirst("error:", "")}'),
+                        backgroundColor: isOk ? null : Colors.red.shade700,
+                      ),
+                    );
+                    _loadData();
+                  }
+                },
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: const Text('Accept'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransferCard(Map<String, dynamic> t, ThemeData theme) {
+    final status = t['status']?.toString() ?? 'Pending';
+    final items = t['items'] as List<dynamic>?;
+    final firstItemName = (items != null && items.isNotEmpty && items.first is Map)
+        ? items.first['name']?.toString()
+        : null;
+    final fileName = t['file_name']?.toString() ??
+        firstItemName ??
+        t['name']?.toString() ??
+        'File transfer';
+    final totalBytes = (t['total_bytes'] as num?)?.toInt() ??
+        (t['total_size'] as num?)?.toInt() ??
+        0;
+    final transferredBytes = (t['transferred_bytes'] as num?)?.toInt() ?? 0;
+    final progress = (t['progress'] as num?)?.toDouble() ??
+        (totalBytes > 0 ? transferredBytes / totalBytes : 0.0);
+    final direction = t['direction']?.toString() ?? 'Send';
+    final isSend = direction == 'Send';
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isSend ? Icons.upload_file_rounded : Icons.download_for_offline_rounded,
+                  color: isSend ? Colors.blue.shade300 : Colors.green.shade300,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        fileName,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        '$status • ${_formatBytes(transferredBytes)} / ${_formatBytes(totalBytes)}',
+                        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                if (status == 'Transferring' || status == 'Pending')
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else if (status == 'Completed')
+                  const Icon(Icons.check_circle_rounded, color: Colors.green, size: 20)
+                else if (status == 'Failed')
+                  const Icon(Icons.error_rounded, color: Colors.red, size: 20),
+              ],
+            ),
+            if (status == 'Transferring' || status == 'Pending') ...[
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

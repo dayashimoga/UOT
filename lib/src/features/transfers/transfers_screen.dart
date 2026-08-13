@@ -115,20 +115,35 @@ class _TransfersScreenState extends State<TransfersScreen>
       final json = engine.engineGetTransfers();
       final List<dynamic> parsed = jsonDecode(json);
       final transfers = parsed
-          .map(
-            (t) => TransferInfo(
-              id: t['id'] ?? '',
-              fileName: t['file_name'] ?? 'Unknown',
-              remoteName: t['remote_name'] ?? 'Unknown',
-              direction: t['direction'] ?? 'Send',
-              status: t['status'] ?? 'Pending',
-              progress: (t['progress'] ?? 0.0).toDouble(),
-              totalBytes: (t['total_bytes'] ?? 0).toInt(),
-              transferredBytes: (t['transferred_bytes'] ?? 0).toInt(),
-              speed: t['speed'],
-              eta: t['eta'],
-            ),
-          )
+          .map((t) {
+            final items = t['items'] as List<dynamic>?;
+            final firstItemName = (items != null && items.isNotEmpty && items.first is Map)
+                ? items.first['name']?.toString()
+                : null;
+            final fileName = t['file_name']?.toString() ??
+                firstItemName ??
+                t['name']?.toString() ??
+                'Unknown';
+            final totalBytes = (t['total_bytes'] as num?)?.toInt() ??
+                (t['total_size'] as num?)?.toInt() ??
+                0;
+            final transferredBytes = (t['transferred_bytes'] as num?)?.toInt() ?? 0;
+            final progress = (t['progress'] as num?)?.toDouble() ??
+                (totalBytes > 0 ? transferredBytes / totalBytes : 0.0);
+
+            return TransferInfo(
+              id: t['id']?.toString() ?? t['transfer_id']?.toString() ?? '',
+              fileName: fileName,
+              remoteName: t['remote_name']?.toString() ?? t['remote_device']?.toString() ?? 'Unknown',
+              direction: t['direction']?.toString() ?? 'Send',
+              status: t['status']?.toString() ?? 'Pending',
+              progress: progress,
+              totalBytes: totalBytes,
+              transferredBytes: transferredBytes,
+              speed: t['speed']?.toString(),
+              eta: t['eta']?.toString(),
+            );
+          })
           .toList();
       setState(() {
         _activeTransfers.clear();
