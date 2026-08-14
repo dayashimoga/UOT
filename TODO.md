@@ -1,3 +1,13 @@
+### Sprint 22 — Production File-Transfer Progression, Android Chat Stability & Target-Only UX (Completed ✅)
+- [x] Fixed sender-side progress stalling by atomically writing `TransferStatus::InProgress` and chunk-level `transferred_bytes` to `self.transfers` in `execute_send_arc`
+- [x] Fixed receiver-side per-item progress tracking on `FileStart`, `DataChunk`, and `FileEnd`
+- [x] Restricted `Open`, `Folder`, and tap-to-open preview actions strictly to received files (`!isSend && isCompleted && savedPath.isNotEmpty`)
+- [x] Upgraded `_buildTransferCard` in `chat_screen.dart` to support multi-item batch transfer cards with per-item progress, status badges, and open actions
+- [x] Fixed Android chat scrambled/corrupted font glyph rendering by removing unbundled `fontFamily: 'Inter'` from `app_theme.dart` and replacing `SelectableText` with clean `Text` + copy interactions
+- [x] Implemented `ActiveChatSessionTracker` and updated `nearby_screen.dart` to suppress duplicate modals/SnackBars when inside active chat
+- [x] Added sender status and transferred bytes assertions to `transport_lab_e2e.rs`
+- [x] 100% test pass rate across all Rust suites and Flutter test suite; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean rustfmt
+
 ### Sprint 21 — Production Transport Lab, Deterministic E2E & UX Overhaul (Completed ✅)
 - [x] Fixed multi-peer connection misrouting & session overwrite bug in `get_peer_session` and `get_peer_connection`
 - [x] Fixed receiver `InProgress` status transition on data frame receipt and automatic `.part` touching on `FileStart`

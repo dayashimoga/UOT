@@ -3,6 +3,24 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.18] - 2026-08-14
+
+### Sprint 22 — Production File-Transfer Progression, Android Chat Stability & Target-Only UX
+
+#### Sender Progress & Live Transfer State
+- **Live Transfer Progression**: Fixed `execute_send_arc` in `rust/src/core/engine.rs` to atomically update `self.transfers` with `TransferStatus::InProgress`, per-chunk `transferred_bytes`, and individual item completion (`Completed` with verified SHA-256 hash). Sender UI now reflects real-time progress instead of stalling on "Waiting for receiver".
+- **Receiver Item State Tracking**: Enhanced `handle_incoming_connection` to track individual item progression (`InProgress` on `FileStart`, incremental bytes on `DataChunk`, `Completed` on `FileEnd`).
+
+#### Flutter Chat & File Card UX Remediation
+- **Target-Only Action Buttons**: Restricted `Open`, `Folder`, and tap preview handlers in `chat_screen.dart` strictly to received completed files (`!isSend && isCompleted && savedPath.isNotEmpty`). Sender cards cleanly show `SENT` badge and `Verified ✓`.
+- **Multi-Item Batch Cards**: Upgraded `_buildTransferCard` to render expandable multi-file batch transfers displaying overall progress alongside individual item progress bars, sizes, icons, and per-item open actions.
+- **Android Typography & Glyph Stability**: Removed unbundled `fontFamily: 'Inter'` from `app_theme.dart` (which caused Skia/Impeller glyph table corruption on mobile Android) and replaced message bubble selectable editable layers with clean `Text` and copy-to-clipboard interactions.
+- **Active Session Notification De-duplication**: Introduced `ActiveChatSessionTracker` and updated `nearby_screen.dart` to suppress duplicate modals and SnackBars when the user is actively viewing that peer's conversation.
+
+#### Deterministic Automated Verification
+- **E2E Transport Lab Assertions**: Enhanced `transport_lab_e2e.rs` to assert sender-side `TransferStatus::Completed`, `transferred_bytes == total_size`, and all items `Completed`.
+- **100% Test Pass Rate**: Verified across all 13 test suites (171+ Rust tests passed), 17 Flutter unit/widget tests passed, 0 Flutter analysis issues, and clean formatting.
+
 ## [0.1.0-alpha.17] - 2026-08-14
 
 ### Sprint 21 — Production Transport Lab, Deterministic E2E & UX Overhaul

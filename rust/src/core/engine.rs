@@ -737,6 +737,19 @@ impl UotEngine {
                 "Transfer {transfer_id} ACCEPTED by remote! Starting file data transmission..."
             );
 
+            // Update sender transfer status to InProgress
+            {
+                let mut t = transfers.write();
+                if let Some(record) = t.get_mut(&transfer_id) {
+                    record.status = TransferStatus::InProgress;
+                    record.started_at = Some(chrono::Utc::now());
+                }
+            }
+            let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                transfer_id,
+                status: TransferStatus::InProgress,
+            });
+
             let result = Self::execute_send_arc(
                 &conn,
                 items,
@@ -746,6 +759,7 @@ impl UotEngine {
                 bandwidth_limit,
                 pause_rx,
                 &event_tx,
+                &transfers,
             )
             .await;
 
@@ -756,6 +770,10 @@ impl UotEngine {
                         record.status = TransferStatus::Completed;
                         record.finished_at = Some(chrono::Utc::now());
                         record.transferred_bytes = record.total_size;
+                        for item in &mut record.items {
+                            item.status = TransferStatus::Completed;
+                            item.transferred_bytes = item.size;
+                        }
                         let speed = tracker.snapshot().speed_bytes_per_sec;
                         stats.write().record_success(record.total_size, true, speed);
                     }
@@ -793,11 +811,22 @@ impl UotEngine {
         bandwidth_limit: u64,
         mut pause_rx: watch::Receiver<bool>,
         event_tx: &mpsc::Sender<EngineEvent>,
+        transfers: &Arc<RwLock<HashMap<Uuid, TransferRecord>>>,
     ) -> Result<(), TransferError> {
         let mut rate_limiter = RateLimiter::new(bandwidth_limit);
 
         for item in &items {
             tracker.set_current_item(&item.name);
+
+            // Mark item as InProgress on sender side
+            {
+                let mut t = transfers.write();
+                if let Some(record) = t.get_mut(&transfer_id) {
+                    if let Some(item_rec) = record.items.iter_mut().find(|x| x.name == item.name) {
+                        item_rec.status = TransferStatus::InProgress;
+                    }
+                }
+            }
 
             let file_size = item.size;
             let mut offset: u64 = 0;
@@ -833,6 +862,19 @@ impl UotEngine {
                 offset += chunk_len;
                 tracker.add_bytes(chunk_len);
 
+                // Update sender-side transferred bytes in engine record
+                {
+                    let mut t = transfers.write();
+                    if let Some(record) = t.get_mut(&transfer_id) {
+                        record.transferred_bytes += chunk_len;
+                        if let Some(item_rec) =
+                            record.items.iter_mut().find(|x| x.name == item.name)
+                        {
+                            item_rec.transferred_bytes += chunk_len;
+                        }
+                    }
+                }
+
                 // Rate limiting
                 rate_limiter.consume(chunk_len as usize).await;
 
@@ -853,11 +895,23 @@ impl UotEngine {
             let verify = WireMessage::FileEnd {
                 transfer_id: transfer_id.to_string(),
                 item_index: items.iter().position(|x| x.name == item.name).unwrap_or(0) as u32,
-                sha256: hash,
+                sha256: hash.clone(),
             };
             proto::send_message(conn, &verify)
                 .await
                 .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+            // Mark item Completed on sender side
+            {
+                let mut t = transfers.write();
+                if let Some(record) = t.get_mut(&transfer_id) {
+                    if let Some(item_rec) = record.items.iter_mut().find(|x| x.name == item.name) {
+                        item_rec.status = TransferStatus::Completed;
+                        item_rec.hash = Some(hash);
+                        item_rec.transferred_bytes = item_rec.size;
+                    }
+                }
+            }
 
             tracker.complete_item();
         }
@@ -886,11 +940,22 @@ impl UotEngine {
         mut pause_rx: watch::Receiver<bool>,
         event_tx: &mpsc::Sender<EngineEvent>,
         mut session_cipher: SessionCipher,
+        transfers: &Arc<RwLock<HashMap<Uuid, TransferRecord>>>,
     ) -> Result<(), TransferError> {
         let mut rate_limiter = RateLimiter::new(bandwidth_limit);
 
         for item in &items {
             tracker.set_current_item(&item.name);
+
+            // Mark item as InProgress on sender side
+            {
+                let mut t = transfers.write();
+                if let Some(record) = t.get_mut(&transfer_id) {
+                    if let Some(item_rec) = record.items.iter_mut().find(|x| x.name == item.name) {
+                        item_rec.status = TransferStatus::InProgress;
+                    }
+                }
+            }
 
             let file_size = item.size;
             let mut offset: u64 = 0;
@@ -919,26 +984,38 @@ impl UotEngine {
                 chunk_frame.extend_from_slice(&[0u8; 4]); // reserved
                 chunk_frame.extend_from_slice(&chunk_data);
 
-                // Encrypt the entire chunk frame with AES-256-GCM
-                let encrypted_frame = session_cipher
+                // Encrypt chunk frame
+                let encrypted = session_cipher
                     .encrypt_frame(&chunk_frame)
                     .map_err(|e| TransferError::Protocol(format!("Encryption error: {e}")))?;
 
-                conn.send(Frame::data(encrypted_frame))
+                conn.send(Frame::data(encrypted))
                     .await
                     .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
 
                 offset += chunk_len;
                 tracker.add_bytes(chunk_len);
 
-                // Apply rate limiting
+                // Update sender-side transferred bytes in engine record
+                {
+                    let mut t = transfers.write();
+                    if let Some(record) = t.get_mut(&transfer_id) {
+                        record.transferred_bytes += chunk_len;
+                        if let Some(item_rec) =
+                            record.items.iter_mut().find(|x| x.name == item.name)
+                        {
+                            item_rec.transferred_bytes += chunk_len;
+                        }
+                    }
+                }
+
+                // Rate limiting
                 rate_limiter.consume(chunk_len as usize).await;
 
                 // Check pause signal
                 while *pause_rx.borrow() {
-                    // Wait until unpaused
                     if pause_rx.changed().await.is_err() {
-                        break; // Sender dropped (transfer cancelled)
+                        break;
                     }
                 }
 
@@ -952,11 +1029,23 @@ impl UotEngine {
             let verify = WireMessage::FileEnd {
                 transfer_id: transfer_id.to_string(),
                 item_index: items.iter().position(|x| x.name == item.name).unwrap_or(0) as u32,
-                sha256: hash,
+                sha256: hash.clone(),
             };
             proto::send_message(&conn, &verify)
                 .await
                 .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+
+            // Mark item Completed on sender side
+            {
+                let mut t = transfers.write();
+                if let Some(record) = t.get_mut(&transfer_id) {
+                    if let Some(item_rec) = record.items.iter_mut().find(|x| x.name == item.name) {
+                        item_rec.status = TransferStatus::Completed;
+                        item_rec.hash = Some(hash);
+                        item_rec.transferred_bytes = item_rec.size;
+                    }
+                }
+            }
 
             tracker.complete_item();
         }
@@ -1305,6 +1394,26 @@ impl UotEngine {
                                 .open(&part_path)
                                 .await;
 
+                            if let Some(tid) = current_transfer_id {
+                                let mut t = transfers.write();
+                                if let Some(record) = t.get_mut(&tid) {
+                                    if record.status == TransferStatus::Pending {
+                                        record.status = TransferStatus::InProgress;
+                                        record.started_at = Some(chrono::Utc::now());
+                                        let _ =
+                                            event_tx.try_send(EngineEvent::TransferStatusChanged {
+                                                transfer_id: tid,
+                                                status: TransferStatus::InProgress,
+                                            });
+                                    }
+                                    if let Some(item_rec) =
+                                        record.items.iter_mut().find(|i| i.name == file_name)
+                                    {
+                                        item_rec.status = TransferStatus::InProgress;
+                                    }
+                                }
+                            }
+
                             current_file =
                                 Some((part_path, target_file_path, file_name.clone(), file_size));
                             log::info!("Receiving file: {file_name} ({file_size} bytes)");
@@ -1618,6 +1727,16 @@ impl UotEngine {
                                             });
                                     }
                                     record.transferred_bytes += chunk_len;
+                                    if let Some(ref current) = current_file {
+                                        if let Some(item_rec) =
+                                            record.items.iter_mut().find(|i| i.name == current.2)
+                                        {
+                                            if item_rec.status == TransferStatus::Pending {
+                                                item_rec.status = TransferStatus::InProgress;
+                                            }
+                                            item_rec.transferred_bytes += chunk_len;
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -151,6 +151,29 @@ async fn test_three_node_concurrent_transfers_and_chat() {
     let dest_sha256 = compute_sha256(&dest_file);
     assert_eq!(source_sha256, dest_sha256, "SHA-256 match bit-for-bit");
 
+    // Verify sender-side record completion and byte accuracy
+    let a_transfers = engine_a.get_transfers();
+    let sender_rec = a_transfers
+        .iter()
+        .find(|t| t.transfer_id == tx_id)
+        .expect("Sender must have transfer record");
+    assert_eq!(
+        sender_rec.status,
+        TransferStatus::Completed,
+        "Sender must reach Completed status"
+    );
+    assert_eq!(
+        sender_rec.transferred_bytes, sender_rec.total_size,
+        "Sender transferred_bytes must equal total_size"
+    );
+    assert!(
+        sender_rec
+            .items
+            .iter()
+            .all(|i| i.status == TransferStatus::Completed),
+        "All sender items must be Completed"
+    );
+
     engine_a.stop();
     engine_b.stop();
     engine_c.stop();

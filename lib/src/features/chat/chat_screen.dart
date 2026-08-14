@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uot_app/src/rust/api/engine_api.dart';
+import 'active_session_tracker.dart';
 
 String _formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';
@@ -152,6 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    ActiveChatSessionTracker.setActiveSession(widget.peerDeviceId);
     _loadData();
     _refreshTimer = Timer.periodic(const Duration(milliseconds: 750), (_) {
       _loadData();
@@ -161,6 +163,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    if (ActiveChatSessionTracker.currentPeerDeviceId == widget.peerDeviceId) {
+      ActiveChatSessionTracker.setActiveSession(null);
+    }
     _refreshTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
@@ -805,28 +810,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildTransferCard(Map<String, dynamic> t, ThemeData theme) {
     final status = t['status']?.toString() ?? 'Pending';
-    final items = t['items'] as List<dynamic>?;
-    final firstItemName =
-        (items != null && items.isNotEmpty && items.first is Map)
-            ? items.first['name']?.toString()
-            : null;
-    final fileName = t['file_name']?.toString() ??
-        firstItemName ??
-        t['name']?.toString() ??
-        'File transfer';
+    final items = (t['items'] as List<dynamic>?)
+        ?.whereType<Map<String, dynamic>>()
+        .toList();
+    final direction = t['direction']?.toString() ?? 'Send';
+    final isSend = direction == 'Send';
+
     final totalBytes = (t['total_bytes'] as num?)?.toInt() ??
         (t['total_size'] as num?)?.toInt() ??
         0;
     final transferredBytes = (t['transferred_bytes'] as num?)?.toInt() ?? 0;
     final progress = (t['progress'] as num?)?.toDouble() ??
         (totalBytes > 0 ? transferredBytes / totalBytes : 0.0);
-    final direction = t['direction']?.toString() ?? 'Send';
-    final isSend = direction == 'Send';
-    final savedPath = t['saved_path']?.toString() ??
-        ((items != null && items.isNotEmpty && items.first is Map)
-            ? items.first['saved_path']?.toString()
-            : null) ??
-        '';
 
     final speedDisplay = t['speed_display']?.toString();
     final etaDisplay = t['eta_display']?.toString();
@@ -837,17 +832,221 @@ class _ChatScreenState extends State<ChatScreen> {
     final isCompleted = status == 'Completed';
     final isFailed = status == 'Failed';
 
+    // Multi-item batch card
+    if (items != null && items.length > 1) {
+      String batchStatusSubtitle = '';
+      if (isTransferring) {
+        final pct = (progress * 100).toStringAsFixed(0);
+        batchStatusSubtitle =
+            '$pct% • ${_formatBytes(transferredBytes)} / ${_formatBytes(totalBytes)}';
+        if (speedDisplay != null && speedDisplay.isNotEmpty) {
+          batchStatusSubtitle += ' • $speedDisplay';
+        }
+        if (etaDisplay != null &&
+            etaDisplay.isNotEmpty &&
+            etaDisplay != 'calculating…') {
+          batchStatusSubtitle += ' • ETA $etaDisplay';
+        }
+      } else if (isCompleted) {
+        batchStatusSubtitle =
+            'Batch Completed • ${items.length} files • ${_formatBytes(totalBytes)} • Verified ✓';
+      } else if (isFailed) {
+        final err = t['error']?.toString() ?? 'Transfer interrupted';
+        batchStatusSubtitle = 'Failed: $err';
+      } else {
+        batchStatusSubtitle = isSend
+            ? 'Waiting for receiver • ${items.length} files (${_formatBytes(totalBytes)})'
+            : 'Pending acceptance • ${items.length} files (${_formatBytes(totalBytes)})';
+      }
+
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withAlpha(120),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isCompleted
+                ? Colors.green.withAlpha(80)
+                : isFailed
+                    ? Colors.red.withAlpha(80)
+                    : theme.colorScheme.outlineVariant.withAlpha(60),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withAlpha(40),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.folder_copy_rounded,
+                        color: Colors.blue, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Batch Transfer (${items.length} files)',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSend
+                                    ? Colors.blue.withAlpha(30)
+                                    : Colors.green.withAlpha(30),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isSend ? 'SENT' : 'RECEIVED',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSend
+                                      ? Colors.blue.shade300
+                                      : Colors.green.shade300,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          batchStatusSubtitle,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: isFailed
+                                ? Colors.red.shade300
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (isTransferring || status == 'Pending') ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: isTransferring ? progress.clamp(0.0, 1.0) : null,
+                    minHeight: 4,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 6),
+              // Individual file items inside batch
+              ...items.map((item) {
+                final iName = item['name']?.toString() ?? 'File';
+                final iSize = (item['size'] as num?)?.toInt() ?? 0;
+                final iStatus = item['status']?.toString() ?? 'Pending';
+                final iSavedPath = item['saved_path']?.toString() ?? '';
+                final iDone = iStatus == 'Completed';
+                final iIcon = _getFileIcon(iName);
+                final iColor = _getFileColor(iName);
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(iIcon, color: iColor, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$iName (${_formatBytes(iSize)})',
+                          style: const TextStyle(fontSize: 12.5),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (iDone)
+                        Icon(Icons.check_circle_rounded,
+                            color: Colors.green.shade400, size: 16)
+                      else if (iStatus == 'InProgress')
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else
+                        Text(
+                          iStatus,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withAlpha(150),
+                          ),
+                        ),
+                      // Target-only Open action for individual completed file
+                      if (!isSend && iDone && iSavedPath.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        IconButton(
+                          icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                          tooltip: 'Open $iName',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                              minWidth: 24, minHeight: 24),
+                          onPressed: () => _openFile(iSavedPath, iName),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Single item transfer card
+    final firstItem =
+        (items != null && items.isNotEmpty) ? items.first : null;
+    final fileName = t['file_name']?.toString() ??
+        firstItem?['name']?.toString() ??
+        t['name']?.toString() ??
+        'File transfer';
+    final savedPath = t['saved_path']?.toString() ??
+        firstItem?['saved_path']?.toString() ??
+        '';
+
     final fileIcon = _getFileIcon(fileName);
     final fileColor = _getFileColor(fileName);
 
     String statusSubtitle = '';
     if (isTransferring) {
       final pct = (progress * 100).toStringAsFixed(0);
-      statusSubtitle = '$pct% • ${_formatBytes(transferredBytes)} / ${_formatBytes(totalBytes)}';
+      statusSubtitle =
+          '$pct% • ${_formatBytes(transferredBytes)} / ${_formatBytes(totalBytes)}';
       if (speedDisplay != null && speedDisplay.isNotEmpty) {
         statusSubtitle += ' • $speedDisplay';
       }
-      if (etaDisplay != null && etaDisplay.isNotEmpty && etaDisplay != 'calculating…') {
+      if (etaDisplay != null &&
+          etaDisplay.isNotEmpty &&
+          etaDisplay != 'calculating…') {
         statusSubtitle += ' • ETA $etaDisplay';
       }
     } else if (isCompleted) {
@@ -879,7 +1078,8 @@ class _ChatScreenState extends State<ChatScreen> {
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: isCompleted && savedPath.isNotEmpty
+          // Target-only tap preview
+          onTap: (!isSend && isCompleted && savedPath.isNotEmpty)
               ? () => _openFile(savedPath, fileName)
               : null,
           child: Padding(
@@ -977,7 +1177,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 ],
-                if (isCompleted && savedPath.isNotEmpty) ...[
+                // Target-only actions: Open and Folder exist strictly on receiver
+                if (!isSend && isCompleted && savedPath.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -985,7 +1186,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       TextButton.icon(
                         onPressed: () => _openFile(savedPath, fileName),
                         icon: const Icon(Icons.open_in_new_rounded, size: 15),
-                        label: const Text('Open', style: TextStyle(fontSize: 12)),
+                        label:
+                            const Text('Open', style: TextStyle(fontSize: 12)),
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                         ),
@@ -994,7 +1196,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       TextButton.icon(
                         onPressed: () => _revealInFolder(savedPath),
                         icon: const Icon(Icons.folder_open_rounded, size: 15),
-                        label: const Text('Folder', style: TextStyle(fontSize: 12)),
+                        label: const Text('Folder',
+                            style: TextStyle(fontSize: 12)),
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                         ),
@@ -1012,9 +1215,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(Map<String, dynamic> message, ThemeData theme) {
     final isOutgoing = message['direction'] == 'out';
-    final content = message['content'] ?? '';
-    final state = message['state'] ?? '';
-    final timestamp = message['timestamp'] ?? '';
+    final content = message['content']?.toString() ?? '';
+    final state = message['state']?.toString() ?? '';
+    final timestamp = message['timestamp']?.toString() ?? '';
 
     String timeStr = '';
     try {
@@ -1030,7 +1233,8 @@ class _ChatScreenState extends State<ChatScreen> {
           stateIcon = const SizedBox(
             width: 11,
             height: 11,
-            child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white70),
+            child: CircularProgressIndicator(
+                strokeWidth: 1.5, color: Colors.white70),
           );
           break;
         case 'Sent':
@@ -1049,64 +1253,84 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Align(
       alignment: isOutgoing ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        decoration: BoxDecoration(
-          color: isOutgoing
-              ? theme.colorScheme.primary
-              : theme.colorScheme.surfaceContainerHighest,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
             bottomLeft: Radius.circular(isOutgoing ? 16 : 4),
             bottomRight: Radius.circular(isOutgoing ? 4 : 16),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(12),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isOutgoing ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            SelectableText(
-              content,
-              style: TextStyle(
-                color: isOutgoing
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurface,
-                fontSize: 15,
-                height: 1.3,
+          onLongPress: () {
+            Clipboard.setData(ClipboardData(text: content));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Message copied to clipboard'),
+                duration: Duration(seconds: 1),
               ),
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.78,
             ),
-            const SizedBox(height: 3),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  timeStr,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: isOutgoing
-                        ? theme.colorScheme.onPrimary.withAlpha(180)
-                        : theme.colorScheme.onSurfaceVariant.withAlpha(150),
-                  ),
+            decoration: BoxDecoration(
+              color: isOutgoing
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isOutgoing ? 16 : 4),
+                bottomRight: Radius.circular(isOutgoing ? 4 : 16),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(12),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
                 ),
-                if (isOutgoing) ...[
-                  const SizedBox(width: 4),
-                  stateIcon,
-                ],
               ],
             ),
-          ],
+            child: Column(
+              crossAxisAlignment:
+                  isOutgoing ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Text(
+                  content,
+                  style: TextStyle(
+                    color: isOutgoing
+                        ? theme.colorScheme.onPrimary
+                        : theme.colorScheme.onSurface,
+                    fontSize: 15,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: isOutgoing
+                            ? theme.colorScheme.onPrimary.withAlpha(180)
+                            : theme.colorScheme.onSurfaceVariant.withAlpha(150),
+                      ),
+                    ),
+                    if (isOutgoing) ...[
+                      const SizedBox(width: 4),
+                      stateIcon,
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
