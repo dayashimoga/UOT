@@ -273,6 +273,7 @@ pub fn engine_get_transfers() -> String {
                     .first()
                     .map(|i| i.name.clone())
                     .unwrap_or_else(|| "File transfer".to_string());
+                let first_saved_path = t.items.first().and_then(|i| i.saved_path.clone());
                 let total_size = t.total_size;
                 let transferred_bytes = t.transferred_bytes;
                 let progress = if total_size > 0 {
@@ -298,6 +299,25 @@ pub fn engine_get_transfers() -> String {
                     );
                     obj.insert("total_bytes".to_string(), serde_json::json!(total_size));
                     obj.insert("progress".to_string(), serde_json::json!(progress));
+
+                    if let Some(path) = first_saved_path {
+                        obj.insert("saved_path".to_string(), serde_json::json!(path));
+                    }
+
+                    if let Some(tracker_prog) = engine.get_progress(&t.transfer_id) {
+                        obj.insert(
+                            "speed_bytes_per_sec".to_string(),
+                            serde_json::json!(tracker_prog.speed_bytes_per_sec),
+                        );
+                        obj.insert(
+                            "speed_display".to_string(),
+                            serde_json::json!(tracker_prog.speed_display()),
+                        );
+                        obj.insert(
+                            "eta_display".to_string(),
+                            serde_json::json!(tracker_prog.eta_display()),
+                        );
+                    }
                 }
 
                 val

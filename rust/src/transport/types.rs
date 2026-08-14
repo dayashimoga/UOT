@@ -16,12 +16,18 @@ pub enum TransportId {
     BluetoothLe,
     /// QR Code (animated visual data transport).
     QrCode,
+    /// Sound/Audio FSK transport.
+    Sound,
+    /// WebRTC direct data channel.
+    WebRtc,
     /// USB wired connection.
     Usb,
     /// Temporary hotspot.
     Hotspot,
     /// Future internet/relay transport.
     Relay,
+    /// Test / Simulated transport.
+    Simulated,
 }
 
 impl std::fmt::Display for TransportId {
@@ -32,9 +38,12 @@ impl std::fmt::Display for TransportId {
             Self::BluetoothClassic => write!(f, "Bluetooth"),
             Self::BluetoothLe => write!(f, "Bluetooth LE"),
             Self::QrCode => write!(f, "QR Code"),
+            Self::Sound => write!(f, "Audio FSK"),
+            Self::WebRtc => write!(f, "WebRTC"),
             Self::Usb => write!(f, "USB"),
             Self::Hotspot => write!(f, "Hotspot"),
             Self::Relay => write!(f, "Relay"),
+            Self::Simulated => write!(f, "Simulated Lab"),
         }
     }
 }
@@ -99,6 +108,12 @@ pub struct TransportCapabilities {
     pub supports_discovery: bool,
     /// Platforms where this transport is available.
     pub platforms: Vec<String>,
+    /// Whether this is a simulated / testing transport.
+    #[serde(default)]
+    pub is_simulated: bool,
+    /// Whether physical hardware is required for operation.
+    #[serde(default)]
+    pub requires_physical_hardware: bool,
 }
 
 /// Runtime statistics for a transport connection.
@@ -168,6 +183,8 @@ mod tests {
             supports_streaming: true,
             supports_discovery: true,
             platforms: vec!["android".to_string(), "windows".to_string()],
+            is_simulated: false,
+            requires_physical_hardware: false,
         };
         let json = serde_json::to_string(&caps).unwrap();
         let deserialized: TransportCapabilities = serde_json::from_str(&json).unwrap();

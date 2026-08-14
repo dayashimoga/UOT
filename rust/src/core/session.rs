@@ -297,9 +297,13 @@ impl PeerSession {
         }
     }
 
-    /// Add a chat message to the session history.
+    /// Add a chat message to the session history (capped at 1000 messages).
     pub fn add_message(&mut self, message: ChatMessage) {
         self.messages.push(message);
+        if self.messages.len() > 1000 {
+            let excess = self.messages.len() - 1000;
+            self.messages.drain(0..excess);
+        }
     }
 
     /// Update a message's delivery state by message_id.
@@ -327,54 +331,85 @@ impl PeerSession {
 
     /// Serialize session info to JSON (without connection).
     pub fn to_json(&self) -> String {
-        let msgs_json: Vec<String> = self
+        #[derive(Serialize)]
+        struct ChatMessageDto {
+            message_id: String,
+            direction: &'static str,
+            timestamp: String,
+            content: String,
+            state: String,
+        }
+
+        #[derive(Serialize)]
+        struct SessionDto<'a> {
+            session_id: String,
+            peer_device_id: &'a str,
+            peer_name: &'a str,
+            local_endpoint: String,
+            remote_endpoint: String,
+            transport: String,
+            state: String,
+            auth_state: String,
+            last_heartbeat_ago_ms: u64,
+            missed_heartbeats: u32,
+            capabilities: &'a [String],
+            messages: Vec<ChatMessageDto>,
+            active_transfers: Vec<String>,
+            created_at: String,
+        }
+
+        let msgs: Vec<ChatMessageDto> = self
             .messages
             .iter()
             .rev()
             .take(50)
             .rev()
-            .map(|m| {
-                let escaped = m.content.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
-                format!(
-                    r#"{{"message_id":"{}","direction":"{}","timestamp":"{}","content":"{}","state":"{}"}}"#,
-                    m.message_id,
-                    if m.direction == MessageDirection::Outgoing { "out" } else { "in" },
-                    m.timestamp.to_rfc3339(),
-                    escaped,
-                    m.state,
-                )
+            .map(|m| ChatMessageDto {
+                message_id: m.message_id.to_string(),
+                direction: if m.direction == MessageDirection::Outgoing {
+                    "out"
+                } else {
+                    "in"
+                },
+                timestamp: m.timestamp.to_rfc3339(),
+                content: m.content.clone(),
+                state: m.state.to_string(),
             })
             .collect();
 
-        let transfers_json: Vec<String> = self
+        let active_transfers: Vec<String> = self
             .active_transfers
             .iter()
-            .map(|t| format!("\"{}\"", t))
+            .map(|t| t.to_string())
             .collect();
 
-        format!(
-            r#"{{"session_id":"{}","peer_device_id":"{}","peer_name":"{}","local_endpoint":"{}","remote_endpoint":"{}","transport":"{}","state":"{}","auth_state":"{}","last_heartbeat_ago_ms":{},"missed_heartbeats":{},"capabilities":{:?},"messages":[{}],"active_transfers":[{}],"created_at":"{}"}}"#,
-            self.session_id,
-            self.peer_device_id,
-            self.peer_name,
-            self.local_endpoint
+        let dto = SessionDto {
+            session_id: self.session_id.to_string(),
+            peer_device_id: &self.peer_device_id,
+            peer_name: &self.peer_name,
+            local_endpoint: self
+                .local_endpoint
                 .map(|e| e.to_string())
                 .unwrap_or_default(),
-            self.remote_endpoint
+            remote_endpoint: self
+                .remote_endpoint
                 .map(|e| e.to_string())
                 .unwrap_or_default(),
-            self.transport,
-            self.state,
-            self.auth_state,
-            self.last_heartbeat
+            transport: self.transport.to_string(),
+            state: self.state.to_string(),
+            auth_state: self.auth_state.to_string(),
+            last_heartbeat_ago_ms: self
+                .last_heartbeat
                 .map(|t| t.elapsed().as_millis() as u64)
                 .unwrap_or(0),
-            self.missed_heartbeats,
-            self.capabilities,
-            msgs_json.join(","),
-            transfers_json.join(","),
-            self.created_at.to_rfc3339(),
-        )
+            missed_heartbeats: self.missed_heartbeats,
+            capabilities: &self.capabilities,
+            messages: msgs,
+            active_transfers,
+            created_at: self.created_at.to_rfc3339(),
+        };
+
+        serde_json::to_string(&dto).unwrap_or_else(|_| "{}".to_string())
     }
 }
 

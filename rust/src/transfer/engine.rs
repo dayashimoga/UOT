@@ -335,6 +335,7 @@ pub fn create_transfer_record(
             transferred_bytes: 0,
             status: TransferStatus::Queued,
             hash: None,
+            saved_path: Some(item.path.to_string_lossy().to_string()),
         })
         .collect();
 

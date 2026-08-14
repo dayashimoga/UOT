@@ -60,6 +60,8 @@ impl QuicTransport {
                 "macos".into(),
                 "linux".into(),
             ],
+            is_simulated: false,
+            requires_physical_hardware: false,
         }
     }
 

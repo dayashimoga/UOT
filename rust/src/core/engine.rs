@@ -472,20 +472,24 @@ impl UotEngine {
             }
         }
 
-        // 5. Fallback: Search all active connections in connections map or sessions for ANY connected TcpConnection
-        for conn in conns.values() {
-            if conn.state() == crate::transport::types::TransportState::Connected {
-                return Some(Arc::clone(conn));
+        // 5. Fallback: Only if target is empty and exactly 1 connection exists, use it
+        if target.is_empty() && conns.len() == 1 {
+            if let Some(conn) = conns.values().next() {
+                if conn.state() == crate::transport::types::TransportState::Connected {
+                    return Some(Arc::clone(conn));
+                }
             }
         }
 
         {
             let sessions = self.sessions.read();
-            for session_arc in sessions.values() {
-                let s = session_arc.read();
-                if let Some(ref conn) = s.connection {
-                    if conn.state() == crate::transport::types::TransportState::Connected {
-                        return Some(Arc::clone(conn));
+            if target.is_empty() && sessions.len() == 1 {
+                if let Some(session_arc) = sessions.values().next() {
+                    let s = session_arc.read();
+                    if let Some(ref conn) = s.connection {
+                        if conn.state() == crate::transport::types::TransportState::Connected {
+                            return Some(Arc::clone(conn));
+                        }
                     }
                 }
             }
@@ -1216,6 +1220,7 @@ impl UotEngine {
                                     transferred_bytes: 0,
                                     status: TransferStatus::Pending,
                                     hash: None,
+                                    saved_path: None,
                                 })
                                 .collect();
 
@@ -1292,6 +1297,14 @@ impl UotEngine {
                             let part_path =
                                 target_file_path.with_extension(format!("{ext_str}.part"));
 
+                            // Touch/initialize the part file immediately (handles 0-byte files reliably)
+                            let _ = tokio::fs::OpenOptions::new()
+                                .create(true)
+                                .write(true)
+                                .truncate(true)
+                                .open(&part_path)
+                                .await;
+
                             current_file =
                                 Some((part_path, target_file_path, file_name.clone(), file_size));
                             log::info!("Receiving file: {file_name} ({file_size} bytes)");
@@ -1334,22 +1347,58 @@ impl UotEngine {
                                                 target_path
                                             };
 
-                                            if let Err(e) =
-                                                tokio::fs::rename(&part_path, &final_path).await
-                                            {
-                                                log::error!(
-                                                    "Failed to rename temporary part file for {name}: {e}"
-                                                );
-                                            } else {
+                                            let rename_res =
+                                                tokio::fs::rename(&part_path, &final_path).await;
+                                            let saved_ok = match rename_res {
+                                                Ok(()) => true,
+                                                Err(e) => {
+                                                    log::warn!("Atomic rename failed for {name}: {e}. Retrying via copy+remove...");
+                                                    if tokio::fs::copy(&part_path, &final_path)
+                                                        .await
+                                                        .is_ok()
+                                                    {
+                                                        let _ = tokio::fs::remove_file(&part_path)
+                                                            .await;
+                                                        true
+                                                    } else {
+                                                        log::error!("Failed to save final file for {name}: {e}");
+                                                        false
+                                                    }
+                                                }
+                                            };
+
+                                            if saved_ok {
                                                 log::info!(
                                                     "Saved file to {}",
                                                     final_path.display()
                                                 );
+                                                if let Some(tid) = current_transfer_id {
+                                                    let mut t = transfers.write();
+                                                    if let Some(record) = t.get_mut(&tid) {
+                                                        if let Some(item_rec) = record
+                                                            .items
+                                                            .iter_mut()
+                                                            .find(|i| i.name == name)
+                                                        {
+                                                            item_rec.status =
+                                                                TransferStatus::Completed;
+                                                            item_rec.hash =
+                                                                Some(actual_hash.clone());
+                                                            item_rec.transferred_bytes =
+                                                                item_rec.size;
+                                                            item_rec.saved_path = Some(
+                                                                final_path
+                                                                    .to_string_lossy()
+                                                                    .to_string(),
+                                                            );
+                                                        }
+                                                    }
+                                                }
                                             }
                                         } else {
                                             log::error!(
-                                                "File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}"
-                                            );
+                                            "File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}"
+                                        );
                                             let _ = tokio::fs::remove_file(&part_path).await;
                                         }
                                     }
@@ -1369,6 +1418,13 @@ impl UotEngine {
                                 if let Some(record) = t.get_mut(&tid) {
                                     record.status = TransferStatus::Completed;
                                     record.finished_at = Some(chrono::Utc::now());
+                                    record.transferred_bytes = record.total_size;
+                                    for item in &mut record.items {
+                                        if item.status != TransferStatus::Completed {
+                                            item.status = TransferStatus::Completed;
+                                            item.transferred_bytes = item.size;
+                                        }
+                                    }
                                 }
                                 let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
                                     transfer_id: tid,
@@ -1549,9 +1605,18 @@ impl UotEngine {
                                 let progress = tracker.snapshot();
                                 let _ = event_tx.try_send(EngineEvent::TransferProgress(progress));
                             }
-                            // Update transfer record bytes
+                            // Update transfer record status and bytes
                             if let Some(tid) = current_transfer_id {
                                 if let Some(record) = transfers.write().get_mut(&tid) {
+                                    if record.status == TransferStatus::Pending {
+                                        record.status = TransferStatus::InProgress;
+                                        record.started_at = Some(chrono::Utc::now());
+                                        let _ =
+                                            event_tx.try_send(EngineEvent::TransferStatusChanged {
+                                                transfer_id: tid,
+                                                status: TransferStatus::InProgress,
+                                            });
+                                    }
                                     record.transferred_bytes += chunk_len;
                                 }
                             }
@@ -1623,7 +1688,7 @@ impl UotEngine {
                 return Some(Arc::clone(session_arc));
             }
             if let Some(ref remote) = s.remote_endpoint {
-                if remote.to_string() == target || remote.ip().to_string() == target {
+                if remote.to_string() == target {
                     return Some(Arc::clone(session_arc));
                 }
             }
@@ -1645,8 +1710,8 @@ impl UotEngine {
             }
         }
 
-        // 4. Fallback: If sessions map has exactly 1 session, return it
-        if sessions.len() == 1 {
+        // 4. Fallback: Only if target is empty and sessions map has exactly 1 session, return it
+        if target.is_empty() && sessions.len() == 1 {
             if let Some(session) = sessions.values().next() {
                 return Some(Arc::clone(session));
             }
@@ -1683,31 +1748,32 @@ impl UotEngine {
     /// Get messages for a specific peer session as JSON.
     pub fn get_session_messages(&self, peer_device_id: &str) -> String {
         if let Some(session_arc) = self.get_peer_session(peer_device_id) {
+            #[derive(Serialize)]
+            struct MessageJsonDto<'a> {
+                message_id: String,
+                direction: &'static str,
+                timestamp: String,
+                content: &'a str,
+                state: String,
+            }
+
             let s = session_arc.read();
-            let msgs: Vec<String> = s
+            let dtos: Vec<MessageJsonDto> = s
                 .messages
                 .iter()
-                .map(|m| {
-                    let escaped = m
-                        .content
-                        .replace('\\', "\\\\")
-                        .replace('"', "\\\"")
-                        .replace('\n', "\\n");
-                    format!(
-                        r#"{{"message_id":"{}","direction":"{}","timestamp":"{}","content":"{}","state":"{}"}}"#,
-                        m.message_id,
-                        if m.direction == MessageDirection::Outgoing {
-                            "out"
-                        } else {
-                            "in"
-                        },
-                        m.timestamp.to_rfc3339(),
-                        escaped,
-                        m.state,
-                    )
+                .map(|m| MessageJsonDto {
+                    message_id: m.message_id.to_string(),
+                    direction: if m.direction == MessageDirection::Outgoing {
+                        "out"
+                    } else {
+                        "in"
+                    },
+                    timestamp: m.timestamp.to_rfc3339(),
+                    content: &m.content,
+                    state: m.state.to_string(),
                 })
                 .collect();
-            format!("[{}]", msgs.join(","))
+            serde_json::to_string(&dtos).unwrap_or_else(|_| "[]".to_string())
         } else {
             "[]".to_string()
         }
@@ -2078,12 +2144,18 @@ impl UotEngine {
             let mut transfers = self.transfers.write();
             if let Some(record) = transfers.get_mut(&uuid) {
                 record.status = TransferStatus::InProgress;
+                record.started_at = Some(chrono::Utc::now());
                 self.log_event(&format!("Transfer {transfer_id} accepted"));
                 Some(record.remote_device.clone())
             } else {
                 None
             }
         };
+
+        let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
+            transfer_id: uuid,
+            status: TransferStatus::InProgress,
+        });
 
         if let Some(ref dev_id) = remote_dev {
             // First check transfer_connections for the EXACT TcpConnection used for this offer!

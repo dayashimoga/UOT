@@ -4,7 +4,9 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../rust/api/engine_api.dart' as engine;
 
 // Transfer model.
@@ -19,6 +21,7 @@ class TransferInfo {
   final int transferredBytes;
   final String? speed;
   final String? eta;
+  final String? savedPath;
 
   TransferInfo({
     required this.id,
@@ -31,6 +34,7 @@ class TransferInfo {
     required this.transferredBytes,
     this.speed,
     this.eta,
+    this.savedPath,
   });
 
   bool get isActive =>
@@ -142,6 +146,7 @@ class _TransfersScreenState extends State<TransfersScreen>
               transferredBytes: transferredBytes,
               speed: t['speed']?.toString(),
               eta: t['eta']?.toString(),
+              savedPath: t['saved_path']?.toString(),
             );
           })
           .toList();
@@ -452,6 +457,47 @@ class _HistoryTransferCard extends StatelessWidget {
 
   final TransferInfo transfer;
 
+  void _handleOpen(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final path = transfer.savedPath ?? '';
+    if (path.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('File location not available')),
+      );
+      return;
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('File not found at: $path')),
+      );
+      return;
+    }
+
+    if (Platform.isWindows) {
+      try {
+        await Process.run('cmd', ['/c', 'start', '', path]);
+        return;
+      } catch (_) {}
+    } else if (Platform.isMacOS) {
+      try {
+        await Process.run('open', [path]);
+        return;
+      } catch (_) {}
+    } else if (Platform.isLinux) {
+      try {
+        await Process.run('xdg-open', [path]);
+        return;
+      } catch (_) {}
+    }
+
+    Clipboard.setData(ClipboardData(text: path));
+    messenger.showSnackBar(
+      SnackBar(content: Text('Saved to: $path (Path copied)')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -460,6 +506,7 @@ class _HistoryTransferCard extends StatelessWidget {
 
     return Card(
       child: ListTile(
+        onTap: transfer.status == 'Completed' ? () => _handleOpen(context) : null,
         leading: Container(
           width: 40,
           height: 40,
@@ -478,9 +525,20 @@ class _HistoryTransferCard extends StatelessWidget {
           '${transfer.direction} • ${_formatBytes(transfer.totalBytes)} • ${transfer.remoteName}',
           style: theme.textTheme.bodySmall,
         ),
-        trailing: Text(
-          transfer.status,
-          style: theme.textTheme.labelSmall?.copyWith(color: statusColor),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              transfer.status,
+              style: theme.textTheme.labelSmall?.copyWith(color: statusColor),
+            ),
+            if (transfer.status == 'Completed' &&
+                transfer.savedPath != null &&
+                transfer.savedPath!.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.open_in_new_rounded, size: 16),
+            ],
+          ],
         ),
       ),
     );

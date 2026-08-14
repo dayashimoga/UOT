@@ -867,9 +867,7 @@ class _DeviceCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      hasAddress
-                          ? '${device.deviceType} • ${device.address}'
-                          : '${device.deviceType} • ${device.capabilities.join(", ")}',
+                      '${device.deviceType} • Wi-Fi Network',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),

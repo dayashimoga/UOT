@@ -1,0 +1,27 @@
+# Multi-Node Test Container for UOT Transport Lab
+FROM rust:1.78-slim as builder
+
+WORKDIR /app
+COPY . .
+RUN cargo build --manifest-path rust/Cargo.toml --release --bin uot_headless || cargo build --manifest-path rust/Cargo.toml --release --lib
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iproute2 \
+    iptables \
+    net-tools \
+    iputils-ping \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /uot
+ENV RUST_LOG=info
+ENV UOT_HEADLESS=1
+
+# Expose default UOT transport port
+EXPOSE 4242/tcp
+EXPOSE 4242/udp
+
+CMD ["echo", "UOT Peer Node Ready for Transport Lab Automation"]

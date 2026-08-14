@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../rust/api/init.dart' as rust_api;
 import '../../rust/api/engine_api.dart' as engine;
+import '../diagnostics/transport_lab_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.onToggleTheme});
@@ -292,6 +293,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Developer Lab
+                _SectionHeader(title: 'DEVELOPER & LAB', theme: theme),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.cyan.withAlpha(30),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.science_rounded, color: Colors.cyan),
+                    ),
+                    title: Text(
+                      'UOT Transport Lab & Diagnostics',
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      'Capability matrix, fault injection & benchmarks',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const TransportLabScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 32),

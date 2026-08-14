@@ -49,6 +49,9 @@ pub struct TransferItemRecord {
     pub status: TransferStatus,
     /// SHA-256 hash (computed after transfer).
     pub hash: Option<String>,
+    /// Saved absolute or canonical path on local disk (if available).
+    #[serde(default)]
+    pub saved_path: Option<String>,
 }
 
 /// Direction of a transfer.

@@ -302,6 +302,7 @@ fn test_history_upsert_and_query() {
             transferred_bytes: 1024,
             status: TransferStatus::Completed,
             hash: Some("abc123".to_string()),
+            saved_path: Some("/tmp/photo.jpg".to_string()),
         }],
         total_size: 1024,
         transferred_bytes: 1024,
@@ -1078,6 +1079,7 @@ fn test_transfer_history_store_persistence() {
             transferred_bytes: 2048,
             status: TransferStatus::Completed,
             hash: None,
+            saved_path: None,
         }],
         total_size: 2048,
         transferred_bytes: 2048,
@@ -1712,6 +1714,7 @@ fn test_transfer_item_record_serialization() {
         transferred_bytes: 0,
         status: TransferStatus::Pending,
         hash: None,
+        saved_path: None,
     };
     let json = serde_json::to_string(&item).unwrap();
     let parsed: TransferItemRecord = serde_json::from_str(&json).unwrap();

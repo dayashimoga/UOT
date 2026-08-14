@@ -9,6 +9,7 @@ pub mod connection_manager;
 pub mod fallback;
 pub mod hotspot;
 pub mod quic;
+pub mod simulator;
 pub mod tcp;
 pub mod types;
 pub mod usb;

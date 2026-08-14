@@ -1,3 +1,17 @@
+### Sprint 21 — Production Transport Lab, Deterministic E2E & UX Overhaul (Completed ✅)
+- [x] Fixed multi-peer connection misrouting & session overwrite bug in `get_peer_session` and `get_peer_connection`
+- [x] Fixed receiver `InProgress` status transition on data frame receipt and automatic `.part` touching on `FileStart`
+- [x] Fixed receiver atomic rename (`.part` -> final) with copy fallback and populated `saved_path` across transfers
+- [x] Fixed chat message JSON corruption on Android/Windows by using structured DTOs with `serde_json` serialization and capped chat history at 1000 messages
+- [x] Overhauled `ChatScreen` with unified chronological timeline, rich file icons, in-app preview for images/notes, live speed/ETA display, and open/reveal handlers
+- [x] Created `TransportSimulator` (`rust/src/transport/simulator.rs`) with configurable jitter, packet loss, bit flips, and network partition simulation
+- [x] Created deterministic animated QR optical transport reassembly test suite (`rust/tests/animated_qr_e2e_test.rs`)
+- [x] Created acoustic sound FSK modulation, demodulation, noise injection, and CRC16 test suite (`rust/tests/audio_fsk_e2e_test.rs`)
+- [x] Created multi-node deterministic integration test suite (`rust/tests/transport_lab_e2e.rs`) asserting disk persistence, exact byte size, and SHA-256 match
+- [x] Created Docker multi-node test container (`docker/Dockerfile.peer`) and 3-peer test network (`docker/docker-compose.test.yml`)
+- [x] Built Developer Transport Lab & Diagnostics screen in Flutter (`lib/src/features/diagnostics/transport_lab_screen.dart`) with capability matrix, fault injection sliders, and synthetic loopback benchmarks
+- [x] 100% test pass rate across all Rust suites and Flutter test suite; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean rustfmt
+
 ### Sprint 20 — File Transfer OfferResponse Socket Routing & Inline UI Overhaul (Completed ✅)
 - [x] Resolved critical file transfer failure by introducing `transfer_connections` socket map in `UotEngine`
 - [x] Routed `OfferResponse` on the exact `TcpConnection` instance that delivered the `Offer` message
