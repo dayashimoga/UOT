@@ -1380,7 +1380,7 @@ async fn test_protocol_send_recv_message_via_tcp() {
     use rust_lib_uot_app::protocol::handler::{recv_message, send_message};
     use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
 
-    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let (listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
     let port = listener.port();
     let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
 
@@ -1419,7 +1419,7 @@ async fn test_protocol_send_recv_data_chunk_via_tcp() {
     use rust_lib_uot_app::protocol::handler::{recv_data_chunk, send_data_chunk};
     use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
 
-    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let (listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
     let port = listener.port();
     let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
 
@@ -1450,7 +1450,7 @@ async fn test_protocol_recv_data_chunk_too_short() {
     use rust_lib_uot_app::protocol::handler::recv_data_chunk;
     use rust_lib_uot_app::transport::tcp::{Frame, FrameType, TcpConnection, TcpTransportListener};
 
-    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let (listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
     let port = listener.port();
     let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
 
@@ -1481,7 +1481,7 @@ async fn test_protocol_recv_data_chunk_unexpected_control() {
     use rust_lib_uot_app::protocol::handler::{recv_data_chunk, send_message};
     use rust_lib_uot_app::transport::tcp::{TcpConnection, TcpTransportListener};
 
-    let (mut listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
+    let (listener, mut incoming) = TcpTransportListener::bind(0).await.unwrap();
     let port = listener.port();
     let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
 
@@ -2575,11 +2575,8 @@ async fn test_engine_additional_uncovered_branches() {
         last_seen: chrono::Utc::now(),
         is_trusted: false,
     };
+    engine.add_discovered_device(no_addr_dev);
     engine.discovered_devices(); // hits read lock
-                                 // Insert into devices map
-    {
-        // access via connect_peer or subnet_scan or inline API
-    }
 
     // 4. Pause, Resume, Cancel on non-existent transfer
     assert!(engine.pause_transfer("invalid_id").is_err());
@@ -3004,4 +3001,166 @@ fn test_new_wire_messages_serialization() {
     };
     let json_cack = serde_json::to_string(&c_ack).unwrap();
     assert!(json_cack.contains("transfer_complete_ack"));
+
+    let pause = WireMessage::Pause {
+        transfer_id: "t-pause-1".to_string(),
+    };
+    let json_pause = serde_json::to_string(&pause).unwrap();
+    assert!(json_pause.contains("pause"));
+    let de_pause: WireMessage = serde_json::from_str(&json_pause).unwrap();
+    match de_pause {
+        WireMessage::Pause { transfer_id } => assert_eq!(transfer_id, "t-pause-1"),
+        _ => panic!("Expected Pause"),
+    }
+
+    let pause_ack = WireMessage::PauseAck {
+        transfer_id: "t-pause-1".to_string(),
+    };
+    let json_pack = serde_json::to_string(&pause_ack).unwrap();
+    assert!(json_pack.contains("pause_ack"));
+
+    let resume = WireMessage::Resume {
+        transfer_id: "t-res-1".to_string(),
+        offset: 1024,
+    };
+    let json_res = serde_json::to_string(&resume).unwrap();
+    assert!(json_res.contains("resume"));
+
+    let resume_ack = WireMessage::ResumeAck {
+        transfer_id: "t-res-1".to_string(),
+        offset: 1024,
+    };
+    let json_rack = serde_json::to_string(&resume_ack).unwrap();
+    assert!(json_rack.contains("resume_ack"));
+
+    let cancel = WireMessage::Cancel {
+        transfer_id: "t-can-1".to_string(),
+        reason: Some("User requested".to_string()),
+    };
+    let json_can = serde_json::to_string(&cancel).unwrap();
+    assert!(json_can.contains("cancel"));
+}
+
+#[tokio::test]
+async fn test_engine_transfer_lifecycle_error_paths() {
+    use uuid::Uuid;
+
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+
+    // Invalid UUID strings
+    assert!(engine.pause_transfer("invalid-uuid").is_err());
+    assert!(engine.resume_transfer("invalid-uuid").is_err());
+    assert!(engine.cancel_transfer("invalid-uuid").await.is_err());
+    assert!(engine.retry_transfer("invalid-uuid").await.is_err());
+    assert!(engine.accept_transfer("invalid-uuid").await.is_err());
+
+    // Non-existent valid UUIDs
+    let missing_id = Uuid::new_v4().to_string();
+    assert!(engine.pause_transfer(&missing_id).is_err());
+    assert!(engine.resume_transfer(&missing_id).is_err());
+    assert!(engine.cancel_transfer(&missing_id).await.is_err());
+    assert!(engine.retry_transfer(&missing_id).await.is_err());
+    assert!(engine.accept_transfer(&missing_id).await.is_err());
+
+    // Save directory setters
+    assert_eq!(
+        engine.config().transfer.save_directory,
+        AppConfig::default().transfer.save_directory
+    );
+    engine.set_save_directory("H:/Downloads/UOT_Test");
+    assert_eq!(
+        engine.config().transfer.save_directory,
+        "H:/Downloads/UOT_Test"
+    );
+
+    // Diagnostics getter
+    let diag = engine.get_diagnostics();
+    assert!(diag.contains("engine_state"));
+}
+
+#[test]
+fn test_engine_device_deduplication_branches() {
+    use chrono::Utc;
+    use rust_lib_uot_app::discovery::types::{DeviceType, DiscoveredDevice, DiscoveryMethod};
+
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+    let now = Utc::now();
+
+    // 1. Synthetic lan-* device
+    let d1 = DiscoveredDevice {
+        device_id: "lan-192-168-0-20".to_string(),
+        device_name: "UOT Node (192.168.0.20)".to_string(),
+        device_type: DeviceType::Desktop,
+        discovery_method: DiscoveryMethod::Manual,
+        address: Some("192.168.0.20:42000".to_string()),
+        capabilities: vec!["tcp_lan".to_string()],
+        signal_strength: Some(100),
+        first_seen: now,
+        last_seen: now,
+        is_trusted: false,
+    };
+    engine.add_discovered_device(d1);
+
+    // 2. Synthetic peer-* device with same IP
+    let d2 = DiscoveredDevice {
+        device_id: "peer-192-168-0-20-42000".to_string(),
+        device_name: "Peer Node".to_string(),
+        device_type: DeviceType::Desktop,
+        discovery_method: DiscoveryMethod::Manual,
+        address: Some("192.168.0.20:42000".to_string()),
+        capabilities: vec!["tcp_lan".to_string()],
+        signal_strength: Some(100),
+        first_seen: now,
+        last_seen: now,
+        is_trusted: false,
+    };
+    engine.add_discovered_device(d2);
+
+    let devs = engine.discovered_devices();
+    assert_eq!(
+        devs.len(),
+        1,
+        "Should deduplicate multiple synthetics on same IP"
+    );
+
+    // 3. Real authenticated device with same IP
+    let d3 = DiscoveredDevice {
+        device_id: "real-node-uuid-12345".to_string(),
+        device_name: "MY_MACBOOK".to_string(),
+        device_type: DeviceType::Laptop,
+        discovery_method: DiscoveryMethod::Mdns,
+        address: Some("192.168.0.20:42000".to_string()),
+        capabilities: vec!["tcp_lan".to_string(), "connected".to_string()],
+        signal_strength: Some(100),
+        first_seen: now,
+        last_seen: now,
+        is_trusted: true,
+    };
+    engine.add_discovered_device(d3);
+
+    let devs_real = engine.discovered_devices();
+    assert_eq!(devs_real.len(), 1);
+    assert_eq!(devs_real[0].device_name, "MY_MACBOOK");
+    assert!(devs_real[0].capabilities.contains(&"connected".to_string()));
+}
+
+#[test]
+fn test_engine_session_and_message_management_full() {
+    let config = AppConfig::default();
+    let (engine, _rx) = UotEngine::new(config);
+
+    // Create session
+    let s = engine.get_or_create_session("peer-555", "Alice");
+    assert_eq!(s.read().peer_device_id, "peer-555");
+    assert_eq!(s.read().peer_name, "Alice");
+
+    // Query session
+    let s_opt = engine.get_peer_session("peer-555");
+    assert!(s_opt.is_some());
+    assert!(engine.get_peer_session("non-existent").is_none());
+
+    let msgs_json = engine.get_session_messages("peer-555");
+    assert_eq!(msgs_json, "[]");
 }

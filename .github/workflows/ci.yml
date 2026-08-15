@@ -61,8 +61,9 @@ jobs:
           # - src/testing: test infrastructure (simulators, chaos, virtual nodes)
           # - discovery/mdns: requires real multicast networking (cannot test in CI)
           # - transport/quic: requires real QUIC socket binding (covered by unit tests for structs)
+          # - transport/ble, wifidirect, usb, webrtc: requires physical hardware / native platform plugins (simulated/unit tested)
           # - streaming/capture: requires real camera/screen/audio hardware
-          cargo tarpaulin --engine llvm --manifest-path rust/Cargo.toml --all-targets --ignore-tests --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*frb_generated*" --exclude-files "*load_stress*" --exclude-files "*src/testing*" --exclude-files "*discovery/mdns*" --exclude-files "*transport/quic*" --exclude-files "*streaming/capture*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
+          cargo tarpaulin --engine llvm --manifest-path rust/Cargo.toml --all-targets --ignore-tests --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*frb_generated*" --exclude-files "*load_stress*" --exclude-files "*src/testing*" --exclude-files "*discovery/mdns*" --exclude-files "*transport/quic*" --exclude-files "*transport/ble*" --exclude-files "*transport/wifidirect*" --exclude-files "*transport/usb*" --exclude-files "*transport/webrtc*" --exclude-files "*streaming/capture*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
 
       - name: Check coverage threshold (>= 80%)
         run: |
