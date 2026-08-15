@@ -64,7 +64,6 @@ class UotTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      fontFamily: 'Inter',
       colorScheme: const ColorScheme.dark(
         primary: UotColors.accent,
         onPrimary: UotColors.textOnAccent,
@@ -230,7 +229,6 @@ class UotTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      fontFamily: 'Inter',
       colorScheme: const ColorScheme.light(
         primary: UotColors.accentDim,
         onPrimary: Colors.white,

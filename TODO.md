@@ -1,3 +1,36 @@
+### Sprint 23 — Storage Resolution, Bidirectional Confirmation & Cross-Platform File Actions (Completed ✅)
+- [x] Fixed Android sandbox storage failure by exposing `engine_set_save_directory` in `rust/src/api/engine_api.rs` and initializing verified Downloads/Documents directory in Flutter `main.dart` via `path_provider`
+- [x] Implemented bidirectional terminal confirmation: sender registers `pending_completion_acks` oneshot listener and transitions to `Completed` only after receiver confirms verified disk persistence with `TransferCompleteAck`
+- [x] Resolved socket chunk interleaving collision by adding `peer_send_locks` mutex in `UotEngine` for sequential streaming per peer while supporting concurrent multi-peer transfers
+- [x] Upgraded `event_forwarder` in `engine_api.rs` to use `serde_json::json!` for all event types, guaranteeing RFC-compliant UTF-8 / JSON escaping across Android, Windows, and macOS
+- [x] Integrated `open_filex` in Flutter for native cross-platform file opening (PDFs, videos, audio, documents, archives) on mobile and desktop
+- [x] Added `test_multi_file_batch_transfer_and_verification` in `transport_lab_e2e.rs` validating multi-file batch transmission, individual SHA-256 matches, and persistence
+- [x] 100% test pass rate across all Rust suites and Flutter test suite; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean rustfmt
+
+### Sprint 22 — Production File-Transfer Progression, Android Chat Stability & Target-Only UX (Completed ✅)
+- [x] Fixed sender-side progress stalling by atomically writing `TransferStatus::InProgress` and chunk-level `transferred_bytes` to `self.transfers` in `execute_send_arc`
+- [x] Fixed receiver-side per-item progress tracking on `FileStart`, `DataChunk`, and `FileEnd`
+- [x] Restricted `Open`, `Folder`, and tap-to-open preview actions strictly to received files (`!isSend && isCompleted && savedPath.isNotEmpty`)
+- [x] Upgraded `_buildTransferCard` in `chat_screen.dart` to support multi-item batch transfer cards with per-item progress, status badges, and open actions
+- [x] Fixed Android chat scrambled/corrupted font glyph rendering by removing unbundled `fontFamily: 'Inter'` from `app_theme.dart` and replacing `SelectableText` with clean `Text` + copy interactions
+- [x] Implemented `ActiveChatSessionTracker` and updated `nearby_screen.dart` to suppress duplicate modals/SnackBars when inside active chat
+- [x] Added sender status and transferred bytes assertions to `transport_lab_e2e.rs`
+- [x] 100% test pass rate across all Rust suites and Flutter test suite; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean rustfmt
+
+### Sprint 21 — Production Transport Lab, Deterministic E2E & UX Overhaul (Completed ✅)
+- [x] Fixed multi-peer connection misrouting & session overwrite bug in `get_peer_session` and `get_peer_connection`
+- [x] Fixed receiver `InProgress` status transition on data frame receipt and automatic `.part` touching on `FileStart`
+- [x] Fixed receiver atomic rename (`.part` -> final) with copy fallback and populated `saved_path` across transfers
+- [x] Fixed chat message JSON corruption on Android/Windows by using structured DTOs with `serde_json` serialization and capped chat history at 1000 messages
+- [x] Overhauled `ChatScreen` with unified chronological timeline, rich file icons, in-app preview for images/notes, live speed/ETA display, and open/reveal handlers
+- [x] Created `TransportSimulator` (`rust/src/transport/simulator.rs`) with configurable jitter, packet loss, bit flips, and network partition simulation
+- [x] Created deterministic animated QR optical transport reassembly test suite (`rust/tests/animated_qr_e2e_test.rs`)
+- [x] Created acoustic sound FSK modulation, demodulation, noise injection, and CRC16 test suite (`rust/tests/audio_fsk_e2e_test.rs`)
+- [x] Created multi-node deterministic integration test suite (`rust/tests/transport_lab_e2e.rs`) asserting disk persistence, exact byte size, and SHA-256 match
+- [x] Created Docker multi-node test container (`docker/Dockerfile.peer`) and 3-peer test network (`docker/docker-compose.test.yml`)
+- [x] Built Developer Transport Lab & Diagnostics screen in Flutter (`lib/src/features/diagnostics/transport_lab_screen.dart`) with capability matrix, fault injection sliders, and synthetic loopback benchmarks
+- [x] 100% test pass rate across all Rust suites and Flutter test suite; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean rustfmt
+
 ### Sprint 20 — File Transfer OfferResponse Socket Routing & Inline UI Overhaul (Completed ✅)
 - [x] Resolved critical file transfer failure by introducing `transfer_connections` socket map in `UotEngine`
 - [x] Routed `OfferResponse` on the exact `TcpConnection` instance that delivered the `Offer` message

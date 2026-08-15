@@ -97,6 +97,7 @@ mod tests {
                 transferred_bytes: 2048,
                 status: TransferStatus::Completed,
                 hash: None,
+                saved_path: None,
             }],
             total_size: 2048,
             transferred_bytes: 2048,

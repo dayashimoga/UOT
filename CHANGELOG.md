@@ -3,6 +3,72 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.19] - 2026-08-15
+
+### Sprint 23 — Storage Resolution, Bidirectional Confirmation & Cross-Platform File Actions
+
+#### Platform Storage Resolution & Sandboxing
+- **Dynamic Save Directory Initialization**: Exposed `engine_set_save_directory` in `rust/src/api/engine_api.rs` and integrated `path_provider` in Flutter `lib/main.dart` to initialize the verified Android/Desktop Downloads and Documents directory on startup. Incoming file writes on Android now write to valid scoped storage paths instead of failing on root sandbox paths (`.`).
+- **Resilient File Creation**: Enhanced `FileStart` in `rust/src/core/engine.rs` to ensure parent and save directories exist prior to file creation, preventing unhandled I/O failures.
+
+#### Bidirectional Terminal Confirmation & Stream Mutex
+- **Bidirectional Completion ACK**: Sender now awaits receiver `TransferCompleteAck` via a oneshot channel (`pending_completion_acks`) before marking `TransferStatus::Completed`. Enforces the invariant: `TRANSFER_ACCEPTED → DATA_RECEIVED → FILE_FINALIZED → HASH_VERIFIED → FILE_PERSISTED → RECEIVER_CONFIRMED → SENDER_CONFIRMED`.
+- **Per-Peer Send Stream Mutex**: Added `peer_send_locks` in `UotEngine` ensuring that multiple transfers to the same peer stream sequentially without interleaving raw frame chunks on the shared TCP connection, preventing protocol framing mangling.
+
+#### Chat UTF-8 & JSON Safety
+- **Structured Event Serialization**: Upgraded `event_forwarder` in `engine_api.rs` to use `serde_json::json!` for all engine event types (`IncomingMessage`, `ClipboardReceived`, etc.), preventing JSON corruption or Unicode escapes on mobile Android and Windows.
+
+#### Cross-Platform File Opening & In-App Viewers
+- **Native System Intent Opening**: Integrated `open_filex: ^4.5.0` in Flutter to open any received file format (PDF, video, audio, text, markdown, docs, archives) via the system's default viewer or Android intent chooser.
+- **In-App Interactive Viewers**: Maintained zoom/pan viewer for images and monospace viewer for code/notes with copy actions.
+
+#### Deterministic Integration Testing
+- **Multi-File Batch Test**: Added `test_multi_file_batch_transfer_and_verification` in `rust/tests/transport_lab_e2e.rs` validating multi-file batch transmission, individual SHA-256 integrity, and persistence.
+- **100% Quality Metrics**: 0 Rust errors/warnings, 0 Flutter analyze issues, 100% test pass rate across all Rust suites and Flutter test suite.
+
+## [0.1.0-alpha.18] - 2026-08-14
+
+### Sprint 22 — Production File-Transfer Progression, Android Chat Stability & Target-Only UX
+
+#### Sender Progress & Live Transfer State
+- **Live Transfer Progression**: Fixed `execute_send_arc` in `rust/src/core/engine.rs` to atomically update `self.transfers` with `TransferStatus::InProgress`, per-chunk `transferred_bytes`, and individual item completion (`Completed` with verified SHA-256 hash). Sender UI now reflects real-time progress instead of stalling on "Waiting for receiver".
+- **Receiver Item State Tracking**: Enhanced `handle_incoming_connection` to track individual item progression (`InProgress` on `FileStart`, incremental bytes on `DataChunk`, `Completed` on `FileEnd`).
+
+#### Flutter Chat & File Card UX Remediation
+- **Target-Only Action Buttons**: Restricted `Open`, `Folder`, and tap preview handlers in `chat_screen.dart` strictly to received completed files (`!isSend && isCompleted && savedPath.isNotEmpty`). Sender cards cleanly show `SENT` badge and `Verified ✓`.
+- **Multi-Item Batch Cards**: Upgraded `_buildTransferCard` to render expandable multi-file batch transfers displaying overall progress alongside individual item progress bars, sizes, icons, and per-item open actions.
+- **Android Typography & Glyph Stability**: Removed unbundled `fontFamily: 'Inter'` from `app_theme.dart` (which caused Skia/Impeller glyph table corruption on mobile Android) and replaced message bubble selectable editable layers with clean `Text` and copy-to-clipboard interactions.
+- **Active Session Notification De-duplication**: Introduced `ActiveChatSessionTracker` and updated `nearby_screen.dart` to suppress duplicate modals and SnackBars when the user is actively viewing that peer's conversation.
+
+#### Deterministic Automated Verification
+- **E2E Transport Lab Assertions**: Enhanced `transport_lab_e2e.rs` to assert sender-side `TransferStatus::Completed`, `transferred_bytes == total_size`, and all items `Completed`.
+- **100% Test Pass Rate**: Verified across all 13 test suites (171+ Rust tests passed), 17 Flutter unit/widget tests passed, 0 Flutter analysis issues, and clean formatting.
+
+## [0.1.0-alpha.17] - 2026-08-14
+
+### Sprint 21 — Production Transport Lab, Deterministic E2E & UX Overhaul
+
+#### Transport Lab & Deterministic Simulation Engine
+- **Transport Simulator & Fault Injection**: Implemented `SimulatedTransportProvider` and `SimulatedConnection` (`rust/src/transport/simulator.rs`) supporting artificial jitter, packet loss, bit-flip corruption, and network partition/healing behind the standard `TransportProvider` trait.
+- **Optical Animated QR Reassembly**: Added `animated_qr_e2e_test.rs` validating multi-frame fountain code transmission, optical loss resilience (30% dropped frames), CRC32 and SHA-256 verification, and filesystem persistence.
+- **Acoustic / Sound FSK Transport**: Added `audio_fsk_e2e_test.rs` validating acoustic preamble sync, symbol frequency modulation, noise injection, and CRC16 frame recovery.
+- **Multi-Node Deterministic Integration Suite**: Created `transport_lab_e2e.rs` with 3-peer mesh (Node A, Node B, Node C) concurrent bidirectional file transfer, chat messaging, disk persistence, and SHA-256 verification.
+- **Docker Multi-Node Harness**: Created `docker/Dockerfile.peer` and `docker/docker-compose.test.yml` for isolated Linux container testing with traffic control (`tc`).
+
+#### Core Protocol & Transport Bug Fixes
+- **Multi-Peer Session Overwrite Fix**: Fixed critical bug in `get_peer_session` and `get_peer_connection` where single-peer fallback would misroute when multiple peers connect on `127.0.0.1`.
+- **Zero-Byte & Part File Stall Fix**: Touched `.part` files on `FileStart` so zero-byte transfers compute matching hashes and atomically rename without stalling.
+- **Atomic Rename with Copy Fallback**: Added copy+remove fallback for atomic `.part` rename on OS file lock contention, updating `TransferItemRecord.saved_path` and `TransferStatus::Completed`.
+- **Receiver State Progression**: Transitioned receiver transfer status from `Pending` to `InProgress` upon receiving the first data frame.
+- **Structured Chat Serialization**: Refactored `ChatMessageDto` and `SessionDto` serialization using `serde_json` to eliminate corrupt escape sequences on Android/Windows. Message history capped at 1000 items.
+
+#### Flutter UI & Transport Diagnostics Overhaul
+- **Unified Chat Timeline**: Revamped `ChatScreen` with interactive file transfer cards, rich file icons by extension, category colors, and instant in-app preview for images (zoom/pan) and code/notes (monospace viewer).
+- **Native File Launcher & Explorer Reveal**: Integrated cross-platform `Process.run` launchers for Windows (`start`), macOS (`open`), Linux (`xdg-open`), and folder reveal (`explorer.exe /select`).
+- **Transport Lab Dashboard**: Built `TransportLabScreen` (`lib/src/features/diagnostics/transport_lab_screen.dart`) featuring capability matrix with honest hardware-required badges, fault injection sliders (latency, packet loss, partition), and 1MB/5MB/10MB synthetic in-memory benchmarks.
+- **Clean Device Badges**: Replaced raw IP:port titles with friendly device names and connection badges on `NearbyScreen`.
+- **Interactive Transfer History**: Enabled tap-to-open and reveal handlers on `TransfersScreen` history cards.
+
 ## [0.1.0-alpha.16] - 2026-08-13
 
 ### Sprint 20 — File Transfer OfferResponse Socket Routing & Inline UI Overhaul

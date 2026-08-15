@@ -5,9 +5,11 @@
 // Engine init runs asynchronously with a timeout to prevent ANR on Android.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'src/core/theme/app_theme.dart';
 import 'src/core/router/app_router.dart';
 import 'src/features/diagnostics/rust_init_failed_screen.dart';
@@ -65,6 +67,33 @@ class _UotAppState extends State<UotApp> {
         setState(() {
           _engineState = _EngineInitState.ready;
         });
+
+        // Configure native storage save directory for incoming transfers
+        try {
+          Directory? saveDir;
+          if (Platform.isAndroid) {
+            try {
+              saveDir = await getDownloadsDirectory();
+            } catch (_) {}
+            saveDir ??= await getApplicationDocumentsDirectory();
+          } else if (Platform.isWindows ||
+              Platform.isMacOS ||
+              Platform.isLinux) {
+            try {
+              saveDir = await getDownloadsDirectory();
+            } catch (_) {}
+            saveDir ??= await getApplicationDocumentsDirectory();
+          } else {
+            saveDir = await getApplicationDocumentsDirectory();
+          }
+          if (!saveDir.existsSync()) {
+            saveDir.createSync(recursive: true);
+          }
+          engine.engineSetSaveDirectory(saveDirectory: saveDir.path);
+          debugPrint('Configured UOT save directory: ${saveDir.path}');
+        } catch (e) {
+          debugPrint('Could not set custom save directory: $e');
+        }
 
         if (defaultTargetPlatform == TargetPlatform.windows) {
           // Automatically trigger Windows Firewall rules for inbound UOT connections

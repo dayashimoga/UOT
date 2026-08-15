@@ -81,148 +81,147 @@ async fn event_forwarder(
                 from_device,
                 items,
                 total_size,
-            } => {
-                format!(
-                    r#"{{"type":"IncomingOffer","transfer_id":"{}","from_device":"{}","items":{},"total_size":{}}}"#,
-                    transfer_id,
-                    from_device,
-                    serde_json::to_string(items).unwrap_or_else(|_| "[]".to_string()),
-                    total_size
-                )
-            }
-            EngineEvent::TransferProgress(progress) => {
-                format!(
-                    r#"{{"type":"TransferProgress","data":{}}}"#,
-                    serde_json::to_string(progress).unwrap_or_else(|_| "{}".to_string())
-                )
-            }
+            } => serde_json::json!({
+                "type": "IncomingOffer",
+                "transfer_id": transfer_id.to_string(),
+                "from_device": from_device,
+                "items": items,
+                "total_size": total_size,
+            })
+            .to_string(),
+            EngineEvent::TransferProgress(progress) => serde_json::json!({
+                "type": "TransferProgress",
+                "data": progress,
+            })
+            .to_string(),
             EngineEvent::TransferStatusChanged {
                 transfer_id,
                 status,
-            } => {
-                format!(
-                    r#"{{"type":"TransferStatusChanged","transfer_id":"{}","status":"{:?}"}}"#,
-                    transfer_id, status
-                )
-            }
-            EngineEvent::ClipboardReceived { from_device, text } => {
-                let escaped_text = text
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-                    .replace('\n', "\\n");
-                format!(
-                    r#"{{"type":"ClipboardReceived","from_device":"{}","text":"{}"}}"#,
-                    from_device, escaped_text
-                )
-            }
-            EngineEvent::DeviceFound(device) => {
-                format!(
-                    r#"{{"type":"DeviceFound","data":{}}}"#,
-                    serde_json::to_string(device).unwrap_or_else(|_| "{}".to_string())
-                )
-            }
-            EngineEvent::DeviceLost(id) => {
-                format!(r#"{{"type":"DeviceLost","device_id":"{}"}}"#, id)
-            }
-            EngineEvent::DeviceUpdated(device) => {
-                format!(
-                    r#"{{"type":"DeviceUpdated","data":{}}}"#,
-                    serde_json::to_string(device).unwrap_or_else(|_| "{}".to_string())
-                )
-            }
-            EngineEvent::PeerStateChanged { device_id, state } => {
-                format!(
-                    r#"{{"type":"PeerStateChanged","device_id":"{}","state":"{}"}}"#,
-                    device_id, state
-                )
-            }
-            EngineEvent::StateChanged(state) => {
-                format!(r#"{{"type":"StateChanged","state":"{:?}"}}"#, state)
-            }
+            } => serde_json::json!({
+                "type": "TransferStatusChanged",
+                "transfer_id": transfer_id.to_string(),
+                "status": format!("{status:?}"),
+            })
+            .to_string(),
+            EngineEvent::ClipboardReceived { from_device, text } => serde_json::json!({
+                "type": "ClipboardReceived",
+                "from_device": from_device,
+                "text": text,
+            })
+            .to_string(),
+            EngineEvent::DeviceFound(device) => serde_json::json!({
+                "type": "DeviceFound",
+                "data": device,
+            })
+            .to_string(),
+            EngineEvent::DeviceLost(id) => serde_json::json!({
+                "type": "DeviceLost",
+                "device_id": id,
+            })
+            .to_string(),
+            EngineEvent::DeviceUpdated(device) => serde_json::json!({
+                "type": "DeviceUpdated",
+                "data": device,
+            })
+            .to_string(),
+            EngineEvent::PeerStateChanged { device_id, state } => serde_json::json!({
+                "type": "PeerStateChanged",
+                "device_id": device_id,
+                "state": state,
+            })
+            .to_string(),
+            EngineEvent::StateChanged(state) => serde_json::json!({
+                "type": "StateChanged",
+                "state": format!("{state:?}"),
+            })
+            .to_string(),
             // Phase 2: Session-aware events
             EngineEvent::SessionStateChanged {
                 session_id,
                 device_id,
                 state,
-            } => {
-                format!(
-                    r#"{{"type":"SessionStateChanged","session_id":"{}","device_id":"{}","state":"{}"}}"#,
-                    session_id, device_id, state
-                )
-            }
+            } => serde_json::json!({
+                "type": "SessionStateChanged",
+                "session_id": session_id.to_string(),
+                "device_id": device_id,
+                "state": state,
+            })
+            .to_string(),
             EngineEvent::IncomingMessage {
                 session_id,
                 message_id,
                 from_device,
                 content,
                 timestamp,
-            } => {
-                let escaped = content
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-                    .replace('\n', "\\n");
-                format!(
-                    r#"{{"type":"IncomingMessage","session_id":"{}","message_id":"{}","from_device":"{}","content":"{}","timestamp":{}}}"#,
-                    session_id, message_id, from_device, escaped, timestamp
-                )
-            }
+            } => serde_json::json!({
+                "type": "IncomingMessage",
+                "session_id": session_id.to_string(),
+                "message_id": message_id.to_string(),
+                "from_device": from_device,
+                "content": content,
+                "timestamp": timestamp,
+            })
+            .to_string(),
             EngineEvent::MessageDelivered {
                 session_id,
                 message_id,
-            } => {
-                format!(
-                    r#"{{"type":"MessageDelivered","session_id":"{}","message_id":"{}"}}"#,
-                    session_id, message_id
-                )
-            }
+            } => serde_json::json!({
+                "type": "MessageDelivered",
+                "session_id": session_id.to_string(),
+                "message_id": message_id.to_string(),
+            })
+            .to_string(),
             EngineEvent::HeartbeatChanged {
                 session_id,
                 device_id,
                 alive,
-            } => {
-                format!(
-                    r#"{{"type":"HeartbeatChanged","session_id":"{}","device_id":"{}","alive":{}}}"#,
-                    session_id, device_id, alive
-                )
-            }
+            } => serde_json::json!({
+                "type": "HeartbeatChanged",
+                "session_id": session_id.to_string(),
+                "device_id": device_id,
+                "alive": alive,
+            })
+            .to_string(),
             EngineEvent::OfferAccepted {
                 session_id,
                 transfer_id,
-            } => {
-                format!(
-                    r#"{{"type":"OfferAccepted","session_id":"{}","transfer_id":"{}"}}"#,
-                    session_id, transfer_id
-                )
-            }
+            } => serde_json::json!({
+                "type": "OfferAccepted",
+                "session_id": session_id.to_string(),
+                "transfer_id": transfer_id.to_string(),
+            })
+            .to_string(),
             EngineEvent::OfferRejected {
                 session_id,
                 transfer_id,
                 reason,
-            } => {
-                format!(
-                    r#"{{"type":"OfferRejected","session_id":"{}","transfer_id":"{}","reason":"{}"}}"#,
-                    session_id, transfer_id, reason
-                )
-            }
+            } => serde_json::json!({
+                "type": "OfferRejected",
+                "session_id": session_id.to_string(),
+                "transfer_id": transfer_id.to_string(),
+                "reason": reason,
+            })
+            .to_string(),
             EngineEvent::TransferCompleted {
                 session_id,
                 transfer_id,
-            } => {
-                format!(
-                    r#"{{"type":"TransferCompleted","session_id":"{}","transfer_id":"{}"}}"#,
-                    session_id, transfer_id
-                )
-            }
+            } => serde_json::json!({
+                "type": "TransferCompleted",
+                "session_id": session_id.to_string(),
+                "transfer_id": transfer_id.to_string(),
+            })
+            .to_string(),
             EngineEvent::TransferFailed {
                 session_id,
                 transfer_id,
                 error,
-            } => {
-                format!(
-                    r#"{{"type":"TransferFailed","session_id":"{}","transfer_id":"{}","error":"{}"}}"#,
-                    session_id, transfer_id, error
-                )
-            }
+            } => serde_json::json!({
+                "type": "TransferFailed",
+                "session_id": session_id.to_string(),
+                "transfer_id": transfer_id.to_string(),
+                "error": error,
+            })
+            .to_string(),
         };
         if let Some(buf) = EVENT_BUFFER.get() {
             let mut buffer = buf.write();
@@ -232,6 +231,16 @@ async fn event_forwarder(
             }
         }
     }
+}
+
+/// Set save directory for incoming files.
+#[flutter_rust_bridge::frb(sync)]
+pub fn engine_set_save_directory(save_directory: String) -> String {
+    with_engine(|engine| {
+        engine.set_save_directory(&save_directory);
+        "ok".to_string()
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
 /// Get the current engine state.
@@ -273,6 +282,7 @@ pub fn engine_get_transfers() -> String {
                     .first()
                     .map(|i| i.name.clone())
                     .unwrap_or_else(|| "File transfer".to_string());
+                let first_saved_path = t.items.first().and_then(|i| i.saved_path.clone());
                 let total_size = t.total_size;
                 let transferred_bytes = t.transferred_bytes;
                 let progress = if total_size > 0 {
@@ -298,6 +308,25 @@ pub fn engine_get_transfers() -> String {
                     );
                     obj.insert("total_bytes".to_string(), serde_json::json!(total_size));
                     obj.insert("progress".to_string(), serde_json::json!(progress));
+
+                    if let Some(path) = first_saved_path {
+                        obj.insert("saved_path".to_string(), serde_json::json!(path));
+                    }
+
+                    if let Some(tracker_prog) = engine.get_progress(&t.transfer_id) {
+                        obj.insert(
+                            "speed_bytes_per_sec".to_string(),
+                            serde_json::json!(tracker_prog.speed_bytes_per_sec),
+                        );
+                        obj.insert(
+                            "speed_display".to_string(),
+                            serde_json::json!(tracker_prog.speed_display()),
+                        );
+                        obj.insert(
+                            "eta_display".to_string(),
+                            serde_json::json!(tracker_prog.eta_display()),
+                        );
+                    }
                 }
 
                 val

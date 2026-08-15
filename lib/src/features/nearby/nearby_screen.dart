@@ -17,6 +17,7 @@ import 'active_transfer_dialog.dart';
 import 'confirm_send_dialog.dart';
 import 'instant_chat_dialog.dart';
 import '../chat/chat_screen.dart';
+import '../chat/active_session_tracker.dart';
 
 // Device model parsed from JSON.
 class DeviceInfo {
@@ -199,6 +200,12 @@ class _NearbyScreenState extends State<NearbyScreen>
     if (!mounted) return;
     final transferId = event['transfer_id']?.toString() ?? '';
     final fromDevice = event['from_device']?.toString() ?? 'Unknown';
+
+    // If the user is currently viewing the chat with this peer, suppress external modal popup
+    if (ActiveChatSessionTracker.isSessionActive(fromDevice)) {
+      return;
+    }
+
     final items = (event['items'] as List<dynamic>?)
             ?.map((e) => e.toString())
             .toList() ??
@@ -265,6 +272,12 @@ class _NearbyScreenState extends State<NearbyScreen>
   void _handleClipboardReceived(Map<String, dynamic> event) {
     if (!mounted) return;
     final from = event['from_device']?.toString() ?? 'Unknown';
+
+    // If the user is currently viewing the chat with this peer, suppress root SnackBar
+    if (ActiveChatSessionTracker.isSessionActive(from)) {
+      return;
+    }
+
     final text = event['text']?.toString() ?? '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -867,9 +880,7 @@ class _DeviceCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      hasAddress
-                          ? '${device.deviceType} • ${device.address}'
-                          : '${device.deviceType} • ${device.capabilities.join(", ")}',
+                      '${device.deviceType} • Wi-Fi Network',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),

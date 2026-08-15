@@ -100,6 +100,8 @@ impl WebRtcTransport {
                 "linux".into(),
                 "web".into(),
             ],
+            is_simulated: false,
+            requires_physical_hardware: false,
         }
     }
 
