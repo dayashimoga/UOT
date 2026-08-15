@@ -3202,16 +3202,17 @@ async fn test_engine_transfer_active_pause_resume_cancel_and_progress() {
     let tx_id = Uuid::new_v4();
     let record = TransferRecord {
         transfer_id: tx_id,
-        direction: TransferDirection::Outgoing,
+        direction: TransferDirection::Send,
         remote_device: "target-dev-1".to_string(),
         items: vec![TransferItemRecord {
+            item_id: Uuid::new_v4(),
             name: "test_file.dat".to_string(),
+            relative_path: "test_file.dat".to_string(),
             size: 1024,
-            sha256: "aabbcc".to_string(),
-            status: TransferStatus::InProgress,
             transferred_bytes: 512,
+            status: TransferStatus::InProgress,
+            hash: Some("aabbcc".to_string()),
             saved_path: None,
-            error: None,
         }],
         total_size: 1024,
         transferred_bytes: 512,
