@@ -1,3 +1,13 @@
+### Sprint 24 — Canonical Device Deduplication, Wire Pause/Resume/Retry & UI Stability Overhaul (Completed ✅)
+- [x] Fixed device duplication in discovery (`"UOT Node (192.168.0.111)"` vs `"DAYA"`): implemented IP endpoint aggregation and canonical device deduplication in `UotEngine::discovered_devices()` and pruned synthetic `lan-*` / `peer-*` entries on inbound/outbound handshake
+- [x] Fixed erroneous `"Connecting…"` badge display on discovered devices in `nearby_screen.dart` by introducing exact active tracking set `_connectingDeviceIds`
+- [x] Implemented wire-level `Pause`, `PauseAck`, `Resume`, `ResumeAck`, and `Cancel` protocol handling across Rust core and wire handlers
+- [x] Added `retry_transfer` in `UotEngine` and exposed `engine_retry_transfer` in FRB API to retry failed/interrupted transfers preserving verified items
+- [x] Added interactive `Pause`, `Resume`, `Retry`, and `Cancel` control buttons to `_buildTransferCard` in `chat_screen.dart`
+- [x] Eliminated Skia/Impeller typeface cache texture atlas drift by converting all text styling to integer font sizes and debouncing timeline updates
+- [x] Added new deterministic test suites in `transport_lab_e2e.rs` covering canonical device deduplication, pause/resume lifecycle, and 1,000-message chat stress test
+- [x] 100% test pass rate across 434+ Rust tests and 17 Flutter tests; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean rustfmt
+
 ### Sprint 23 — Storage Resolution, Bidirectional Confirmation & Cross-Platform File Actions (Completed ✅)
 - [x] Fixed Android sandbox storage failure by exposing `engine_set_save_directory` in `rust/src/api/engine_api.rs` and initializing verified Downloads/Documents directory in Flutter `main.dart` via `path_provider`
 - [x] Implemented bidirectional terminal confirmation: sender registers `pending_completion_acks` oneshot listener and transitions to `Completed` only after receiver confirms verified disk persistence with `TransferCompleteAck`

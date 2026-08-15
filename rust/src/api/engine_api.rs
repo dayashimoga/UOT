@@ -393,6 +393,17 @@ pub fn engine_cancel_transfer(transfer_id: String) -> String {
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
+/// Retry a failed transfer.
+pub fn engine_retry_transfer(transfer_id: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.retry_transfer(&transfer_id).await }) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
 /// Accept an incoming transfer.
 pub fn engine_accept_transfer(transfer_id: String) -> String {
     with_engine_runtime(|engine, runtime| {

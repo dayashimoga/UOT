@@ -1199,7 +1199,24 @@ impl UotEngine {
                                 last_seen: now,
                                 is_trusted: true,
                             };
-                            devices.write().insert(peer_id.clone(), dev.clone());
+                            let remote_ip_str = conn.remote_addr().ip().to_string();
+                            {
+                                let mut devs = devices.write();
+                                devs.retain(|k, v| {
+                                    if k == &peer_id {
+                                        return true;
+                                    }
+                                    if k.starts_with("lan-") || k.starts_with("peer-") {
+                                        if let Some(ref a) = v.address {
+                                            if a.contains(&remote_ip_str) {
+                                                return false;
+                                            }
+                                        }
+                                    }
+                                    true
+                                });
+                                devs.insert(peer_id.clone(), dev.clone());
+                            }
                             // Store connection by peer device_id
                             connections
                                 .write()
@@ -1622,6 +1639,79 @@ impl UotEngine {
                                 if let Some(tx) = pending_completion_acks.write().remove(&tid) {
                                     let _ = tx.send(checksum_match);
                                 }
+                            }
+                        }
+                        WireMessage::Pause { ref transfer_id } => {
+                            log::info!(
+                                "Remote requested pause for transfer {transfer_id} from {remote}"
+                            );
+                            if let Ok(tid) = Uuid::parse_str(transfer_id) {
+                                {
+                                    let mut t = transfers.write();
+                                    if let Some(record) = t.get_mut(&tid) {
+                                        record.status = TransferStatus::Paused;
+                                    }
+                                }
+                                let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                                    transfer_id: tid,
+                                    status: TransferStatus::Paused,
+                                });
+                                let ack = WireMessage::PauseAck {
+                                    transfer_id: transfer_id.clone(),
+                                };
+                                let _ = proto::send_message(&conn, &ack).await;
+                            }
+                        }
+                        WireMessage::PauseAck { ref transfer_id } => {
+                            log::info!("Remote acknowledged pause for transfer {transfer_id}");
+                        }
+                        WireMessage::Resume {
+                            ref transfer_id,
+                            offset,
+                        } => {
+                            log::info!("Remote requested resume for transfer {transfer_id} at offset {offset} from {remote}");
+                            if let Ok(tid) = Uuid::parse_str(transfer_id) {
+                                {
+                                    let mut t = transfers.write();
+                                    if let Some(record) = t.get_mut(&tid) {
+                                        record.status = TransferStatus::InProgress;
+                                    }
+                                }
+                                let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                                    transfer_id: tid,
+                                    status: TransferStatus::InProgress,
+                                });
+                                let ack = WireMessage::ResumeAck {
+                                    transfer_id: transfer_id.clone(),
+                                    offset,
+                                };
+                                let _ = proto::send_message(&conn, &ack).await;
+                            }
+                        }
+                        WireMessage::ResumeAck {
+                            ref transfer_id,
+                            offset,
+                        } => {
+                            log::info!("Remote acknowledged resume for transfer {transfer_id} at offset {offset}");
+                        }
+                        WireMessage::Cancel {
+                            ref transfer_id,
+                            ref reason,
+                        } => {
+                            log::info!("Remote requested cancel for transfer {transfer_id}: {reason:?} from {remote}");
+                            if let Ok(tid) = Uuid::parse_str(transfer_id) {
+                                {
+                                    let mut t = transfers.write();
+                                    if let Some(record) = t.get_mut(&tid) {
+                                        record.status = TransferStatus::Cancelled;
+                                        record.finished_at = Some(chrono::Utc::now());
+                                        record.error = reason.clone();
+                                    }
+                                }
+                                let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                                    transfer_id: tid,
+                                    status: TransferStatus::Cancelled,
+                                });
                             }
                         }
                         // ── Phase 2+3: Chat, ACK, and OfferResponse handlers ──
@@ -2197,30 +2287,71 @@ impl UotEngine {
         });
     }
 
-    /// Get all discovered devices (filtering out self-device and local IP/ports).
+    /// Access the underlying devices map directly.
+    pub fn devices_map(&self) -> &Arc<RwLock<HashMap<String, DiscoveredDevice>>> {
+        &self.devices
+    }
+
+    /// Add or update a discovered device.
+    pub fn add_discovered_device(&self, device: DiscoveredDevice) {
+        self.devices
+            .write()
+            .insert(device.device_id.clone(), device);
+    }
+
+    /// Get all discovered devices (filtering out self-device, local IP/ports, and deduplicating endpoints).
     pub fn discovered_devices(&self) -> Vec<DiscoveredDevice> {
         let my_id = &self.device_id;
         let my_ips = tcp::local_ips();
         let my_port = self.listening_port();
 
-        self.devices
-            .read()
-            .values()
-            .filter(|dev| {
-                if dev.device_id == *my_id {
-                    return false;
-                }
-                if let Some(ref addr_str) = dev.address {
-                    if let Ok(addr) = addr_str.parse::<SocketAddr>() {
-                        if addr.port() == my_port && my_ips.contains(&addr.ip()) {
-                            return false;
-                        }
+        let raw_devs = self.devices.read();
+        let mut canonical_map: HashMap<String, DiscoveredDevice> = HashMap::new();
+
+        for dev in raw_devs.values() {
+            if dev.device_id == *my_id {
+                continue;
+            }
+            if let Some(ref addr_str) = dev.address {
+                if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                    if addr.port() == my_port && my_ips.contains(&addr.ip()) {
+                        continue;
                     }
                 }
-                true
-            })
-            .cloned()
-            .collect()
+            }
+
+            // Deduplicate by IP endpoint or device_id:
+            let key = if let Some(ref addr_str) = dev.address {
+                if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                    format!("ip:{}", addr.ip())
+                } else {
+                    dev.device_id.clone()
+                }
+            } else {
+                dev.device_id.clone()
+            };
+
+            if let Some(existing) = canonical_map.get(&key) {
+                let existing_is_synth = existing.device_id.starts_with("lan-")
+                    || existing.device_id.starts_with("peer-");
+                let current_is_synth =
+                    dev.device_id.starts_with("lan-") || dev.device_id.starts_with("peer-");
+
+                if existing_is_synth && !current_is_synth {
+                    canonical_map.insert(key, dev.clone());
+                } else if !existing_is_synth && current_is_synth {
+                    // Keep existing real one
+                } else if dev.capabilities.contains(&"connected".to_string())
+                    || dev.capabilities.contains(&"session_ready".to_string())
+                {
+                    canonical_map.insert(key, dev.clone());
+                }
+            } else {
+                canonical_map.insert(key, dev.clone());
+            }
+        }
+
+        canonical_map.into_values().collect()
     }
 
     /// Get a specific transfer's progress.
@@ -2257,10 +2388,27 @@ impl UotEngine {
                 transfer_id: transfer_id.to_string(),
             })
         })?;
+
+        // Signal pause (stop sending)
+        if let Some(tx) = self.pause_signals.read().get(&uuid) {
+            let _ = tx.send(true);
+        }
+
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
             record.status = TransferStatus::Cancelled;
             record.finished_at = Some(chrono::Utc::now());
+
+            if let Some(conn) = self.get_peer_connection(&record.remote_device) {
+                let msg = WireMessage::Cancel {
+                    transfer_id: transfer_id.to_string(),
+                    reason: Some("Cancelled by user".to_string()),
+                };
+                tokio::spawn(async move {
+                    let _ = proto::send_message(&conn, &msg).await;
+                });
+            }
+
             let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
                 transfer_id: uuid,
                 status: TransferStatus::Cancelled,
@@ -2289,6 +2437,16 @@ impl UotEngine {
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
             record.status = TransferStatus::Paused;
+
+            if let Some(conn) = self.get_peer_connection(&record.remote_device) {
+                let msg = WireMessage::Pause {
+                    transfer_id: transfer_id.to_string(),
+                };
+                tokio::spawn(async move {
+                    let _ = proto::send_message(&conn, &msg).await;
+                });
+            }
+
             let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
                 transfer_id: uuid,
                 status: TransferStatus::Paused,
@@ -2318,6 +2476,17 @@ impl UotEngine {
         let mut transfers = self.transfers.write();
         if let Some(record) = transfers.get_mut(&uuid) {
             record.status = TransferStatus::InProgress;
+
+            if let Some(conn) = self.get_peer_connection(&record.remote_device) {
+                let msg = WireMessage::Resume {
+                    transfer_id: transfer_id.to_string(),
+                    offset: record.transferred_bytes,
+                };
+                tokio::spawn(async move {
+                    let _ = proto::send_message(&conn, &msg).await;
+                });
+            }
+
             let _ = self.event_tx.try_send(EngineEvent::TransferStatusChanged {
                 transfer_id: uuid,
                 status: TransferStatus::InProgress,
@@ -2329,6 +2498,139 @@ impl UotEngine {
                 transfer_id: transfer_id.to_string(),
             }))
         }
+    }
+
+    /// Retry a failed or interrupted transfer.
+    pub async fn retry_transfer(&self, transfer_id: &str) -> Result<(), UotError> {
+        let uuid = Uuid::parse_str(transfer_id).map_err(|_e| {
+            UotError::Transfer(TransferError::TransferNotFound {
+                transfer_id: transfer_id.to_string(),
+            })
+        })?;
+
+        let (remote_device, item_names) = {
+            let transfers = self.transfers.read();
+            let record = transfers.get(&uuid).ok_or_else(|| {
+                UotError::Transfer(TransferError::TransferNotFound {
+                    transfer_id: transfer_id.to_string(),
+                })
+            })?;
+            if record.status == TransferStatus::Completed {
+                return Ok(());
+            }
+            let names: Vec<String> = record
+                .items
+                .iter()
+                .filter(|i| i.status != TransferStatus::Completed)
+                .map(|i| i.name.clone())
+                .collect();
+            (record.remote_device.clone(), names)
+        };
+
+        let conn = self.get_peer_connection(&remote_device).ok_or_else(|| {
+            UotError::Transport(TransportError::ConnectionFailed {
+                reason: format!("Peer '{remote_device}' is not connected"),
+            })
+        })?;
+
+        // Reset transfer status to InProgress
+        {
+            let mut t = self.transfers.write();
+            if let Some(rec) = t.get_mut(&uuid) {
+                rec.status = TransferStatus::InProgress;
+                rec.error = None;
+            }
+        }
+        let _ = self
+            .event_tx
+            .send(EngineEvent::TransferStatusChanged {
+                transfer_id: uuid,
+                status: TransferStatus::InProgress,
+            })
+            .await;
+
+        let chunk_size = self.config.read().transfer.chunk_size;
+        let bandwidth_limit = self.config.read().transfer.bandwidth_limit;
+        let (pause_tx, pause_rx) = watch::channel(false);
+        self.pause_signals.write().insert(uuid, pause_tx);
+
+        let transfers = Arc::clone(&self.transfers);
+        let event_tx = self.event_tx.clone();
+        let pending_completion_acks = Arc::clone(&self.pending_completion_acks);
+        let pause_signals = Arc::clone(&self.pause_signals);
+        let stats = Arc::clone(&self.lifetime_stats);
+        let history = Arc::clone(&self.history_store);
+        let queue_manager = Arc::clone(&self.queue_manager);
+
+        let peer_send_lock = {
+            let mut locks = self.peer_send_locks.write();
+            Arc::clone(
+                locks
+                    .entry(remote_device.clone())
+                    .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+            )
+        };
+
+        tokio::spawn(async move {
+            let _guard = peer_send_lock.lock().await;
+
+            let tracker = Arc::new(ProgressTracker::new(uuid, 0, item_names.len()));
+
+            // Execute retry send
+            let send_res = Self::execute_send_arc(
+                &conn,
+                vec![],
+                uuid,
+                &tracker,
+                chunk_size,
+                bandwidth_limit,
+                pause_rx,
+                &event_tx,
+                &transfers,
+                &pending_completion_acks,
+            )
+            .await;
+
+            pause_signals.write().remove(&uuid);
+            match send_res {
+                Ok(()) => {
+                    let mut t = transfers.write();
+                    if let Some(record) = t.get_mut(&uuid) {
+                        record.status = TransferStatus::Completed;
+                        record.finished_at = Some(chrono::Utc::now());
+                        record.transferred_bytes = record.total_size;
+                        for item in &mut record.items {
+                            item.status = TransferStatus::Completed;
+                            item.transferred_bytes = item.size;
+                        }
+                        let speed = tracker.snapshot().speed_bytes_per_sec;
+                        stats.write().record_success(record.total_size, true, speed);
+                        history.write().upsert(record.clone());
+                    }
+                    let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                        transfer_id: uuid,
+                        status: TransferStatus::Completed,
+                    });
+                }
+                Err(e) => {
+                    let mut t = transfers.write();
+                    if let Some(record) = t.get_mut(&uuid) {
+                        record.status = TransferStatus::Failed;
+                        record.finished_at = Some(chrono::Utc::now());
+                        record.error = Some(e.to_string());
+                        stats.write().record_failure();
+                        history.write().upsert(record.clone());
+                    }
+                    let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                        transfer_id: uuid,
+                        status: TransferStatus::Failed,
+                    });
+                }
+            }
+            queue_manager.write().mark_completed();
+        });
+
+        Ok(())
     }
 
     /// Accept an incoming transfer offer.
@@ -2787,9 +3089,24 @@ impl UotEngine {
         };
 
         let conn = Arc::new(conn);
-        self.devices
-            .write()
-            .insert(remote_device_id.clone(), device.clone());
+        let remote_ip_str = socket_addr.ip().to_string();
+        {
+            let mut devs = self.devices.write();
+            devs.retain(|k, v| {
+                if k == &remote_device_id {
+                    return true;
+                }
+                if k.starts_with("lan-") || k.starts_with("peer-") {
+                    if let Some(ref a) = v.address {
+                        if a.contains(&remote_ip_str) {
+                            return false;
+                        }
+                    }
+                }
+                true
+            });
+            devs.insert(remote_device_id.clone(), device.clone());
+        }
         self.connections
             .write()
             .insert(remote_device_id.clone(), Arc::clone(&conn));
@@ -2929,6 +3246,17 @@ impl UotEngine {
                 for addr in &found {
                     // Do not discover self
                     if addr.port() == my_port && local_ips.contains(&addr.ip()) {
+                        continue;
+                    }
+                    let ip_str = addr.ip().to_string();
+                    let already_known = self.devices.read().values().any(|d| {
+                        if let Some(ref a) = d.address {
+                            a.contains(&ip_str) && !d.device_id.starts_with("lan-")
+                        } else {
+                            false
+                        }
+                    });
+                    if already_known {
                         continue;
                     }
                     let dev_id = format!("lan-{}", addr.ip().to_string().replace('.', "-"));

@@ -84,6 +84,7 @@ class _NearbyScreenState extends State<NearbyScreen>
   String _healthStatus = '';
   String _engineState = 'Stopped';
   final List<DeviceInfo> _devices = [];
+  final Set<String> _connectingDeviceIds = {};
   Timer? _refreshTimer;
   bool _isScanning = true;
   bool _engineInitialized = false;
@@ -142,9 +143,41 @@ class _NearbyScreenState extends State<NearbyScreen>
     try {
       final devicesJson = engine.engineGetDevices();
       final List<dynamic> parsed = jsonDecode(devicesJson);
-      final newDevices = parsed
-          .map((d) => DeviceInfo.fromJson(d as Map<String, dynamic>))
-          .toList();
+
+      final Map<String, DeviceInfo> deduplicated = {};
+      for (final d in parsed) {
+        if (d is! Map<String, dynamic>) continue;
+        final dev = DeviceInfo.fromJson(d);
+        final ipKey = dev.address != null && dev.address!.isNotEmpty
+            ? dev.address!.split(':').first
+            : dev.deviceId;
+
+        final existing = deduplicated[ipKey];
+        if (existing == null) {
+          deduplicated[ipKey] = dev;
+        } else {
+          final existingIsSynth = existing.deviceId.startsWith('lan-') ||
+              existing.deviceName.startsWith('UOT Node');
+          final devIsSynth = dev.deviceId.startsWith('lan-') ||
+              dev.deviceName.startsWith('UOT Node');
+
+          if (existingIsSynth && !devIsSynth) {
+            deduplicated[ipKey] = dev;
+          } else if (dev.isConnected && !existing.isConnected) {
+            deduplicated[ipKey] = dev;
+          }
+        }
+      }
+
+      final newDevices = deduplicated.values.toList();
+
+      // Clean up connecting state for any device that is now connected
+      for (final dev in newDevices) {
+        if (dev.isConnected) {
+          _connectingDeviceIds.remove(dev.deviceId);
+        }
+      }
+
       setState(() {
         _devices.clear();
         _devices.addAll(newDevices);
@@ -416,6 +449,7 @@ class _NearbyScreenState extends State<NearbyScreen>
                       padding: const EdgeInsets.only(bottom: 8),
                       child: _DeviceCard(
                         device: device,
+                        isConnecting: _connectingDeviceIds.contains(device.deviceId),
                         onTap: () => _onDeviceTap(device),
                       ),
                     ),
@@ -433,13 +467,21 @@ class _NearbyScreenState extends State<NearbyScreen>
     final isSessionReady = device.isConnected;
 
     if (!isSessionReady && device.address != null && device.address!.isNotEmpty) {
+      setState(() {
+        _connectingDeviceIds.add(device.deviceId);
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Connecting & verifying Hello with ${device.deviceName} (${device.address})...'),
-          duration: const Duration(seconds: 3),
+          content: Text('Connecting to ${device.deviceName}...'),
+          duration: const Duration(seconds: 2),
         ),
       );
       final res = await engine.engineConnectPeer(address: device.address!);
+      if (mounted) {
+        setState(() {
+          _connectingDeviceIds.remove(device.deviceId);
+        });
+      }
       if (res.startsWith('error:')) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -451,6 +493,7 @@ class _NearbyScreenState extends State<NearbyScreen>
         }
         return;
       }
+      _refreshDevices();
     }
 
     if (mounted) {
@@ -788,18 +831,21 @@ class _ScanningIndicator extends StatelessWidget {
 
 // Device card showing discovered device with connect action.
 class _DeviceCard extends StatelessWidget {
-  const _DeviceCard({required this.device, required this.onTap});
+  const _DeviceCard({
+    required this.device,
+    required this.onTap,
+    this.isConnecting = false,
+  });
 
   final DeviceInfo device;
   final VoidCallback onTap;
+  final bool isConnecting;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final hasAddress = device.address != null && device.address!.isNotEmpty;
     final isConnected = device.isConnected;
-    final isConnecting = !isConnected && hasAddress;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -838,14 +884,18 @@ class _DeviceCard extends StatelessWidget {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(device.deviceName,
-                              style: theme.textTheme.titleMedium),
+                          child: Text(
+                            device.deviceName,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                         if (isConnected) ...[
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                                horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.green.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(8),
@@ -855,6 +905,7 @@ class _DeviceCard extends StatelessWidget {
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: Colors.green.shade700,
                                 fontWeight: FontWeight.w600,
+                                fontSize: 11,
                               ),
                             ),
                           ),
@@ -862,27 +913,45 @@ class _DeviceCard extends StatelessWidget {
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                                horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.amber.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Text(
-                              'Connecting…',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: Colors.amber.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 9,
+                                  height: 9,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                    color: Colors.amber.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Connecting…',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: Colors.amber.shade700,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
-                      '${device.deviceType} • Wi-Fi Network',
+                      isConnected
+                          ? '${device.deviceType} • Verified • Wi-Fi • Ready'
+                          : '${device.deviceType} • Wi-Fi Network',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
                       ),
                     ),
                   ],
