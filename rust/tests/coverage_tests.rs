@@ -3163,4 +3163,28 @@ fn test_engine_session_and_message_management_full() {
 
     let msgs_json = engine.get_session_messages("peer-555");
     assert_eq!(msgs_json, "[]");
+
+    // Look up by peer_name
+    let by_name = engine.get_peer_session("Alice");
+    assert!(by_name.is_some());
+
+    // Look up by session_id UUID string
+    let sid_str = s.read().session_id.to_string();
+    let by_uuid = engine.get_peer_session(&sid_str);
+    assert!(by_uuid.is_some());
+
+    // Look up by remote_endpoint
+    let addr: std::net::SocketAddr = "192.168.1.100:42000".parse().unwrap();
+    s.write().remote_endpoint = Some(addr);
+    let by_addr = engine.get_peer_session("192.168.1.100:42000");
+    assert!(by_addr.is_some());
+
+    // Look up fallback with empty target when exactly 1 session
+    let by_fallback = engine.get_peer_session("");
+    assert!(by_fallback.is_some());
+
+    // Test get_sessions_json
+    let sessions_json = engine.get_sessions_json();
+    assert!(sessions_json.contains("peer-555"));
+    assert!(sessions_json.contains("Alice"));
 }
