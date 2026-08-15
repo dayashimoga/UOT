@@ -140,6 +140,10 @@ pub struct UotEngine {
     sessions: SessionMap,
     /// Pending offer response consent gating channels (transfer_id -> oneshot::Sender<bool>).
     pending_offer_responses: Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
+    /// Pending transfer completion ACK channels (transfer_id -> oneshot::Sender<bool>).
+    pending_completion_acks: Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
+    /// Per-peer sequential send locks to prevent frame collision on shared connections.
+    peer_send_locks: Arc<RwLock<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     /// Map of transfer_id to the exact TcpConnection used for the Offer.
     transfer_connections: Arc<RwLock<HashMap<Uuid, Arc<TcpConnection>>>>,
 }
@@ -256,6 +260,8 @@ impl UotEngine {
                 peer_states: Arc::new(RwLock::new(HashMap::new())),
                 sessions: Arc::new(RwLock::new(HashMap::new())),
                 pending_offer_responses: Arc::new(RwLock::new(HashMap::new())),
+                pending_completion_acks: Arc::new(RwLock::new(HashMap::new())),
+                peer_send_locks: Arc::new(RwLock::new(HashMap::new())),
                 transfer_connections: Arc::new(RwLock::new(HashMap::new())),
             },
             event_rx,
@@ -350,6 +356,7 @@ impl UotEngine {
         let sessions_for_handler = Arc::clone(&self.sessions);
         let connections_for_handler = Arc::clone(&self.connections);
         let pending_responses_for_handler = Arc::clone(&self.pending_offer_responses);
+        let pending_completion_acks_for_handler = Arc::clone(&self.pending_completion_acks);
         let transfer_connections_for_handler = Arc::clone(&self.transfer_connections);
 
         tokio::spawn(async move {
@@ -380,6 +387,7 @@ impl UotEngine {
                 let sessions_clone = Arc::clone(&sessions_for_handler);
                 let connections_clone = Arc::clone(&connections_for_handler);
                 let pending_clone = Arc::clone(&pending_responses_for_handler);
+                let pending_acks_clone = Arc::clone(&pending_completion_acks_for_handler);
                 let transfer_conns_clone = Arc::clone(&transfer_connections_for_handler);
 
                 tokio::spawn(async move {
@@ -398,6 +406,7 @@ impl UotEngine {
                         &connections_clone,
                         None,
                         &pending_clone,
+                        &pending_acks_clone,
                         &transfer_conns_clone,
                     )
                     .await;
@@ -594,6 +603,7 @@ impl UotEngine {
                     let sessions = Arc::clone(&self.sessions);
                     let connections = Arc::clone(&self.connections);
                     let pending_responses = Arc::clone(&self.pending_offer_responses);
+                    let pending_acks = Arc::clone(&self.pending_completion_acks);
                     let transfer_connections = Arc::clone(&self.transfer_connections);
 
                     tokio::spawn(async move {
@@ -612,6 +622,7 @@ impl UotEngine {
                             &connections,
                             Some(remote_str.clone()),
                             &pending_responses,
+                            &pending_acks,
                             &transfer_connections,
                         )
                         .await;
@@ -699,6 +710,15 @@ impl UotEngine {
         let history = Arc::clone(&self.history_store);
         let queue_manager = Arc::clone(&self.queue_manager);
         let pending_offer_responses = Arc::clone(&self.pending_offer_responses);
+        let pending_completion_acks = Arc::clone(&self.pending_completion_acks);
+        let peer_send_lock = {
+            let mut locks = self.peer_send_locks.write();
+            Arc::clone(
+                locks
+                    .entry(device_id.to_string())
+                    .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+            )
+        };
 
         tokio::spawn(async move {
             log::info!("Transfer {transfer_id} offer sent; waiting for remote acceptance ACK...");
@@ -750,6 +770,9 @@ impl UotEngine {
                 status: TransferStatus::InProgress,
             });
 
+            // Acquire per-peer sequential streaming lock to prevent interleaving frames on shared socket
+            let _peer_send_guard = peer_send_lock.lock().await;
+
             let result = Self::execute_send_arc(
                 &conn,
                 items,
@@ -760,6 +783,7 @@ impl UotEngine {
                 pause_rx,
                 &event_tx,
                 &transfers,
+                &pending_completion_acks,
             )
             .await;
 
@@ -812,6 +836,7 @@ impl UotEngine {
         mut pause_rx: watch::Receiver<bool>,
         event_tx: &mpsc::Sender<EngineEvent>,
         transfers: &Arc<RwLock<HashMap<Uuid, TransferRecord>>>,
+        pending_completion_acks: &Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
     ) -> Result<(), TransferError> {
         let mut rate_limiter = RateLimiter::new(bandwidth_limit);
 
@@ -916,6 +941,10 @@ impl UotEngine {
             tracker.complete_item();
         }
 
+        // Register completion listener before sending TransferComplete
+        let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+        pending_completion_acks.write().insert(transfer_id, ack_tx);
+
         // Send transfer complete
         let complete = WireMessage::TransferComplete {
             transfer_id: transfer_id.to_string(),
@@ -925,7 +954,24 @@ impl UotEngine {
             .await
             .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
 
-        Ok(())
+        log::info!(
+            "Transfer {transfer_id} data sent; awaiting receiver persistence & verification ACK..."
+        );
+        match tokio::time::timeout(std::time::Duration::from_secs(15), ack_rx).await {
+            Ok(Ok(true)) => {
+                log::info!("Receiver verified & persisted transfer {transfer_id} ✓");
+                Ok(())
+            }
+            Ok(Ok(false)) => Err(TransferError::IntegrityFailed(
+                "Receiver failed verification of received files".to_string(),
+            )),
+            _ => {
+                pending_completion_acks.write().remove(&transfer_id);
+                Err(TransferError::Protocol(
+                    "Timed out waiting for receiver verification ACK".to_string(),
+                ))
+            }
+        }
     }
 
     /// Execute the send operation — chunked file transfer with AES-256-GCM encryption.
@@ -1079,6 +1125,7 @@ impl UotEngine {
         connections: &Arc<RwLock<HashMap<String, Arc<TcpConnection>>>>,
         known_peer_id: Option<String>,
         pending_offer_responses: &Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
+        pending_completion_acks: &Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
         transfer_connections: &Arc<RwLock<HashMap<Uuid, Arc<TcpConnection>>>>,
     ) {
         let mut current_file: Option<(PathBuf, PathBuf, String, u64)> = None; // (part_path, target_path, name, size)
@@ -1522,25 +1569,60 @@ impl UotEngine {
                             ..
                         } => {
                             let tid = Uuid::parse_str(tid_str).ok().or(current_transfer_id);
+                            let mut all_ok = false;
                             if let Some(tid) = tid {
                                 let mut t = transfers.write();
                                 if let Some(record) = t.get_mut(&tid) {
-                                    record.status = TransferStatus::Completed;
-                                    record.finished_at = Some(chrono::Utc::now());
-                                    record.transferred_bytes = record.total_size;
-                                    for item in &mut record.items {
-                                        if item.status != TransferStatus::Completed {
-                                            item.status = TransferStatus::Completed;
-                                            item.transferred_bytes = item.size;
-                                        }
+                                    all_ok = !record.items.is_empty()
+                                        && record
+                                            .items
+                                            .iter()
+                                            .all(|i| i.status == TransferStatus::Completed);
+                                    if all_ok {
+                                        record.status = TransferStatus::Completed;
+                                        record.finished_at = Some(chrono::Utc::now());
+                                        record.transferred_bytes = record.total_size;
+                                    } else {
+                                        record.status = TransferStatus::Failed;
+                                        record.finished_at = Some(chrono::Utc::now());
+                                        record.error = Some(
+                                            "One or more files failed verification".to_string(),
+                                        );
                                     }
                                 }
+                                let status = if all_ok {
+                                    TransferStatus::Completed
+                                } else {
+                                    TransferStatus::Failed
+                                };
                                 let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
                                     transfer_id: tid,
-                                    status: TransferStatus::Completed,
+                                    status,
                                 });
                             }
-                            log::info!("Transfer complete from {remote}");
+
+                            // Send TransferCompleteAck back to sender
+                            let ack = WireMessage::TransferCompleteAck {
+                                transfer_id: tid_str.clone(),
+                                checksum_match: all_ok,
+                            };
+                            let _ = proto::send_message(&conn, &ack).await;
+                            log::info!(
+                                "Transfer complete from {remote}, acked checksum_match={all_ok}"
+                            );
+                        }
+                        WireMessage::TransferCompleteAck {
+                            ref transfer_id,
+                            checksum_match,
+                        } => {
+                            log::info!(
+                                "TransferCompleteAck received for {transfer_id}: checksum_match={checksum_match} from {remote}"
+                            );
+                            if let Ok(tid) = Uuid::parse_str(transfer_id) {
+                                if let Some(tx) = pending_completion_acks.write().remove(&tid) {
+                                    let _ = tx.send(checksum_match);
+                                }
+                            }
                         }
                         // ── Phase 2+3: Chat, ACK, and OfferResponse handlers ──
                         WireMessage::ChatMessage {
@@ -1755,6 +1837,15 @@ impl UotEngine {
     /// Get the device ID.
     pub fn device_id(&self) -> &str {
         &self.device_id
+    }
+
+    /// Set save directory for incoming files.
+    pub fn set_save_directory(&self, path: &str) {
+        let mut config = self.config.write();
+        config.transfer.save_directory = path.to_string();
+        config.storage.receive_directory = PathBuf::from(path);
+        config.storage.temp_directory = PathBuf::from(path).join(".uot_temp");
+        log::info!("Updated engine save directory to: {path}");
     }
 
     /// GAP 11: Get connection diagnostics for UI display.
@@ -2747,6 +2838,7 @@ impl UotEngine {
             let sessions = Arc::clone(&self.sessions);
             let connections = Arc::clone(&self.connections);
             let pending_responses = Arc::clone(&self.pending_offer_responses);
+            let pending_acks = Arc::clone(&self.pending_completion_acks);
             let transfer_connections = Arc::clone(&self.transfer_connections);
 
             let known_peer = remote_device_id.clone();
@@ -2766,6 +2858,7 @@ impl UotEngine {
                     &connections,
                     Some(known_peer),
                     &pending_responses,
+                    &pending_acks,
                     &transfer_connections,
                 )
                 .await;

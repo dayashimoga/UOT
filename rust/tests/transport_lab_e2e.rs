@@ -178,3 +178,129 @@ async fn test_three_node_concurrent_transfers_and_chat() {
     engine_b.stop();
     engine_c.stop();
 }
+
+#[tokio::test]
+async fn test_multi_file_batch_transfer_and_verification() {
+    let dir_sender = tempdir().unwrap();
+    let dir_receiver = tempdir().unwrap();
+
+    let mut config_sender = AppConfig::default();
+    config_sender.transfer.save_directory = dir_sender.path().to_string_lossy().to_string();
+    config_sender.device_name = "Sender_Node".to_string();
+    config_sender.network_port = Some(0);
+
+    let mut config_receiver = AppConfig::default();
+    config_receiver.transfer.save_directory = dir_receiver.path().to_string_lossy().to_string();
+    config_receiver.device_name = "Receiver_Node".to_string();
+    config_receiver.network_port = Some(0);
+
+    let (engine_sender, mut rx_s) = UotEngine::new(config_sender);
+    let (engine_receiver, mut rx_r) = UotEngine::new(config_receiver);
+
+    tokio::spawn(async move { while rx_s.recv().await.is_some() {} });
+    tokio::spawn(async move { while rx_r.recv().await.is_some() {} });
+
+    engine_sender.start().await.unwrap();
+    engine_receiver.start().await.unwrap();
+
+    let port_r = engine_receiver.listening_port();
+    let addr_r = format!("127.0.0.1:{port_r}");
+
+    let dev_r = engine_sender.connect_peer(&addr_r).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Create 3 separate test files (text, binary, media mock)
+    let file1 = dir_sender.path().join("document.pdf");
+    let file2 = dir_sender.path().join("video_clip.mp4");
+    let file3 = dir_sender.path().join("notes.txt");
+
+    {
+        let mut f1 = File::create(&file1).unwrap();
+        f1.write_all(&vec![0x11u8; 16 * 1024]).unwrap(); // 16 KB
+
+        let mut f2 = File::create(&file2).unwrap();
+        f2.write_all(&vec![0x22u8; 128 * 1024]).unwrap(); // 128 KB
+
+        let mut f3 = File::create(&file3).unwrap();
+        f3.write_all(b"Hello Universal Offline Transfer multi-file test!")
+            .unwrap();
+    }
+
+    let hash1 = compute_sha256(&file1);
+    let hash2 = compute_sha256(&file2);
+    let hash3 = compute_sha256(&file3);
+
+    let tx_id = engine_sender
+        .send_files(
+            &dev_r.device_id,
+            vec![file1.clone(), file2.clone(), file3.clone()],
+        )
+        .await
+        .unwrap();
+
+    // Receiver accepts offer
+    let mut offer_arrived = false;
+    for _ in 0..60 {
+        if engine_receiver
+            .get_transfers()
+            .iter()
+            .any(|t| t.transfer_id == tx_id)
+        {
+            offer_arrived = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(offer_arrived, "Batch offer must arrive on receiver");
+
+    engine_receiver
+        .accept_transfer(&tx_id.to_string())
+        .await
+        .unwrap();
+
+    // Wait for transfer completion
+    let mut completed = false;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if let Some(t) = engine_receiver
+            .get_transfers()
+            .iter()
+            .find(|t| t.transfer_id == tx_id)
+        {
+            if t.status == TransferStatus::Completed {
+                completed = true;
+                break;
+            }
+        }
+    }
+    assert!(completed, "Batch transfer must complete on receiver");
+
+    // Verify all 3 files exist and hashes match
+    let dest1 = dir_receiver.path().join("document.pdf");
+    let dest2 = dir_receiver.path().join("video_clip.mp4");
+    let dest3 = dir_receiver.path().join("notes.txt");
+
+    assert!(dest1.exists(), "document.pdf must exist");
+    assert!(dest2.exists(), "video_clip.mp4 must exist");
+    assert!(dest3.exists(), "notes.txt must exist");
+
+    assert_eq!(hash1, compute_sha256(&dest1), "document.pdf hash matches");
+    assert_eq!(hash2, compute_sha256(&dest2), "video_clip.mp4 hash matches");
+    assert_eq!(hash3, compute_sha256(&dest3), "notes.txt hash matches");
+
+    // Verify sender state
+    let sender_rec = engine_sender
+        .get_transfers()
+        .into_iter()
+        .find(|t| t.transfer_id == tx_id)
+        .expect("Sender must have batch record");
+    assert_eq!(sender_rec.status, TransferStatus::Completed);
+    assert_eq!(sender_rec.items.len(), 3);
+    assert!(sender_rec
+        .items
+        .iter()
+        .all(|i| i.status == TransferStatus::Completed));
+
+    engine_sender.stop();
+    engine_receiver.stop();
+}

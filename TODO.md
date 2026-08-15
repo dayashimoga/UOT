@@ -1,3 +1,12 @@
+### Sprint 23 — Storage Resolution, Bidirectional Confirmation & Cross-Platform File Actions (Completed ✅)
+- [x] Fixed Android sandbox storage failure by exposing `engine_set_save_directory` in `rust/src/api/engine_api.rs` and initializing verified Downloads/Documents directory in Flutter `main.dart` via `path_provider`
+- [x] Implemented bidirectional terminal confirmation: sender registers `pending_completion_acks` oneshot listener and transitions to `Completed` only after receiver confirms verified disk persistence with `TransferCompleteAck`
+- [x] Resolved socket chunk interleaving collision by adding `peer_send_locks` mutex in `UotEngine` for sequential streaming per peer while supporting concurrent multi-peer transfers
+- [x] Upgraded `event_forwarder` in `engine_api.rs` to use `serde_json::json!` for all event types, guaranteeing RFC-compliant UTF-8 / JSON escaping across Android, Windows, and macOS
+- [x] Integrated `open_filex` in Flutter for native cross-platform file opening (PDFs, videos, audio, documents, archives) on mobile and desktop
+- [x] Added `test_multi_file_batch_transfer_and_verification` in `transport_lab_e2e.rs` validating multi-file batch transmission, individual SHA-256 matches, and persistence
+- [x] 100% test pass rate across all Rust suites and Flutter test suite; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean rustfmt
+
 ### Sprint 22 — Production File-Transfer Progression, Android Chat Stability & Target-Only UX (Completed ✅)
 - [x] Fixed sender-side progress stalling by atomically writing `TransferStatus::InProgress` and chunk-level `transferred_bytes` to `self.transfers` in `execute_send_arc`
 - [x] Fixed receiver-side per-item progress tracking on `FileStart`, `DataChunk`, and `FileEnd`

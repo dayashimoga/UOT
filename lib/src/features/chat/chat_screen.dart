@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:uot_app/src/rust/api/engine_api.dart';
 import 'active_session_tracker.dart';
 
@@ -435,7 +436,15 @@ class _ChatScreenState extends State<ChatScreen> {
       } catch (_) {}
     }
 
-    // Platform launcher for desktop OS
+    // Cross-platform native system viewer (Android, iOS, Windows, macOS, Linux)
+    try {
+      final result = await OpenFilex.open(path);
+      if (result.type == ResultType.done) {
+        return;
+      }
+    } catch (_) {}
+
+    // Fallback platform launcher for desktop OS
     if (Platform.isWindows) {
       try {
         await Process.run('cmd', ['/c', 'start', '', path]);

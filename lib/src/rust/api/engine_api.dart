@@ -13,6 +13,11 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 Future<String> engineInit() =>
     RustLib.instance.api.crateApiEngineApiEngineInit();
 
+/// Set save directory for incoming files.
+String engineSetSaveDirectory({required String saveDirectory}) =>
+    RustLib.instance.api
+        .crateApiEngineApiEngineSetSaveDirectory(saveDirectory: saveDirectory);
+
 /// Get the current engine state.
 String engineState() => RustLib.instance.api.crateApiEngineApiEngineState();
 

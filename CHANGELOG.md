@@ -3,6 +3,29 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.19] - 2026-08-15
+
+### Sprint 23 — Storage Resolution, Bidirectional Confirmation & Cross-Platform File Actions
+
+#### Platform Storage Resolution & Sandboxing
+- **Dynamic Save Directory Initialization**: Exposed `engine_set_save_directory` in `rust/src/api/engine_api.rs` and integrated `path_provider` in Flutter `lib/main.dart` to initialize the verified Android/Desktop Downloads and Documents directory on startup. Incoming file writes on Android now write to valid scoped storage paths instead of failing on root sandbox paths (`.`).
+- **Resilient File Creation**: Enhanced `FileStart` in `rust/src/core/engine.rs` to ensure parent and save directories exist prior to file creation, preventing unhandled I/O failures.
+
+#### Bidirectional Terminal Confirmation & Stream Mutex
+- **Bidirectional Completion ACK**: Sender now awaits receiver `TransferCompleteAck` via a oneshot channel (`pending_completion_acks`) before marking `TransferStatus::Completed`. Enforces the invariant: `TRANSFER_ACCEPTED → DATA_RECEIVED → FILE_FINALIZED → HASH_VERIFIED → FILE_PERSISTED → RECEIVER_CONFIRMED → SENDER_CONFIRMED`.
+- **Per-Peer Send Stream Mutex**: Added `peer_send_locks` in `UotEngine` ensuring that multiple transfers to the same peer stream sequentially without interleaving raw frame chunks on the shared TCP connection, preventing protocol framing mangling.
+
+#### Chat UTF-8 & JSON Safety
+- **Structured Event Serialization**: Upgraded `event_forwarder` in `engine_api.rs` to use `serde_json::json!` for all engine event types (`IncomingMessage`, `ClipboardReceived`, etc.), preventing JSON corruption or Unicode escapes on mobile Android and Windows.
+
+#### Cross-Platform File Opening & In-App Viewers
+- **Native System Intent Opening**: Integrated `open_filex: ^4.5.0` in Flutter to open any received file format (PDF, video, audio, text, markdown, docs, archives) via the system's default viewer or Android intent chooser.
+- **In-App Interactive Viewers**: Maintained zoom/pan viewer for images and monospace viewer for code/notes with copy actions.
+
+#### Deterministic Integration Testing
+- **Multi-File Batch Test**: Added `test_multi_file_batch_transfer_and_verification` in `rust/tests/transport_lab_e2e.rs` validating multi-file batch transmission, individual SHA-256 integrity, and persistence.
+- **100% Quality Metrics**: 0 Rust errors/warnings, 0 Flutter analyze issues, 100% test pass rate across all Rust suites and Flutter test suite.
+
 ## [0.1.0-alpha.18] - 2026-08-14
 
 ### Sprint 22 — Production File-Transfer Progression, Android Chat Stability & Target-Only UX
