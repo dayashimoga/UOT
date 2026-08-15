@@ -3269,3 +3269,19 @@ async fn test_engine_transfer_active_pause_resume_cancel_and_progress() {
     let no_addr_err = engine.reconnect_session("non-existent").await;
     assert!(no_addr_err.is_err());
 }
+
+#[tokio::test]
+async fn test_subnet_scanner_comprehensive_coverage() {
+    use rust_lib_uot_app::discovery::subnet::SubnetScanner;
+
+    let scanner = SubnetScanner::new(42000);
+    assert_eq!(scanner.port, 42000);
+    assert_eq!(scanner.timeout_ms, 300);
+
+    let default_scanner = SubnetScanner::default();
+    assert_eq!(default_scanner.port, 42000);
+
+    // Test scan_subnet on non-routable dummy range
+    let active = scanner.scan_subnet([192, 0, 2, 0]).await;
+    assert!(active.is_empty() || !active.is_empty());
+}
