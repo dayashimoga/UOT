@@ -2292,6 +2292,16 @@ impl UotEngine {
         &self.devices
     }
 
+    /// Access the underlying transfers map directly.
+    pub fn transfers_map(&self) -> &Arc<RwLock<HashMap<Uuid, TransferRecord>>> {
+        &self.transfers
+    }
+
+    /// Access the pause signals map directly.
+    pub fn pause_signals_map(&self) -> &Arc<RwLock<HashMap<Uuid, watch::Sender<bool>>>> {
+        &self.pause_signals
+    }
+
     /// Add or update a discovered device.
     pub fn add_discovered_device(&self, device: DiscoveredDevice) {
         self.devices

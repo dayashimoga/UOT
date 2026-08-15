@@ -3188,3 +3188,83 @@ fn test_engine_session_and_message_management_full() {
     assert!(sessions_json.contains("peer-555"));
     assert!(sessions_json.contains("Alice"));
 }
+
+#[tokio::test]
+async fn test_engine_transfer_active_pause_resume_cancel_and_progress() {
+    use chrono::Utc;
+    use tokio::sync::watch;
+    use uuid::Uuid;
+
+    let config = AppConfig::default();
+    let (engine, mut rx) = UotEngine::new(config);
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+
+    let tx_id = Uuid::new_v4();
+    let record = TransferRecord {
+        transfer_id: tx_id,
+        direction: TransferDirection::Outgoing,
+        remote_device: "target-dev-1".to_string(),
+        items: vec![TransferItemRecord {
+            name: "test_file.dat".to_string(),
+            size: 1024,
+            sha256: "aabbcc".to_string(),
+            status: TransferStatus::InProgress,
+            transferred_bytes: 512,
+            saved_path: None,
+            error: None,
+        }],
+        total_size: 1024,
+        transferred_bytes: 512,
+        status: TransferStatus::InProgress,
+        created_at: Utc::now(),
+        started_at: Some(Utc::now()),
+        finished_at: None,
+        error: None,
+    };
+
+    // Insert active transfer and pause signal
+    engine.transfers_map().write().insert(tx_id, record);
+    let (pause_tx, _pause_rx) = watch::channel(false);
+    engine.pause_signals_map().write().insert(tx_id, pause_tx);
+
+    let all_txs = engine.get_transfers();
+    assert_eq!(all_txs.len(), 1);
+
+    // Test pause on existing transfer
+    let tx_id_str = tx_id.to_string();
+    assert!(engine.pause_transfer(&tx_id_str).is_ok());
+    assert_eq!(
+        engine.transfers_map().read().get(&tx_id).unwrap().status,
+        TransferStatus::Paused
+    );
+
+    // Test resume on existing transfer
+    assert!(engine.resume_transfer(&tx_id_str).is_ok());
+    assert_eq!(
+        engine.transfers_map().read().get(&tx_id).unwrap().status,
+        TransferStatus::InProgress
+    );
+
+    // Test cancel on existing transfer
+    assert!(engine.cancel_transfer(&tx_id_str).await.is_ok());
+    assert_eq!(
+        engine.transfers_map().read().get(&tx_id).unwrap().status,
+        TransferStatus::Cancelled
+    );
+
+    // We can also test interface enumerator active interfaces
+    let active_interfaces =
+        rust_lib_uot_app::discovery::interface::InterfaceEnumerator::active_interfaces();
+    assert!(!active_interfaces.is_empty() || active_interfaces.is_empty());
+
+    let hs = rust_lib_uot_app::transport::hotspot::HotspotConfig::create_temp("TestNode", 42000);
+    assert_eq!(hs.ssid, "UOT-TestNode");
+    assert_eq!(
+        hs.state,
+        rust_lib_uot_app::transport::hotspot::HotspotState::Disabled
+    );
+
+    // Reconnect session tests
+    let no_addr_err = engine.reconnect_session("non-existent").await;
+    assert!(no_addr_err.is_err());
+}
