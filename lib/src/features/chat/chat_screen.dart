@@ -150,6 +150,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? _pendingOffer;
   Timer? _refreshTimer;
   bool _isSending = false;
+  String _lastMsgsJson = '';
+  String _lastTransfersJson = '';
 
   @override
   void initState() {
@@ -174,12 +176,52 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  Future<void> _pauseTransfer(String transferId) async {
+    await enginePauseTransfer(transferId: transferId);
+    _lastTransfersJson = '';
+    _loadData();
+  }
+
+  Future<void> _resumeTransfer(String transferId) async {
+    await engineResumeTransfer(transferId: transferId);
+    _lastTransfersJson = '';
+    _loadData();
+  }
+
+  Future<void> _cancelTransfer(String transferId) async {
+    await engineCancelTransfer(transferId: transferId);
+    _lastTransfersJson = '';
+    _loadData();
+  }
+
+  Future<void> _retryTransfer(String transferId) async {
+    final res = await engineRetryTransfer(transferId: transferId);
+    if (res.startsWith('error:')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Retry failed: ${res.replaceFirst("error:", "")}'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+    _lastTransfersJson = '';
+    _loadData();
+  }
+
   void _loadData() {
     try {
       final jsonMsgs = engineGetMessages(peerDeviceId: widget.peerDeviceId);
-      final List<dynamic> parsedMsgs = jsonDecode(jsonMsgs);
-
       final jsonTransfers = engineGetTransfers();
+
+      if (jsonMsgs == _lastMsgsJson && jsonTransfers == _lastTransfersJson) {
+        return;
+      }
+      _lastMsgsJson = jsonMsgs;
+      _lastTransfersJson = jsonTransfers;
+
+      final List<dynamic> parsedMsgs = jsonDecode(jsonMsgs);
       final List<dynamic> parsedTransfers = jsonDecode(jsonTransfers);
 
       final matchedTransfers = parsedTransfers
@@ -818,6 +860,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildTransferCard(Map<String, dynamic> t, ThemeData theme) {
+    final transferId = t['transfer_id']?.toString() ?? '';
     final status = t['status']?.toString() ?? 'Pending';
     final items = (t['items'] as List<dynamic>?)
         ?.whereType<Map<String, dynamic>>()
@@ -838,6 +881,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final isTransferring = status == 'InProgress' ||
         status == 'Transferring' ||
         status == 'Verifying';
+    final isPaused = status == 'Paused';
     final isCompleted = status == 'Completed';
     final isFailed = status == 'Failed';
 
@@ -856,6 +900,9 @@ class _ChatScreenState extends State<ChatScreen> {
             etaDisplay != 'calculating…') {
           batchStatusSubtitle += ' • ETA $etaDisplay';
         }
+      } else if (isPaused) {
+        batchStatusSubtitle =
+            'Paused • ${_formatBytes(transferredBytes)} / ${_formatBytes(totalBytes)}';
       } else if (isCompleted) {
         batchStatusSubtitle =
             'Batch Completed • ${items.length} files • ${_formatBytes(totalBytes)} • Verified ✓';
@@ -878,7 +925,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? Colors.green.withAlpha(80)
                 : isFailed
                     ? Colors.red.withAlpha(80)
-                    : theme.colorScheme.outlineVariant.withAlpha(60),
+                    : isPaused
+                        ? Colors.amber.withAlpha(80)
+                        : theme.colorScheme.outlineVariant.withAlpha(60),
           ),
         ),
         child: Padding(
@@ -943,10 +992,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         Text(
                           batchStatusSubtitle,
                           style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 12,
                             color: isFailed
                                 ? Colors.red.shade300
-                                : theme.colorScheme.onSurfaceVariant,
+                                : isPaused
+                                    ? Colors.amber.shade300
+                                    : theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -954,15 +1005,72 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ],
               ),
-              if (isTransferring || status == 'Pending') ...[
+              if (isTransferring || isPaused || status == 'Pending') ...[
                 const SizedBox(height: 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: isTransferring ? progress.clamp(0.0, 1.0) : null,
+                    value: (isTransferring || isPaused) ? progress.clamp(0.0, 1.0) : null,
                     minHeight: 4,
                   ),
                 ),
+              ],
+              // Transfer control action buttons (Pause, Resume, Retry, Cancel)
+              if (transferId.isNotEmpty) ...[
+                if (isTransferring) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => _pauseTransfer(transferId),
+                        icon: const Icon(Icons.pause_rounded, size: 15),
+                        label: const Text('Pause', style: TextStyle(fontSize: 12)),
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      ),
+                      const SizedBox(width: 4),
+                      TextButton.icon(
+                        onPressed: () => _cancelTransfer(transferId),
+                        icon: const Icon(Icons.close_rounded, size: 15, color: Colors.redAccent),
+                        label: const Text('Cancel', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      ),
+                    ],
+                  ),
+                ] else if (isPaused) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => _resumeTransfer(transferId),
+                        icon: const Icon(Icons.play_arrow_rounded, size: 15, color: Colors.green),
+                        label: const Text('Resume', style: TextStyle(fontSize: 12, color: Colors.green)),
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      ),
+                      const SizedBox(width: 4),
+                      TextButton.icon(
+                        onPressed: () => _cancelTransfer(transferId),
+                        icon: const Icon(Icons.close_rounded, size: 15, color: Colors.redAccent),
+                        label: const Text('Cancel', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      ),
+                    ],
+                  ),
+                ] else if (isFailed) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => _retryTransfer(transferId),
+                        icon: const Icon(Icons.refresh_rounded, size: 15, color: Colors.amber),
+                        label: const Text('Retry', style: TextStyle(fontSize: 12, color: Colors.amber)),
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      ),
+                    ],
+                  ),
+                ],
               ],
               const SizedBox(height: 8),
               const Divider(height: 1),
@@ -986,7 +1094,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       Expanded(
                         child: Text(
                           '$iName (${_formatBytes(iSize)})',
-                          style: const TextStyle(fontSize: 12.5),
+                          style: const TextStyle(fontSize: 12),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -1058,6 +1166,9 @@ class _ChatScreenState extends State<ChatScreen> {
           etaDisplay != 'calculating…') {
         statusSubtitle += ' • ETA $etaDisplay';
       }
+    } else if (isPaused) {
+      statusSubtitle =
+          'Paused • ${_formatBytes(transferredBytes)} / ${_formatBytes(totalBytes)}';
     } else if (isCompleted) {
       statusSubtitle = 'Completed • ${_formatBytes(totalBytes)} • Verified ✓';
     } else if (isFailed) {
@@ -1079,7 +1190,9 @@ class _ChatScreenState extends State<ChatScreen> {
               ? Colors.green.withAlpha(80)
               : isFailed
                   ? Colors.red.withAlpha(80)
-                  : theme.colorScheme.outlineVariant.withAlpha(60),
+                  : isPaused
+                      ? Colors.amber.withAlpha(80)
+                      : theme.colorScheme.outlineVariant.withAlpha(60),
         ),
       ),
       child: Material(
@@ -1155,7 +1268,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               fontSize: 12,
                               color: isFailed
                                   ? Colors.red.shade300
-                                  : theme.colorScheme.onSurfaceVariant,
+                                  : isPaused
+                                      ? Colors.amber.shade300
+                                      : theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -1168,6 +1283,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2.2),
                       )
+                    else if (isPaused)
+                      Icon(Icons.pause_circle_rounded,
+                          color: Colors.amber.shade400, size: 22)
                     else if (isCompleted)
                       Icon(Icons.check_circle_rounded,
                           color: Colors.green.shade400, size: 22)
@@ -1176,15 +1294,72 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: Colors.red.shade400, size: 22),
                   ],
                 ),
-                if (isTransferring || status == 'Pending') ...[
+                if (isTransferring || isPaused || status == 'Pending') ...[
                   const SizedBox(height: 10),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: isTransferring ? progress.clamp(0.0, 1.0) : null,
+                      value: (isTransferring || isPaused) ? progress.clamp(0.0, 1.0) : null,
                       minHeight: 4,
                     ),
                   ),
+                ],
+                // Transfer control action buttons (Pause, Resume, Retry, Cancel)
+                if (transferId.isNotEmpty) ...[
+                  if (isTransferring) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => _pauseTransfer(transferId),
+                          icon: const Icon(Icons.pause_rounded, size: 15),
+                          label: const Text('Pause', style: TextStyle(fontSize: 12)),
+                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                        ),
+                        const SizedBox(width: 4),
+                        TextButton.icon(
+                          onPressed: () => _cancelTransfer(transferId),
+                          icon: const Icon(Icons.close_rounded, size: 15, color: Colors.redAccent),
+                          label: const Text('Cancel', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                        ),
+                      ],
+                    ),
+                  ] else if (isPaused) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => _resumeTransfer(transferId),
+                          icon: const Icon(Icons.play_arrow_rounded, size: 15, color: Colors.green),
+                          label: const Text('Resume', style: TextStyle(fontSize: 12, color: Colors.green)),
+                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                        ),
+                        const SizedBox(width: 4),
+                        TextButton.icon(
+                          onPressed: () => _cancelTransfer(transferId),
+                          icon: const Icon(Icons.close_rounded, size: 15, color: Colors.redAccent),
+                          label: const Text('Cancel', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                        ),
+                      ],
+                    ),
+                  ] else if (isFailed) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => _retryTransfer(transferId),
+                          icon: const Icon(Icons.refresh_rounded, size: 15, color: Colors.amber),
+                          label: const Text('Retry', style: TextStyle(fontSize: 12, color: Colors.amber)),
+                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
                 // Target-only actions: Open and Folder exist strictly on receiver
                 if (!isSend && isCompleted && savedPath.isNotEmpty) ...[
@@ -1325,7 +1500,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     Text(
                       timeStr,
                       style: TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 11,
                         color: isOutgoing
                             ? theme.colorScheme.onPrimary.withAlpha(180)
                             : theme.colorScheme.onSurfaceVariant.withAlpha(150),

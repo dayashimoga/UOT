@@ -3,7 +3,7 @@
 //! Tests for hostile peers, malformed messages, path traversal edge cases,
 //! PIN brute-force protection, replay detection, and resource exhaustion.
 
-use rust_lib_uot_app::protocol::handler::{OfferItemInfo, WireMessage};
+use rust_lib_uot_app::protocol::handler::WireMessage;
 use rust_lib_uot_app::security::crypto::{SoftwareCryptoProvider, KEY_LEN, NONCE_LEN};
 use rust_lib_uot_app::security::path_validator::StrictPathValidator;
 use rust_lib_uot_app::security::{CryptoProvider, PathValidator};

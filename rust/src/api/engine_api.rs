@@ -393,6 +393,17 @@ pub fn engine_cancel_transfer(transfer_id: String) -> String {
     .unwrap_or_else(|| "error:engine_not_initialized".to_string())
 }
 
+/// Retry a failed transfer.
+pub fn engine_retry_transfer(transfer_id: String) -> String {
+    with_engine_runtime(|engine, runtime| {
+        match runtime.block_on(async { engine.retry_transfer(&transfer_id).await }) {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("error:{e}"),
+        }
+    })
+    .unwrap_or_else(|| "error:engine_not_initialized".to_string())
+}
+
 /// Accept an incoming transfer.
 pub fn engine_accept_transfer(transfer_id: String) -> String {
     with_engine_runtime(|engine, runtime| {
@@ -895,6 +906,42 @@ mod tests {
 
         let conn_peer_err = engine_connect_peer("127.0.0.1:59997".to_string());
         assert!(conn_peer_err.starts_with("error:"));
+
+        let retry_res = engine_retry_transfer("invalid-uuid".to_string());
+        assert!(retry_res.starts_with("error:"));
+
+        let set_save_res = engine_set_save_directory("H:/Downloads/Custom".to_string());
+        assert_eq!(set_save_res, "ok");
+
+        let poll_res = engine_poll_events();
+        assert!(poll_res.starts_with('['));
+
+        let diag_res = engine_get_diagnostics();
+        assert!(diag_res.contains("engine_state"));
+
+        let sess_res = engine_get_sessions();
+        assert!(sess_res.starts_with('['));
+
+        let msgs_res = engine_get_messages("dev-1".to_string());
+        assert!(msgs_res.starts_with('['));
+
+        let send_msg_res = engine_send_message("dev-1".to_string(), "hello".to_string());
+        assert!(send_msg_res.starts_with("error:"));
+
+        let port = engine_get_listening_port();
+        assert!(port > 0);
+
+        let peer_state = engine_get_peer_state("dev-1".to_string());
+        assert!(!peer_state.is_empty());
+
+        let verify_res = engine_verify_pin("dev-1".to_string(), "000000".to_string());
+        assert_eq!(verify_res, "invalid");
+
+        let fw_res = engine_fix_windows_firewall();
+        assert!(!fw_res.is_empty());
+
+        let fountain_res = engine_fountain_encode("dGVzdA==".to_string(), 64);
+        assert!(fountain_res.starts_with('['));
 
         engine_stop();
     }

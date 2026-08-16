@@ -88,7 +88,7 @@ async fn test_real_encrypted_file_transfer() {
         // Receive Offer
         let frame = conn.recv_frame().await.unwrap();
         let offer: WireMessage = serde_json::from_slice(&frame.payload).unwrap();
-        let (transfer_id, file_name, file_size) = match offer {
+        let (_transfer_id, file_name, file_size) = match offer {
             WireMessage::Offer {
                 transfer_id,
                 items,

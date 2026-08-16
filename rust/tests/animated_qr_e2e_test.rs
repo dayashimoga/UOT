@@ -7,7 +7,6 @@
 //! 4. Filesystem persistence and bit-exact match.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 
 /// Structure representing a serialized optical QR frame payload.
 #[derive(Debug, Clone, PartialEq, Eq)]

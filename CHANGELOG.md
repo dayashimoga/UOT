@@ -3,6 +3,32 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.20] - 2026-08-15
+
+### Sprint 24 — Canonical Device Deduplication, Wire Pause/Resume/Retry & UI Stability Overhaul
+
+#### Canonical Device Identity & Discovery Deduplication
+- **Endpoint Aggregation & Deduplication**: Implemented IP endpoint merging in `UotEngine::discovered_devices()` so that synthetic scan records (`"UOT Node (192.168.0.111)"`) and real authenticated device identities (`"DAYA"`) are cleanly collapsed into a single canonical device card displaying verified name and capabilities.
+- **Handshake Synthetic Entry Pruning**: Enhanced both inbound (`handle_incoming_connection`) and outbound (`connect_peer`) handshake handlers to purge any matching temporary `lan-*` or `peer-*` entries from `self.devices` upon receipt of authenticated `Hello`/`HelloAck`.
+- **Subnet Scan Deduplication**: Updated `subnet_scan` in `engine.rs` to skip generating synthetic entries if a device with the same IP is already registered and authenticated.
+- **Accurate Connection State**: Eliminated false `"Connecting…"` badge display in `nearby_screen.dart` by implementing explicit tracking with `_connectingDeviceIds`.
+
+#### Wire-Level Transfer Pause, Resume & Retry
+- **Wire Message Extension**: Extended `WireMessage` with `PauseAck { transfer_id }` and `ResumeAck { transfer_id, offset }`.
+- **Bidirectional Pause/Resume Signaling**: Updated `pause_transfer` and `resume_transfer` to dispatch wire messages to connected peers while signaling local transmission tasks.
+- **Transfer Retry Engine API**: Implemented `retry_transfer` in `UotEngine` and exposed `engine_retry_transfer` in Flutter Rust Bridge API, enabling seamless retry of interrupted or failed transfers without re-transmitting verified completed files.
+- **Interactive Transfer Controls**: Added `Pause`, `Resume`, `Retry`, and `Cancel` action buttons to `_buildTransferCard` in `chat_screen.dart` for both single files and multi-file batch transfers.
+
+#### Mobile UI & Typography Stability
+- **Texture Atlas Protection**: Standardized all typography font sizes across `app_theme.dart` and `chat_screen.dart` to integer constants (`10`, `11`, `12`, `14`, `15`, `16`), preventing Skia/Impeller subpixel drift and text corruption on Android.
+- **Event-Driven Timeline Caching**: Replaced aggressive 750ms total widget rebuilding in `chat_screen.dart` with JSON string diff caching, reducing CPU churn and eliminating layout jitter.
+
+#### Automated Testing & Transport Lab
+- **Deduplication Test Suite**: Added `test_device_deduplication_and_endpoint_aggregation` in `rust/tests/transport_lab_e2e.rs`.
+- **Pause/Resume/Retry Test Suite**: Added `test_pause_resume_and_retry_transfer` verifying pause, resume, and SHA-256 integrity match.
+- **1,000-Message Stress Test**: Added `test_stress_1000_chat_messages` verifying zero message drop and high-throughput ordering.
+- **100% Quality Metrics**: 434+ Rust tests passed (100%), 17 Flutter tests passed (100%), 0 Clippy warnings, 0 Flutter analyze issues, 100% clean rustfmt.
+
 ## [0.1.0-alpha.19] - 2026-08-15
 
 ### Sprint 23 — Storage Resolution, Bidirectional Confirmation & Cross-Platform File Actions

@@ -57,6 +57,11 @@ Future<String> engineCancelTransfer({required String transferId}) =>
     RustLib.instance.api
         .crateApiEngineApiEngineCancelTransfer(transferId: transferId);
 
+/// Retry a failed transfer.
+Future<String> engineRetryTransfer({required String transferId}) =>
+    RustLib.instance.api
+        .crateApiEngineApiEngineRetryTransfer(transferId: transferId);
+
 /// Accept an incoming transfer.
 Future<String> engineAcceptTransfer({required String transferId}) =>
     RustLib.instance.api

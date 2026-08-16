@@ -94,7 +94,7 @@ fn crc16_ibm(data: &[u8]) -> u16 {
 async fn test_audio_fsk_modulation_and_noise_resilience() {
     let message = b"UOT Acoustic Sound PIN: 482910";
     let frame = AudioFskFrame::new(1, message);
-    let mut raw_stream = frame.serialize();
+    let raw_stream = frame.serialize();
 
     // Inject leading acoustic noise before preamble
     let mut noise_prefix = vec![0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];

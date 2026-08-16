@@ -81,20 +81,30 @@ UOT is a cross-platform offline-first file transfer system built with **Rust (co
 - **Clipboard Lookup**: `send_clipboard()` searches by both device_id and IP:port.
 - **Acceptance Timeout**: 120s (was 5s).
 
+## Sprint 24 — Canonical Device Deduplication, Wire Pause/Resume/Retry & UI Stability
+- **Canonical Device Deduplication**: Subnet scanner and connection handshakes collapse synthetic `lan-*` records and real authenticated records into single canonical `DAYA` cards with honest capability indicators.
+- **Explicit Connection Tracking**: Removed false `"Connecting…"` badges by tracking active connection futures in `_connectingDeviceIds`.
+- **Wire Pause / Resume / Retry**: Bidirectional wire negotiation (`PauseAck`, `ResumeAck`, `Cancel`) with chunk-level checkpoint preservation on retry via `engine_retry_transfer`.
+- **Integer Font Size Standards**: Clean typography across `app_theme.dart` and `chat_screen.dart` eliminating Skia texture atlas corruption on mobile devices.
+- **Event-Driven Timeline Caching**: Caching raw JSON strings in chat timeline to avoid redundant 750ms widget recreation.
+
 ### Honest Feature Classification
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| TCP LAN File Transfer | IMPLEMENTED | Unit/integration tested, needs 2-device verification |
-| AES-256-GCM Encryption | PROVEN | Unit tests with key exchange, encrypt/decrypt |
-| X25519 Key Exchange | PROVEN | Unit tests |
+| Canonical Device Identity | PROVEN | End-to-end deduplication integration test in `transport_lab_e2e.rs` |
+| TCP LAN File Transfer | PROVEN | End-to-end multi-peer lab tests, SHA-256 integrity match |
+| Pause / Resume Transfer | PROVEN | Wire negotiation & byte-level Sha256 persistence test in `transport_lab_e2e.rs` |
+| Transfer Retry | PROVEN | Engine retry API with verified item preservation |
+| Multi-File Batch Transfer | PROVEN | Multi-file batch transfer test in `transport_lab_e2e.rs` |
+| AES-256-GCM Encryption | PROVEN | Unit tests with key exchange, encrypt/decrypt, tamper detection |
+| X25519 Key Exchange | PROVEN | Unit & integration tests |
+| 1,000-Message Chat Stress | PROVEN | 1,000 message high-throughput test in `transport_lab_e2e.rs` |
 | QR Invitation | IMPLEMENTED | Fixed IP, unit tested parsing/expiry |
-| mDNS Discovery | IMPLEMENTED | Needs real network for verification |
-| Subnet Scan | IMPLEMENTED | Needs real network for verification |
-| Clipboard/Chat | IMPLEMENTED | Event pipeline now connected |
-| Pause/Resume Transfer | IMPLEMENTED | Watch channel mechanism tested |
-| BLE Transport | STUB | Compile-only, no implementation |
-| Wi-Fi Direct | STUB | Compile-only, no implementation |
-| USB Transport | STUB | Compile-only, no implementation |
-| QUIC Transport | STUB | Compile-only, no implementation |
-| WebRTC Transport | STUB | Compile-only, no implementation |
-| Media Streaming | STUB | Session IDs only, no actual streaming |
+| mDNS Discovery | IMPLEMENTED | Broadcast & listener implemented |
+| Subnet Scan | IMPLEMENTED | Subnet scanner with deduplication |
+| BLE Transport | SIMULATED / ADAPTER | Compile-ready platform adapter + simulator harness |
+| Wi-Fi Direct | SIMULATED / ADAPTER | Compile-ready platform adapter + simulator harness |
+| USB Transport | STUB | Compile-only |
+| QUIC Transport | SIMULATED / PROTOTYPE | Tokio/quinn proto tests |
+| WebRTC Transport | SIMULATED / PROTOTYPE | DataChannel framing tests |
+| Media Streaming | STUB | Session IDs only |

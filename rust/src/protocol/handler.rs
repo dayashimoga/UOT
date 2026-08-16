@@ -72,8 +72,12 @@ pub enum WireMessage {
     },
     /// Request to pause a transfer.
     Pause { transfer_id: String },
+    /// Acknowledge transfer paused.
+    PauseAck { transfer_id: String },
     /// Request to resume a transfer.
     Resume { transfer_id: String, offset: u64 },
+    /// Acknowledge transfer resumed with negotiated offset.
+    ResumeAck { transfer_id: String, offset: u64 },
     /// Clipboard/text data (legacy).
     ClipboardData { content_type: String, data: String },
     /// Chat message with ID and timestamp for ACK tracking.
