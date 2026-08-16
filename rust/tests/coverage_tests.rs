@@ -4092,3 +4092,685 @@ fn test_exhaustive_discovery_types_and_device_models() {
     assert_eq!(parsed.device_type, DeviceType::Tv);
     assert!(parsed.is_trusted);
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE CORE ENGINE METHODS, LIFECYCLE & DIAGNOSTICS
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_engine_methods_and_error_handling() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::{EngineState, UotEngine};
+    use rust_lib_uot_app::transfer::types::{
+        TransferDirection, TransferItemRecord, TransferRecord, TransferStatus,
+    };
+    use uuid::Uuid;
+
+    let mut config = AppConfig::default();
+    config.device_name = "CoverageEngineNode".to_string();
+    let (engine, mut rx) = UotEngine::new(config);
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+
+    // 1. Basic properties
+    assert_eq!(engine.state(), EngineState::Stopped);
+    assert_eq!(engine.config().device_name, "CoverageEngineNode");
+    assert!(!engine.device_id().is_empty());
+
+    // 2. Name, directory mutators
+    engine.set_device_name("UpdatedEngineNode");
+    assert_eq!(engine.config().device_name, "UpdatedEngineNode");
+
+    engine.set_save_directory("/custom/save/dir");
+
+    // 3. Discovery queries
+    assert!(engine.discovered_devices().is_empty());
+
+    // 4. Transfer management & clearing
+    assert!(engine.get_transfers().is_empty());
+
+    let tx_id = Uuid::new_v4();
+    let rec = TransferRecord {
+        transfer_id: tx_id,
+        batch_id: Some("batch_cov_1".to_string()),
+        direction: TransferDirection::Receive,
+        status: TransferStatus::Completed,
+        remote_device: "RemoteDev".to_string(),
+        items: vec![TransferItemRecord {
+            item_id: Uuid::new_v4(),
+            name: "file.bin".to_string(),
+            relative_path: "file.bin".to_string(),
+            size: 100,
+            transferred_bytes: 100,
+            status: TransferStatus::Completed,
+            hash: None,
+            saved_path: None,
+            resume_offset: 0,
+        }],
+        total_size: 100,
+        transferred_bytes: 100,
+        verified_bytes: 100,
+        transport: Some("Wi-Fi".to_string()),
+        retry_count: 0,
+        resume_offset: 0,
+        created_at: chrono::Utc::now(),
+        started_at: None,
+        finished_at: None,
+        error: None,
+    };
+
+    engine.transfers_map().write().insert(tx_id, rec);
+    assert_eq!(engine.get_transfers().len(), 1);
+    assert!(engine
+        .get_transfers()
+        .iter()
+        .any(|t| t.transfer_id == tx_id));
+
+    engine.transfers_map().write().clear();
+    assert!(engine.get_transfers().is_empty());
+
+    // 5. Non-existent transfer operations return clean errors
+    assert!(engine.cancel_transfer("invalid-uuid").await.is_err());
+    assert!(engine
+        .cancel_transfer(&Uuid::new_v4().to_string())
+        .await
+        .is_err());
+    assert!(engine.pause_transfer("invalid-uuid").is_err());
+    assert!(engine.pause_transfer(&Uuid::new_v4().to_string()).is_err());
+    assert!(engine.resume_transfer("invalid-uuid").is_err());
+    assert!(engine.resume_transfer(&Uuid::new_v4().to_string()).is_err());
+    assert!(engine.accept_transfer("invalid-uuid").await.is_err());
+    assert!(engine
+        .accept_transfer(&Uuid::new_v4().to_string())
+        .await
+        .is_err());
+    assert!(engine.retry_transfer("invalid-uuid").await.is_err());
+    assert!(engine
+        .retry_transfer(&Uuid::new_v4().to_string())
+        .await
+        .is_err());
+
+    // 6. Non-existent peer messaging & send files return clean errors
+    assert!(engine
+        .send_chat_message("nonexistent-dev", "Hello".to_string())
+        .await
+        .is_err());
+    assert!(engine.send_files("nonexistent-dev", vec![]).await.is_err());
+
+    // 7. Stats & diagnostics
+    let diag = engine.get_diagnostics();
+    assert!(diag.contains("Stopped"));
+    assert!(diag.contains("listening_port"));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE TRANSPORT FALLBACK & TOPOLOGY CLASSIFICATION
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_transport_fallback_and_network_topology() {
+    use rust_lib_uot_app::transport::fallback::{
+        TransportFallbackManager, TransportSelectionStrategy,
+    };
+    use rust_lib_uot_app::transport::types::{TransportId, TransportState};
+
+    let speed_mgr = TransportFallbackManager::new(TransportSelectionStrategy::PreferSpeed);
+    let offline_mgr = TransportFallbackManager::new(TransportSelectionStrategy::PreferOffline);
+    let manual_mgr = TransportFallbackManager::new(TransportSelectionStrategy::Manual);
+
+    // Strategy defaults
+    let default_mgr = TransportFallbackManager::default();
+    assert_eq!(
+        default_mgr.strategy,
+        TransportSelectionStrategy::PreferSpeed
+    );
+
+    // Speed candidate ordering: TcpLan -> WifiDirect -> Hotspot -> BLE -> QR -> Relay
+    let all_candidates = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+        (TransportId::Hotspot, TransportState::Connected),
+        (TransportId::WifiDirect, TransportState::Connected),
+        (TransportId::TcpLan, TransportState::Connected),
+    ];
+    assert_eq!(
+        speed_mgr.select_best_transport(&all_candidates),
+        Some(TransportId::TcpLan)
+    );
+
+    let no_lan = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+        (TransportId::Hotspot, TransportState::Connected),
+        (TransportId::WifiDirect, TransportState::Connected),
+    ];
+    assert_eq!(
+        speed_mgr.select_best_transport(&no_lan),
+        Some(TransportId::WifiDirect)
+    );
+
+    let no_p2p = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+        (TransportId::Hotspot, TransportState::Connected),
+    ];
+    assert_eq!(
+        speed_mgr.select_best_transport(&no_p2p),
+        Some(TransportId::Hotspot)
+    );
+
+    let no_hotspot = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+    ];
+    assert_eq!(
+        speed_mgr.select_best_transport(&no_hotspot),
+        Some(TransportId::BluetoothLe)
+    );
+
+    let qr_only = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+    ];
+    assert_eq!(
+        speed_mgr.select_best_transport(&qr_only),
+        Some(TransportId::QrCode)
+    );
+
+    let relay_only = vec![(TransportId::Relay, TransportState::Connected)];
+    assert_eq!(
+        speed_mgr.select_best_transport(&relay_only),
+        Some(TransportId::Relay)
+    );
+
+    // Offline candidate ordering
+    assert_eq!(
+        offline_mgr.select_best_transport(&all_candidates),
+        Some(TransportId::WifiDirect)
+    );
+    assert_eq!(
+        offline_mgr.select_best_transport(&no_lan),
+        Some(TransportId::WifiDirect)
+    );
+    assert_eq!(
+        offline_mgr.select_best_transport(&no_p2p),
+        Some(TransportId::Hotspot)
+    );
+    assert_eq!(
+        offline_mgr.select_best_transport(&no_hotspot),
+        Some(TransportId::BluetoothLe)
+    );
+
+    // Manual strategy takes first active candidate
+    assert_eq!(
+        manual_mgr.select_best_transport(&all_candidates),
+        Some(TransportId::Relay)
+    );
+
+    // Empty or all disconnected
+    assert_eq!(speed_mgr.select_best_transport(&[]), None);
+    let disconnected = vec![
+        (TransportId::TcpLan, TransportState::Disconnected),
+        (TransportId::WifiDirect, TransportState::Error),
+    ];
+    assert_eq!(speed_mgr.select_best_transport(&disconnected), None);
+
+    // Network Topology Classification
+    let local = vec![
+        "192.168.1.50".parse().unwrap(),
+        "10.0.5.20".parse().unwrap(),
+    ];
+
+    // Loopback
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(&local, "127.0.0.1".parse().unwrap()),
+        "Local Loopback"
+    );
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(&local, "::1".parse().unwrap()),
+        "Local Loopback"
+    );
+
+    // Wi-Fi Direct Android subnet (192.168.49.x)
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local,
+            "192.168.49.1".parse().unwrap()
+        ),
+        "Wi-Fi Direct"
+    );
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local,
+            "192.168.49.254".parse().unwrap()
+        ),
+        "Wi-Fi Direct"
+    );
+
+    // Hotspot subnets (192.168.43.x, 192.168.137.x)
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local,
+            "192.168.43.1".parse().unwrap()
+        ),
+        "Hotspot"
+    );
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local,
+            "192.168.137.1".parse().unwrap()
+        ),
+        "Hotspot"
+    );
+
+    // Same /24 subnet
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local,
+            "192.168.1.99".parse().unwrap()
+        ),
+        "Same network"
+    );
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(&local, "10.0.5.88".parse().unwrap()),
+        "Same network"
+    );
+
+    // Remote network
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(&local, "172.16.0.5".parse().unwrap()),
+        "Remote network"
+    );
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(&local, "8.8.8.8".parse().unwrap()),
+        "Remote network"
+    );
+
+    // Unspecified
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(&local, "0.0.0.0".parse().unwrap()),
+        "Unknown"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE TCP FRAMING, CONNECTION STATS & ENCODING
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_tcp_framing_and_structures() {
+    use rust_lib_uot_app::transport::tcp::{Frame, FrameType};
+    use rust_lib_uot_app::transport::types::TransportStats;
+
+    // FrameType conversions
+    assert_eq!(FrameType::try_from(0).unwrap(), FrameType::Control);
+    assert_eq!(FrameType::try_from(1).unwrap(), FrameType::Data);
+    assert_eq!(FrameType::try_from(2).unwrap(), FrameType::Ping);
+    assert_eq!(FrameType::try_from(3).unwrap(), FrameType::Pong);
+    assert!(FrameType::try_from(99).is_err());
+
+    // Frame constructors
+    let ctrl = Frame::control(&[1, 2, 3]);
+    assert_eq!(ctrl.frame_type, FrameType::Control);
+    assert_eq!(ctrl.payload, vec![1, 2, 3]);
+
+    let data = Frame::data(vec![4, 5, 6, 7]);
+    assert_eq!(data.frame_type, FrameType::Data);
+
+    let ping = Frame::ping();
+    assert_eq!(ping.frame_type, FrameType::Ping);
+
+    let pong = Frame::pong();
+    assert_eq!(pong.frame_type, FrameType::Pong);
+
+    // Encode frame
+    let encoded = data.encode();
+    assert_eq!(encoded.len(), 4 + 1 + 4); // 4 bytes len + 1 byte type + 4 bytes payload
+
+    // Stats
+    let stats = TransportStats {
+        bytes_sent: 1024,
+        bytes_received: 2048,
+        send_throughput: 100,
+        receive_throughput: 200,
+        latency_ms: 15,
+        retransmissions: 0,
+        uptime_secs: 60,
+    };
+    let cloned_stats = stats.clone();
+    assert_eq!(cloned_stats.bytes_sent, 1024);
+    assert_eq!(cloned_stats.bytes_received, 2048);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE FOUNTAIN CODES RECOVERY & EDGE CASES
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_fountain_coding_recovery_and_edge_cases() {
+    use rust_lib_uot_app::protocol::fountain::{FountainDecoder, FountainEncoder};
+
+    // 1. Single chunk payload
+    let small_data = b"Hello Fountain 12345".to_vec();
+    let mut encoder = FountainEncoder::new(&small_data, 64);
+    let mut decoder = FountainDecoder::new(64);
+
+    let pkt = encoder.next_packet();
+    let res = decoder.process_packet(pkt);
+    assert_eq!(res, Some(small_data));
+
+    // 2. Multi-chunk payload with systematic symbols
+    let large_data: Vec<u8> = (0..500).map(|i| (i % 256) as u8).collect();
+    let mut encoder_large = FountainEncoder::new(&large_data, 50);
+    let mut decoder_large = FountainDecoder::new(50);
+
+    let mut completed_data = None;
+    for _ in 0..30 {
+        let pkt = encoder_large.next_packet();
+        if let Some(res) = decoder_large.process_packet(pkt) {
+            completed_data = Some(res);
+            break;
+        }
+    }
+    assert_eq!(completed_data, Some(large_data));
+
+    // 3. Corrupted symbol / invalid CRC error handling
+    let mut bad_pkt = encoder.next_packet();
+    bad_pkt.crc32 ^= 0xFFFFFFFF; // Corrupt CRC
+    let mut fresh_decoder = FountainDecoder::new(64);
+    assert_eq!(fresh_decoder.process_packet(bad_pkt), None);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE SESSION & MESSAGE LIFECYCLE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_session_and_message_lifecycle() {
+    use chrono::Utc;
+    use rust_lib_uot_app::core::session::{
+        ChatMessage, MessageDirection, MessageState, PeerSession, SessionState,
+    };
+    use uuid::Uuid;
+
+    let dev_id = "peer-dev-abc-999".to_string();
+    let mut session = PeerSession::new_discovered(dev_id.clone(), "Bob Device".to_string());
+
+    assert_eq!(session.peer_device_id, dev_id);
+    assert_eq!(session.peer_name, "Bob Device");
+    assert_eq!(session.state, SessionState::Discovered);
+    assert!(!session.state.is_connected());
+
+    // Transition state
+    assert!(session.transition(SessionState::Connecting).is_ok());
+    assert!(session.transition(SessionState::TcpConnected).is_ok());
+    assert!(session.transition(SessionState::HelloVerified).is_ok());
+    assert!(session.transition(SessionState::PingVerified).is_ok());
+    assert!(session.transition(SessionState::SessionReady).is_ok());
+    assert!(session.state.is_ready());
+
+    // Add and manage chat messages
+    let msg_id = Uuid::new_v4();
+    let s_id = session.session_id;
+    let msg = ChatMessage {
+        message_id: msg_id,
+        session_id: s_id,
+        direction: MessageDirection::Outgoing,
+        content: "Testing chat engine persistence".to_string(),
+        timestamp: Utc::now(),
+        state: MessageState::Sent,
+        error: None,
+    };
+
+    session.add_message(msg);
+    assert_eq!(session.messages.len(), 1);
+
+    session.update_message_state(msg_id, MessageState::Delivered);
+    assert_eq!(session.messages[0].state, MessageState::Delivered);
+
+    session.heartbeat_success();
+    assert_eq!(session.missed_heartbeats, 0);
+    assert!(session.last_heartbeat.is_some());
+
+    assert!(!session.heartbeat_missed(3));
+    assert_eq!(session.missed_heartbeats, 1);
+
+    let json = session.to_json();
+    assert!(json.contains("Bob Device"));
+    assert!(json.contains("Testing chat engine persistence"));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE TRANSFER ENGINE CHUNK I/O, SHA256 & PROGRESS
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_transfer_engine_chunk_io_and_sha256() {
+    use rust_lib_uot_app::transfer::engine::{
+        collect_files, compute_sha256, create_transfer_record, read_chunk, write_chunk,
+        ProgressTracker, TransferItem,
+    };
+    use rust_lib_uot_app::transfer::types::TransferDirection;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let file_a = temp_dir.path().join("sample_a.dat");
+    let file_b = temp_dir.path().join("sample_b.dat");
+    let sub_dir = temp_dir.path().join("nested_folder");
+    tokio::fs::create_dir_all(&sub_dir).await.unwrap();
+    let file_c = sub_dir.join("sample_c.dat");
+
+    tokio::fs::write(&file_a, vec![0xAA; 100 * 1024])
+        .await
+        .unwrap();
+    tokio::fs::write(&file_b, vec![0xBB; 200 * 1024])
+        .await
+        .unwrap();
+    tokio::fs::write(&file_c, vec![0xCC; 50 * 1024])
+        .await
+        .unwrap();
+
+    // 1. collect_files
+    let collected = collect_files(&sub_dir).await.unwrap();
+    assert_eq!(collected.len(), 1);
+
+    // 2. TransferItem::from_path
+    let item_a = TransferItem::from_path(&file_a).await.unwrap();
+    assert_eq!(item_a.name, "sample_a.dat");
+    assert_eq!(item_a.size, 100 * 1024);
+
+    assert!(
+        TransferItem::from_path(&temp_dir.path().join("nonexistent.xyz"))
+            .await
+            .is_err()
+    );
+
+    // 3. create_transfer_record
+    let rec = create_transfer_record(&[item_a.clone()], TransferDirection::Send, "ReceiverPeer");
+    assert_eq!(rec.total_size, 100 * 1024);
+    assert_eq!(rec.items.len(), 1);
+
+    // 4. read_chunk and write_chunk
+    let (chunk_0, crc_0) = read_chunk(&file_a, 0, 64 * 1024).await.unwrap();
+    assert_eq!(chunk_0.len(), 64 * 1024);
+
+    let out_file = temp_dir.path().join("out_a.part");
+    write_chunk(&out_file, 0, &chunk_0, crc_0).await.unwrap();
+
+    let (chunk_1, crc_1) = read_chunk(&file_a, 64 * 1024, 64 * 1024).await.unwrap();
+    assert_eq!(chunk_1.len(), 36 * 1024);
+    write_chunk(&out_file, 64 * 1024, &chunk_1, crc_1)
+        .await
+        .unwrap();
+
+    // 5. compute_sha256
+    let hash_orig = compute_sha256(&file_a).await.unwrap();
+    let hash_out = compute_sha256(&out_file).await.unwrap();
+    assert_eq!(hash_orig, hash_out);
+
+    // 6. ProgressTracker
+    let tracker = ProgressTracker::new(uuid::Uuid::new_v4(), 100 * 1024, 1);
+    let snap_initial = tracker.snapshot();
+    assert_eq!(snap_initial.total_bytes, 100 * 1024);
+    assert_eq!(snap_initial.transferred_bytes, 0);
+
+    tracker.add_bytes(50 * 1024);
+    let snap_half = tracker.snapshot();
+    assert_eq!(snap_half.transferred_bytes, 50 * 1024);
+    assert_eq!(snap_half.progress, 0.5);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE STRICT PATH VALIDATOR SECURITY MATRIX
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_strict_path_validator_security_matrix() {
+    use rust_lib_uot_app::security::path_validator::StrictPathValidator;
+    use rust_lib_uot_app::security::PathValidator;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let validator = StrictPathValidator::new(Some(temp_dir.path().to_path_buf()));
+
+    // Valid filenames
+    assert!(validator.validate_filename("report_2026.pdf").is_ok());
+    assert!(validator.validate_filename("photo.jpg").is_ok());
+    assert!(validator.validate_filename("archive.tar.gz").is_ok());
+    assert!(validator
+        .validate_filename("dokument_über_größe.txt")
+        .is_ok());
+
+    // Invalid path traversal filenames
+    assert!(validator.validate_filename("../secret.key").is_err());
+    assert!(validator.validate_filename("..\\secret.key").is_err());
+    assert!(validator.validate_filename("/etc/shadow").is_err());
+    assert!(validator.validate_filename("C:\\boot.ini").is_err());
+    assert!(validator.validate_filename("sub/../../root").is_err());
+
+    // Null-byte injection
+    assert!(validator.validate_filename("evil.exe\0.txt").is_err());
+    assert!(validator.validate_filename("\0bad.txt").is_err());
+
+    // Windows reserved filenames (case-insensitive)
+    assert!(validator.validate_filename("CON").is_err());
+    assert!(validator.validate_filename("con.txt").is_err());
+    assert!(validator.validate_filename("PRN").is_err());
+    assert!(validator.validate_filename("AUX").is_err());
+    assert!(validator.validate_filename("NUL").is_err());
+    assert!(validator.validate_filename("COM1").is_err());
+    assert!(validator.validate_filename("com9.log").is_err());
+    assert!(validator.validate_filename("LPT1").is_err());
+    assert!(validator.validate_filename("lpt8.dat").is_err());
+
+    // Relative path validation
+    assert!(validator
+        .validate_relative_path("my_folder/doc.txt")
+        .is_ok());
+    assert!(validator.validate_relative_path("../escape.txt").is_err());
+    assert!(validator
+        .validate_relative_path("/root/escape.txt")
+        .is_err());
+
+    // Base directory check
+    let inside_path = temp_dir.path().join("safe.txt");
+    assert!(validator.validate_within_base(&inside_path).is_ok());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE CHECKPOINT STORE ERROR & PARTIAL BRANCHES
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_checkpoint_store_error_and_partial_branches() {
+    use rust_lib_uot_app::transfer::checkpoint::{
+        CheckpointStore, ItemCheckpoint, TransferCheckpoint,
+    };
+    use uuid::Uuid;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let cp_dir = temp_dir.path().join("checkpoints");
+    let store = CheckpointStore::new(cp_dir.clone());
+
+    let tx_id = Uuid::new_v4();
+    let cp = TransferCheckpoint {
+        transfer_id: tx_id,
+        direction: "receive".to_string(),
+        remote_device: "AliceNode".to_string(),
+        total_size: 50_000,
+        transferred_bytes: 25_000,
+        items: vec![ItemCheckpoint {
+            name: "partial_doc.pdf".to_string(),
+            relative_path: "partial_doc.pdf".to_string(),
+            size: 50_000,
+            transferred_bytes: 25_000,
+            complete: false,
+            sha256: None,
+        }],
+        saved_at: chrono::Utc::now(),
+    };
+
+    // Save and load
+    store.save(&cp).unwrap();
+    let loaded = store.load(&tx_id).unwrap();
+    assert_eq!(loaded.transfer_id, tx_id);
+    assert_eq!(loaded.transferred_bytes, 25_000);
+
+    // List incomplete
+    let list = store.list_incomplete();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].transfer_id, tx_id);
+
+    // Non-existent load returns Err
+    assert!(store.load(&Uuid::new_v4()).is_err());
+
+    // Corrupted file handling
+    let corrupt_id = Uuid::new_v4();
+    let corrupt_path = cp_dir.join(format!("{corrupt_id}.json"));
+    std::fs::write(&corrupt_path, b"INVALID JSON {NOT COMPLETE").unwrap();
+    assert!(store.load(&corrupt_id).is_err());
+
+    // Remove
+    store.remove(&tx_id).unwrap();
+    assert!(store.load(&tx_id).is_err());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE CRYPTO ENVELOPE & REPLAY PROTECTION
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_crypto_envelope_and_replay_protection() {
+    use rust_lib_uot_app::security::crypto::SoftwareCryptoProvider;
+    use rust_lib_uot_app::security::CryptoProvider;
+
+    let provider = SoftwareCryptoProvider::new();
+
+    let alice_keys = provider.generate_key_pair().unwrap();
+    let bob_keys = provider.generate_key_pair().unwrap();
+
+    let alice_shared = provider
+        .derive_shared_secret(&alice_keys.private_key, &bob_keys.public_key)
+        .unwrap();
+    let bob_shared = provider
+        .derive_shared_secret(&bob_keys.private_key, &alice_keys.public_key)
+        .unwrap();
+    assert_eq!(alice_shared, bob_shared);
+
+    let plaintext = b"Sensitive UOT payload bytes over the wire";
+    let nonce = [42u8; 12];
+
+    // Alice encrypts for Bob
+    let encrypted = provider.encrypt(&alice_shared, plaintext, &nonce).unwrap();
+    assert_ne!(&encrypted, plaintext);
+
+    // Bob decrypts from Alice
+    let decrypted = provider.decrypt(&bob_shared, &encrypted, &nonce).unwrap();
+    assert_eq!(&decrypted, plaintext);
+
+    // Tampered ciphertext fails
+    let mut tampered = encrypted.clone();
+    tampered[0] ^= 0xFF;
+    assert!(provider.decrypt(&bob_shared, &tampered, &nonce).is_err());
+}
