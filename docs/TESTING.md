@@ -6,10 +6,10 @@
 |----------|-----------------------|--------------|----------------------|
 | **Dual-Peer E2E Workflow** | `cargo test --test e2e_two_peer_workflow` | TCP, Hello Handshake, X25519, Messaging, File Transfer, SHA-256 | `PROVEN` |
 | **Network Fault Harness** | `cargo test --test network_fault_harness` | Closed Ports, Timeout, Expired PIN, Stream Drops | `PROVEN` |
-| **Transport Lab E2E Suite** | `cargo test --test transport_lab_e2e` (7 tests) | Multi-Node, Pause/Resume/Retry, Batch Isolation, Chat Stress | `PROVEN` |
+| **Transport Lab E2E Suite** | `cargo test --test transport_lab_e2e` (10 tests) | Multi-Node, Pause/Resume/Retry, Fallback Hierarchy, Multi-Batch Isolation, Checkpoint Resume, Chat Stress | `PROVEN` |
 | **QR Payload & Security** | `cargo test --test qr_payload_e2e_test` | QR JSON, URI Schema (`uot://pair`), Malformed Payload, Expiry | `PROVEN` |
-| **Rust Unit & Lib Suite** | `cargo test --lib` (250 tests) | Crypto, Protocol, Security, Queue, Engine | `PROVEN` |
-| **Coverage & Edge Cases** | `cargo test --test coverage_tests` (128 tests) | Edge Cases, State Machine, Subnet Scan, Transports | `PROVEN` |
+| **Rust Unit & Lib Suite** | `cargo test --lib` (250+ tests) | Crypto, Protocol, Security, Queue, Engine | `PROVEN` |
+| **Coverage & Edge Cases** | `cargo test --test coverage_tests` (137 tests) | Edge Cases, State Machine, Subnet Scan, Transports, Capabilities | `PROVEN` |
 | **Flutter Widget & Unit Tests** | `flutter test` (17 tests) | UI Components, Theme, QR Decoder, Adapters, Offer Dialog | `PROVEN` |
 | **Flutter Integration Driver** | `flutter test integration_test` | Full Flutter App Navigation & Engine Init | `EMULATOR-PROVEN` |
 | **Android Emulator Smoke Script** | `bash scripts/android_smoke_test.sh` | APK Install, RESUMED state, Logcat Crash Detection | `EMULATOR-PROVEN` |

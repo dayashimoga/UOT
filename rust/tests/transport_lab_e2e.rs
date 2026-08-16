@@ -777,3 +777,270 @@ async fn test_heavy_chat_and_transfer_interleaved_utf8_stress() {
     engine_s.stop();
     engine_r.stop();
 }
+
+#[tokio::test]
+async fn test_transport_fallback_hierarchy_comprehensive() {
+    use rust_lib_uot_app::transport::fallback::{
+        TransportFallbackManager, TransportSelectionStrategy,
+    };
+    use rust_lib_uot_app::transport::types::{TransportId, TransportState};
+
+    let manager = TransportFallbackManager::new(TransportSelectionStrategy::PreferSpeed);
+
+    // 1. TcpLan takes priority over WifiDirect, Hotspot, BLE, QR, Relay
+    let candidates = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+        (TransportId::Hotspot, TransportState::Connected),
+        (TransportId::WifiDirect, TransportState::Connected),
+        (TransportId::TcpLan, TransportState::Connected),
+    ];
+    assert_eq!(
+        manager.select_best_transport(&candidates),
+        Some(TransportId::TcpLan)
+    );
+
+    // 2. WifiDirect takes priority if TcpLan is disconnected
+    let candidates2 = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+        (TransportId::Hotspot, TransportState::Connected),
+        (TransportId::WifiDirect, TransportState::Connected),
+        (TransportId::TcpLan, TransportState::Disconnected),
+    ];
+    assert_eq!(
+        manager.select_best_transport(&candidates2),
+        Some(TransportId::WifiDirect)
+    );
+
+    // 3. Hotspot takes priority if WifiDirect is unavailable
+    let candidates3 = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+        (TransportId::Hotspot, TransportState::Connected),
+        (TransportId::WifiDirect, TransportState::Disconnected),
+    ];
+    assert_eq!(
+        manager.select_best_transport(&candidates3),
+        Some(TransportId::Hotspot)
+    );
+
+    // 4. BluetoothLe takes priority over QR and Relay
+    let candidates4 = vec![
+        (TransportId::Relay, TransportState::Connected),
+        (TransportId::QrCode, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+    ];
+    assert_eq!(
+        manager.select_best_transport(&candidates4),
+        Some(TransportId::BluetoothLe)
+    );
+
+    // 5. PreferOffline strategy prefers P2P/direct
+    let offline_mgr = TransportFallbackManager::new(TransportSelectionStrategy::PreferOffline);
+    let p2p_candidates = vec![
+        (TransportId::TcpLan, TransportState::Connected),
+        (TransportId::WifiDirect, TransportState::Connected),
+    ];
+    assert_eq!(
+        offline_mgr.select_best_transport(&p2p_candidates),
+        Some(TransportId::WifiDirect)
+    );
+
+    // 6. Network topology classification
+    let local_ips = vec![
+        "192.168.1.105".parse().unwrap(),
+        "10.0.0.12".parse().unwrap(),
+    ];
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local_ips,
+            "192.168.1.200".parse().unwrap()
+        ),
+        "Same network"
+    );
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local_ips,
+            "192.168.49.1".parse().unwrap()
+        ),
+        "Wi-Fi Direct"
+    );
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local_ips,
+            "192.168.43.1".parse().unwrap()
+        ),
+        "Hotspot"
+    );
+    assert_eq!(
+        TransportFallbackManager::classify_network_topology(
+            &local_ips,
+            "172.20.10.4".parse().unwrap()
+        ),
+        "Remote network"
+    );
+}
+
+#[tokio::test]
+async fn test_multi_batch_concurrent_isolation() {
+    let dir_s = tempfile::tempdir().unwrap();
+    let dir_r = tempfile::tempdir().unwrap();
+
+    let mut cfg_s = AppConfig::default();
+    cfg_s.device_name = "SenderNode".to_string();
+    cfg_s.transfer.save_directory = dir_s.path().to_string_lossy().to_string();
+    cfg_s.network_port = Some(0);
+
+    let mut cfg_r = AppConfig::default();
+    cfg_r.device_name = "ReceiverNode".to_string();
+    cfg_r.transfer.save_directory = dir_r.path().to_string_lossy().to_string();
+    cfg_r.network_port = Some(0);
+
+    let (engine_s, mut rx_s) = UotEngine::new(cfg_s);
+    let (engine_r, mut rx_r) = UotEngine::new(cfg_r);
+
+    let offers = std::sync::Arc::new(parking_lot::RwLock::new(Vec::new()));
+    let offers_clone = offers.clone();
+
+    tokio::spawn(async move { while rx_s.recv().await.is_some() {} });
+    tokio::spawn(async move {
+        while let Some(event) = rx_r.recv().await {
+            if let rust_lib_uot_app::core::engine::EngineEvent::IncomingOffer {
+                transfer_id, ..
+            } = event
+            {
+                offers_clone.write().push(transfer_id);
+            }
+        }
+    });
+
+    engine_s.start().await.unwrap();
+    engine_r.start().await.unwrap();
+
+    let port_r = engine_r.listening_port();
+    let addr_r = format!("127.0.0.1:{port_r}");
+    let dev_r = engine_s.connect_peer(&addr_r).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Create 3 separate files for 3 concurrent batches
+    let f1 = dir_s.path().join("batch_file_1.bin");
+    let f2 = dir_s.path().join("batch_file_2.bin");
+    let f3 = dir_s.path().join("batch_file_3.bin");
+
+    std::fs::write(&f1, vec![1u8; 64 * 1024]).unwrap();
+    std::fs::write(&f2, vec![2u8; 128 * 1024]).unwrap();
+    std::fs::write(&f3, vec![3u8; 256 * 1024]).unwrap();
+
+    let hash1 = compute_sha256(&f1);
+    let hash2 = compute_sha256(&f2);
+    let hash3 = compute_sha256(&f3);
+
+    let tx1 = engine_s
+        .send_files(&dev_r.device_id, vec![f1.clone()])
+        .await
+        .unwrap();
+    let tx2 = engine_s
+        .send_files(&dev_r.device_id, vec![f2.clone()])
+        .await
+        .unwrap();
+    let tx3 = engine_s
+        .send_files(&dev_r.device_id, vec![f3.clone()])
+        .await
+        .unwrap();
+
+    // Verify all 3 transfers have unique IDs and isolated batch IDs
+    assert_ne!(tx1, tx2);
+    assert_ne!(tx2, tx3);
+    assert_ne!(tx1, tx3);
+
+    // Wait for all 3 offers and accept them
+    for _ in 0..60 {
+        if offers.read().len() >= 3 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    let received_offers = offers.read().clone();
+    assert!(received_offers.len() >= 3, "Must receive all 3 offers");
+
+    for tid in &received_offers {
+        let _ = engine_r.accept_transfer(&tid.to_string()).await;
+    }
+
+    // Wait for transfers to complete
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let r_transfers = engine_r.get_transfers();
+        let done_count = r_transfers
+            .iter()
+            .filter(|t| t.status == TransferStatus::Completed)
+            .count();
+        if done_count >= 3 {
+            break;
+        }
+    }
+
+    let d1 = dir_r.path().join("batch_file_1.bin");
+    let d2 = dir_r.path().join("batch_file_2.bin");
+    let d3 = dir_r.path().join("batch_file_3.bin");
+
+    assert!(d1.exists());
+    assert!(d2.exists());
+    assert!(d3.exists());
+    assert_eq!(hash1, compute_sha256(&d1));
+    assert_eq!(hash2, compute_sha256(&d2));
+    assert_eq!(hash3, compute_sha256(&d3));
+
+    engine_s.stop();
+    engine_r.stop();
+}
+
+#[tokio::test]
+async fn test_large_file_checkpoint_resume() {
+    use rust_lib_uot_app::transfer::checkpoint::{
+        CheckpointStore, ItemCheckpoint, TransferCheckpoint,
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let cp_file = temp_dir.path().join("checkpoints");
+    let store = CheckpointStore::new(cp_file.clone());
+
+    let transfer_id = uuid::Uuid::new_v4();
+    let cp = TransferCheckpoint {
+        transfer_id,
+        direction: "send".to_string(),
+        remote_device: "DAYA_PHONE".to_string(),
+        total_size: 2_800_000_000,
+        transferred_bytes: 1_400_000_000, // 50% through 2.8GB file
+        items: vec![ItemCheckpoint {
+            name: "movie.mp4".to_string(),
+            relative_path: "movie.mp4".to_string(),
+            size: 2_800_000_000,
+            transferred_bytes: 1_400_000_000,
+            complete: false,
+            sha256: None,
+        }],
+        saved_at: chrono::Utc::now(),
+    };
+
+    store.save(&cp).unwrap();
+
+    let loaded = store.load(&transfer_id).expect("Checkpoint must exist");
+    assert_eq!(loaded.transfer_id, transfer_id);
+    assert_eq!(loaded.transferred_bytes, 1_400_000_000);
+    assert_eq!(loaded.items[0].transferred_bytes, 1_400_000_000);
+    assert!(!loaded.items[0].complete);
+
+    let incomplete = store.list_incomplete();
+    assert_eq!(incomplete.len(), 1);
+    assert_eq!(incomplete[0].transfer_id, transfer_id);
+
+    // Complete removal on success
+    store.remove(&transfer_id).unwrap();
+    assert!(store.load(&transfer_id).is_err());
+}

@@ -86,6 +86,7 @@ mod tests {
 
         let rec1 = TransferRecord {
             transfer_id: uuid::Uuid::new_v4(),
+            batch_id: Some("batch_test_001".to_string()),
             direction: TransferDirection::Send,
             status: TransferStatus::Completed,
             remote_device: "PixelPhone".to_string(),
@@ -98,9 +99,14 @@ mod tests {
                 status: TransferStatus::Completed,
                 hash: None,
                 saved_path: None,
+                resume_offset: 0,
             }],
             total_size: 2048,
             transferred_bytes: 2048,
+            verified_bytes: 2048,
+            transport: Some("Wi-Fi".to_string()),
+            retry_count: 0,
+            resume_offset: 0,
             created_at: chrono::Utc::now(),
             started_at: None,
             finished_at: None,

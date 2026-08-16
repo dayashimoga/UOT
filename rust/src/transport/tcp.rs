@@ -127,6 +127,8 @@ pub struct TcpConnection {
 impl TcpConnection {
     /// Create a new connection from an established TCP stream.
     pub fn new(stream: TcpStream) -> Result<Self, TransportError> {
+        let _ = stream.set_nodelay(true);
+
         let remote_addr = stream
             .peer_addr()
             .map_err(|e| TransportError::Connection(format!("No peer addr: {e}")))?;
@@ -137,17 +139,19 @@ impl TcpConnection {
         let state = Arc::new(RwLock::new(TransportState::Connected));
         let stats = Arc::new(RwLock::new(TransportStats::default()));
 
-        let (tx, rx) = mpsc::channel::<Frame>(256);
-        let (incoming_tx, incoming_rx) = mpsc::channel::<Frame>(256);
+        // Scale channel buffer for high-throughput multi-GB transfers
+        let (tx, rx) = mpsc::channel::<Frame>(1024);
+        let (incoming_tx, incoming_rx) = mpsc::channel::<Frame>(1024);
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
         // Spawn reader/writer tasks
+        let write_state = Arc::clone(&state);
         let read_state = Arc::clone(&state);
         let read_stats = Arc::clone(&stats);
         let (reader, writer) = stream.into_split();
 
         // Writer task
-        tokio::spawn(Self::writer_task(writer, rx));
+        tokio::spawn(Self::writer_task(writer, rx, write_state));
 
         // Reader task (with write_tx for automatic Pong replies)
         tokio::spawn(Self::reader_task(
@@ -226,10 +230,13 @@ impl TcpConnection {
     async fn writer_task(
         mut writer: tokio::net::tcp::OwnedWriteHalf,
         mut rx: mpsc::Receiver<Frame>,
+        state: Arc<RwLock<TransportState>>,
     ) {
         while let Some(frame) = rx.recv().await {
             let encoded = frame.encode();
-            if writer.write_all(&encoded).await.is_err() {
+            if let Err(e) = writer.write_all(&encoded).await {
+                log::warn!("TCP writer failed to flush frame: {e}");
+                *state.write() = TransportState::Disconnected;
                 break;
             }
         }
@@ -244,18 +251,25 @@ impl TcpConnection {
         stats: Arc<RwLock<TransportStats>>,
         mut shutdown_rx: oneshot::Receiver<()>,
     ) {
-        let mut buf = BytesMut::with_capacity(8192);
+        let mut buf = BytesMut::with_capacity(65536);
 
         loop {
             tokio::select! {
                 _ = &mut shutdown_rx => break,
                 result = reader.read_buf(&mut buf) => {
                     match result {
-                        Ok(0) => break, // EOF
+                        Ok(0) => {
+                            *state.write() = TransportState::Disconnected;
+                            break; // EOF
+                        }
                         Ok(n) => {
                             stats.write().bytes_received += n as u64;
                         }
-                        Err(_) => break,
+                        Err(e) => {
+                            log::warn!("TCP reader error: {e}");
+                            *state.write() = TransportState::Disconnected;
+                            break;
+                        }
                     }
                 }
             }

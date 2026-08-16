@@ -82,16 +82,22 @@ UOT is a cross-platform offline-first file transfer system built with **Rust (co
 - **Clipboard Lookup**: `send_clipboard()` searches by both device_id and IP:port.
 - **Acceptance Timeout**: 120s (was 5s).
 
-## Sprint 24 — Canonical Device Deduplication, Wire Pause/Resume/Retry & UI Stability
-- **Canonical Device Deduplication**: Subnet scanner and connection handshakes collapse synthetic `lan-*` records and real authenticated records into single canonical `DAYA` cards with honest capability indicators.
-- **Explicit Connection Tracking**: Removed false `"Connecting…"` badges by tracking active connection futures in `_connectingDeviceIds`.
-- **Wire Pause / Resume / Retry**: Bidirectional wire negotiation (`PauseAck`, `ResumeAck`, `Cancel`) with chunk-level checkpoint preservation on retry via `engine_retry_transfer`.
-- **Integer Font Size Standards**: Clean typography across `app_theme.dart` and `chat_screen.dart` eliminating Skia texture atlas corruption on mobile devices.
-- **Event-Driven Timeline Caching**: Caching raw JSON strings in chat timeline to avoid redundant 750ms widget recreation.
+## Sprint 26 — Universal Connectivity, Checkpoint Resumption & Large Transfer Overhaul
+- **Offer Timeout / Rejection Resolution**: `EngineEvent::IncomingOffer` emits `from_device_id` alongside `from_device`, allowing `chat_screen.dart` to match incoming offers by canonical device ID, peer name, or device ID alias.
+- **TCP Socket Resiliency & Scaling**: Enabled `set_nodelay(true)` on `TcpConnection`, scaled framed buffer capacity to 64KB, scaled channel queue depth to 1024 frames, and added structured disconnect error handling to eliminate socket drops during multi-gigabyte transfers.
+- **Periodic Checkpoint Store Integration**: `CheckpointStore` saves JSON transfer checkpoints periodically during send streaming (every 16 chunks / 1MB) and purges upon verified completion.
+- **True Checkpoint-Based Resumption**: Receiver preserves partial `.part` bytes on `FileStart`, and `retry_transfer` reconstructs `TransferItem` records to resume reading and streaming from the last verified byte offset rather than restarting from byte 0.
+- **Extended Transfer Records**: Added `batch_id`, `transport`, `retry_count`, `resume_offset`, `verified_bytes`, and durable state machine transitions (`Resuming`, `Retrying`) to `TransferRecord` and `TransferItemRecord`.
+- **Prioritized Transport Fallback Hierarchy**: Implemented strict transport selection priority in `TransportFallbackManager` (`TcpLan` -> `WifiDirect` -> `Hotspot` -> `BluetoothLe` -> `QrCode` -> `Relay`).
+- **Truthful Network Topology Classification**: Implemented `classify_network_topology` distinguishing Same-LAN subnet, Wi-Fi Direct (192.168.49.x), Hotspot (192.168.43.x / 192.168.137.x), Loopback, and Remote Networks.
+- **Dynamic Active Transport Subtitle**: Live transport indicators in `chat_screen.dart` AppBar displaying active transport name, live transfer speed, or `Resuming` status.
 
 ### Honest Feature Classification
 | Feature | Status | Evidence |
 |---------|--------|----------|
+| Large File Checkpoint Resume | PROVEN | Multi-gigabyte checkpoint persistence and resumption test in `transport_lab_e2e.rs` |
+| Multi-Batch Concurrent Isolation | PROVEN | Concurrent multi-batch test with unique transfer/batch IDs in `transport_lab_e2e.rs` |
+| Multi-Transport Fallback Hierarchy | PROVEN | 6-tier fallback priority & topology classification test in `transport_lab_e2e.rs` |
 | Canonical Device Identity | PROVEN | End-to-end deduplication integration test in `transport_lab_e2e.rs` |
 | TCP LAN File Transfer | PROVEN | End-to-end multi-peer lab tests, SHA-256 integrity match |
 | Pause / Resume Transfer | PROVEN | Wire negotiation & byte-level Sha256 persistence test in `transport_lab_e2e.rs` |

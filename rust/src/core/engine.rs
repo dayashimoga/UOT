@@ -28,6 +28,7 @@ use crate::security::verification::TrustManager;
 use crate::security::PathValidator;
 use crate::streaming::manager::{StreamManager, StreamSession, StreamType};
 use crate::transfer::analytics::LifetimeStats;
+use crate::transfer::checkpoint::{CheckpointStore, ItemCheckpoint, TransferCheckpoint};
 use crate::transfer::engine::{self, ProgressTracker, TransferItem};
 use crate::transfer::history::TransferHistoryStore;
 use crate::transfer::queue::{Priority, TransferQueueManager};
@@ -170,6 +171,7 @@ pub enum EngineEvent {
     IncomingOffer {
         transfer_id: Uuid,
         from_device: String,
+        from_device_id: Option<String>,
         items: Vec<String>,
         total_size: u64,
     },
@@ -824,7 +826,7 @@ impl UotEngine {
         Ok(transfer_id)
     }
 
-    /// Execute send using Arc<TcpConnection> (no encryption for now, reuses session conn).
+    /// Execute send using Arc<TcpConnection> (reuses session conn with checkpoint resumption).
     #[allow(clippy::too_many_arguments)]
     async fn execute_send_arc(
         conn: &Arc<TcpConnection>,
@@ -839,9 +841,33 @@ impl UotEngine {
         pending_completion_acks: &Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
     ) -> Result<(), TransferError> {
         let mut rate_limiter = RateLimiter::new(bandwidth_limit);
+        let checkpoint_store = CheckpointStore::new(CheckpointStore::default_path());
 
         for item in &items {
             tracker.set_current_item(&item.name);
+
+            let file_size = item.size;
+            let mut offset: u64 = {
+                let t = transfers.read();
+                if let Some(record) = t.get(&transfer_id) {
+                    if let Some(item_rec) = record.items.iter().find(|x| x.name == item.name) {
+                        if item_rec.status == TransferStatus::Completed {
+                            file_size // skip already completed item
+                        } else {
+                            item_rec.transferred_bytes.min(file_size)
+                        }
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            };
+
+            if offset >= file_size && file_size > 0 {
+                tracker.complete_item();
+                continue;
+            }
 
             // Mark item as InProgress on sender side
             {
@@ -852,9 +878,6 @@ impl UotEngine {
                     }
                 }
             }
-
-            let file_size = item.size;
-            let mut offset: u64 = 0;
 
             // Send file header
             let header = WireMessage::FileStart {
@@ -868,7 +891,19 @@ impl UotEngine {
                 .await
                 .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
 
-            // Send chunks
+            if offset > 0 {
+                log::info!(
+                    "Resuming file {} ({}) from byte offset {}/{}",
+                    item.name,
+                    transfer_id,
+                    offset,
+                    file_size
+                );
+            }
+
+            let mut chunks_since_checkpoint: usize = 0;
+
+            // Send chunks starting from offset
             while offset < file_size {
                 let (chunk_data, crc) = engine::read_chunk(&item.path, offset, chunk_size).await?;
                 let chunk_len = chunk_data.len() as u64;
@@ -880,23 +915,70 @@ impl UotEngine {
                 chunk_frame.extend_from_slice(&[0u8; 4]); // reserved
                 chunk_frame.extend_from_slice(&chunk_data);
 
-                conn.send(Frame::data(chunk_frame))
-                    .await
-                    .map_err(|e| TransferError::Protocol(format!("Send error: {e}")))?;
+                if let Err(e) = conn.send(Frame::data(chunk_frame)).await {
+                    log::warn!(
+                        "Transfer {transfer_id} send interrupted at offset {offset}/{file_size}: {e}"
+                    );
+                    let mut t = transfers.write();
+                    if let Some(record) = t.get_mut(&transfer_id) {
+                        record.status = TransferStatus::Retrying;
+                        record.resume_offset = record.transferred_bytes;
+                        record.error = Some(format!("Interrupted at offset {offset}: {e}"));
+                        if let Some(item_rec) =
+                            record.items.iter_mut().find(|x| x.name == item.name)
+                        {
+                            item_rec.status = TransferStatus::Retrying;
+                            item_rec.resume_offset = offset;
+                        }
+                    }
+                    return Err(TransferError::Protocol(format!("Send error: {e}")));
+                }
 
                 offset += chunk_len;
                 tracker.add_bytes(chunk_len);
 
-                // Update sender-side transferred bytes in engine record
+                // Update sender-side transferred bytes in engine record safely bounded by total_size
                 {
                     let mut t = transfers.write();
                     if let Some(record) = t.get_mut(&transfer_id) {
-                        record.transferred_bytes += chunk_len;
+                        record.transferred_bytes =
+                            (record.transferred_bytes + chunk_len).min(record.total_size);
                         if let Some(item_rec) =
                             record.items.iter_mut().find(|x| x.name == item.name)
                         {
-                            item_rec.transferred_bytes += chunk_len;
+                            item_rec.transferred_bytes =
+                                (item_rec.transferred_bytes + chunk_len).min(item_rec.size);
                         }
+                    }
+                }
+
+                // Checkpoint persistence every 16 chunks (e.g. 1MB)
+                chunks_since_checkpoint += 1;
+                if chunks_since_checkpoint >= 16 {
+                    chunks_since_checkpoint = 0;
+                    if let Some(record) = transfers.read().get(&transfer_id) {
+                        let cp_items = record
+                            .items
+                            .iter()
+                            .map(|it| ItemCheckpoint {
+                                name: it.name.clone(),
+                                relative_path: it.relative_path.clone(),
+                                size: it.size,
+                                transferred_bytes: it.transferred_bytes,
+                                complete: it.status == TransferStatus::Completed,
+                                sha256: it.hash.clone(),
+                            })
+                            .collect();
+                        let cp = TransferCheckpoint {
+                            transfer_id,
+                            direction: "send".to_string(),
+                            remote_device: record.remote_device.clone(),
+                            total_size: record.total_size,
+                            transferred_bytes: record.transferred_bytes,
+                            items: cp_items,
+                            saved_at: chrono::Utc::now(),
+                        };
+                        let _ = checkpoint_store.save(&cp);
                     }
                 }
 
@@ -960,6 +1042,7 @@ impl UotEngine {
         match tokio::time::timeout(std::time::Duration::from_secs(15), ack_rx).await {
             Ok(Ok(true)) => {
                 log::info!("Receiver verified & persisted transfer {transfer_id} ✓");
+                let _ = checkpoint_store.remove(&transfer_id);
                 Ok(())
             }
             Ok(Ok(false)) => Err(TransferError::IntegrityFailed(
@@ -1372,11 +1455,13 @@ impl UotEngine {
                                     status: TransferStatus::Pending,
                                     hash: None,
                                     saved_path: None,
+                                    resume_offset: 0,
                                 })
                                 .collect();
 
                             let record = TransferRecord {
                                 transfer_id,
+                                batch_id: Some(format!("batch_{}", &transfer_id.to_string()[..8])),
                                 remote_device: remote_peer_id
                                     .clone()
                                     .unwrap_or_else(|| device_name.clone()),
@@ -1384,6 +1469,10 @@ impl UotEngine {
                                 status: TransferStatus::Pending,
                                 total_size,
                                 transferred_bytes: 0,
+                                verified_bytes: 0,
+                                transport: Some("Wi-Fi".to_string()),
+                                retry_count: 0,
+                                resume_offset: 0,
                                 items: item_records,
                                 created_at: chrono::Utc::now(),
                                 started_at: None,
@@ -1402,6 +1491,7 @@ impl UotEngine {
                                 .send(EngineEvent::IncomingOffer {
                                     transfer_id,
                                     from_device: device_name,
+                                    from_device_id: remote_peer_id.clone(),
                                     items,
                                     total_size,
                                 })
@@ -1454,13 +1544,15 @@ impl UotEngine {
                             let part_path =
                                 target_file_path.with_extension(format!("{ext_str}.part"));
 
-                            // Touch/initialize the part file immediately (handles 0-byte files reliably)
-                            let _ = tokio::fs::OpenOptions::new()
-                                .create(true)
-                                .write(true)
-                                .truncate(true)
-                                .open(&part_path)
-                                .await;
+                            // Touch/initialize the part file without wiping partial bytes if resuming
+                            if !part_path.exists() {
+                                let _ = tokio::fs::OpenOptions::new()
+                                    .create(true)
+                                    .write(true)
+                                    .truncate(false)
+                                    .open(&part_path)
+                                    .await;
+                            }
 
                             {
                                 let mut t = transfers.write();
@@ -2546,7 +2638,7 @@ impl UotEngine {
             })
         })?;
 
-        let (remote_device, item_names) = {
+        let (remote_device, items, total_size) = {
             let transfers = self.transfers.read();
             let record = transfers.get(&uuid).ok_or_else(|| {
                 UotError::Transfer(TransferError::TransferNotFound {
@@ -2556,13 +2648,22 @@ impl UotEngine {
             if record.status == TransferStatus::Completed {
                 return Ok(());
             }
-            let names: Vec<String> = record
+            let incomplete_items: Vec<TransferItem> = record
                 .items
                 .iter()
                 .filter(|i| i.status != TransferStatus::Completed)
-                .map(|i| i.name.clone())
+                .map(|i| TransferItem {
+                    path: PathBuf::from(i.saved_path.as_deref().unwrap_or(&i.relative_path)),
+                    relative_path: i.relative_path.clone(),
+                    name: i.name.clone(),
+                    size: i.size,
+                })
                 .collect();
-            (record.remote_device.clone(), names)
+            (
+                record.remote_device.clone(),
+                incomplete_items,
+                record.total_size,
+            )
         };
 
         let conn = self.get_peer_connection(&remote_device).ok_or_else(|| {
@@ -2571,11 +2672,12 @@ impl UotEngine {
             })
         })?;
 
-        // Reset transfer status to InProgress
+        // Reset transfer status to InProgress / Retrying
         {
             let mut t = self.transfers.write();
             if let Some(rec) = t.get_mut(&uuid) {
                 rec.status = TransferStatus::InProgress;
+                rec.retry_count += 1;
                 rec.error = None;
             }
         }
@@ -2612,12 +2714,12 @@ impl UotEngine {
         tokio::spawn(async move {
             let _guard = peer_send_lock.lock().await;
 
-            let tracker = Arc::new(ProgressTracker::new(uuid, 0, item_names.len()));
+            let tracker = Arc::new(ProgressTracker::new(uuid, total_size, items.len()));
 
-            // Execute retry send
+            // Execute retry send with reconstructed items
             let send_res = Self::execute_send_arc(
                 &conn,
-                vec![],
+                items,
                 uuid,
                 &tracker,
                 chunk_size,
@@ -2656,7 +2758,6 @@ impl UotEngine {
                         record.status = TransferStatus::Failed;
                         record.finished_at = Some(chrono::Utc::now());
                         record.error = Some(e.to_string());
-                        stats.write().record_failure();
                         history.write().upsert(record.clone());
                     }
                     let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {

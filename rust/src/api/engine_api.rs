@@ -79,12 +79,14 @@ async fn event_forwarder(
             EngineEvent::IncomingOffer {
                 transfer_id,
                 from_device,
+                from_device_id,
                 items,
                 total_size,
             } => serde_json::json!({
                 "type": "IncomingOffer",
                 "transfer_id": transfer_id.to_string(),
                 "from_device": from_device,
+                "from_device_id": from_device_id,
                 "items": items,
                 "total_size": total_size,
             })

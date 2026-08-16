@@ -43,11 +43,14 @@ impl TransportFallbackManager {
 
         match self.strategy {
             TransportSelectionStrategy::PreferSpeed => {
-                // Priority: TcpLan -> WifiDirect -> BluetoothLe -> QrCode
+                // Priority: TcpLan -> WifiDirect -> Hotspot -> BluetoothLe -> QrCode -> Relay -> Others
                 if let Some(t) = active.iter().find(|(id, _)| *id == TransportId::TcpLan) {
                     return Some(t.0);
                 }
                 if let Some(t) = active.iter().find(|(id, _)| *id == TransportId::WifiDirect) {
+                    return Some(t.0);
+                }
+                if let Some(t) = active.iter().find(|(id, _)| *id == TransportId::Hotspot) {
                     return Some(t.0);
                 }
                 if let Some(t) = active
@@ -56,11 +59,76 @@ impl TransportFallbackManager {
                 {
                     return Some(t.0);
                 }
+                if let Some(t) = active.iter().find(|(id, _)| *id == TransportId::QrCode) {
+                    return Some(t.0);
+                }
+                if let Some(t) = active.iter().find(|(id, _)| *id == TransportId::Relay) {
+                    return Some(t.0);
+                }
                 Some(active[0].0)
             }
-            TransportSelectionStrategy::PreferOffline | TransportSelectionStrategy::Manual => {
+            TransportSelectionStrategy::PreferOffline => {
+                // Prefer direct peer-to-peer / offline transports
+                if let Some(t) = active.iter().find(|(id, _)| *id == TransportId::WifiDirect) {
+                    return Some(t.0);
+                }
+                if let Some(t) = active.iter().find(|(id, _)| *id == TransportId::Hotspot) {
+                    return Some(t.0);
+                }
+                if let Some(t) = active
+                    .iter()
+                    .find(|(id, _)| *id == TransportId::BluetoothLe)
+                {
+                    return Some(t.0);
+                }
+                if let Some(t) = active.iter().find(|(id, _)| *id == TransportId::TcpLan) {
+                    return Some(t.0);
+                }
                 Some(active[0].0)
             }
+            TransportSelectionStrategy::Manual => Some(active[0].0),
+        }
+    }
+
+    /// Classify network topology between local addresses and remote peer address truthfully.
+    pub fn classify_network_topology(
+        local_ips: &[std::net::IpAddr],
+        remote_ip: std::net::IpAddr,
+    ) -> &'static str {
+        if remote_ip.is_loopback() {
+            return "Local Loopback";
+        }
+
+        // Check for Android Wi-Fi Direct subnet (standard 192.168.49.0/24)
+        if let std::net::IpAddr::V4(ipv4) = remote_ip {
+            let octets = ipv4.octets();
+            if octets[0] == 192 && octets[1] == 168 && octets[2] == 49 {
+                return "Wi-Fi Direct";
+            }
+            // Standard mobile hotspot subnets (192.168.43.0/24, 192.168.137.0/24 Windows ICS)
+            if (octets[0] == 192 && octets[1] == 168 && octets[2] == 43)
+                || (octets[0] == 192 && octets[1] == 168 && octets[2] == 137)
+            {
+                return "Hotspot";
+            }
+        }
+
+        // Check if any local IP shares the /24 subnet with remote IP
+        for local in local_ips {
+            if let (std::net::IpAddr::V4(loc), std::net::IpAddr::V4(rem)) = (local, remote_ip) {
+                let loc_o = loc.octets();
+                let rem_o = rem.octets();
+                if loc_o[0] == rem_o[0] && loc_o[1] == rem_o[1] && loc_o[2] == rem_o[2] {
+                    return "Same network";
+                }
+            }
+        }
+
+        // Remote network or different subnet
+        if remote_ip.is_unspecified() {
+            "Unknown"
+        } else {
+            "Remote network"
         }
     }
 }

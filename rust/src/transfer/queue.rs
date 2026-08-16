@@ -125,11 +125,16 @@ mod tests {
     fn make_record(name: &str) -> TransferRecord {
         TransferRecord {
             transfer_id: Uuid::new_v4(),
+            batch_id: Some("batch_queue_test".to_string()),
             remote_device: name.to_string(),
             direction: TransferDirection::Send,
             status: TransferStatus::Pending,
             total_size: 1000,
             transferred_bytes: 0,
+            verified_bytes: 0,
+            transport: Some("Wi-Fi".to_string()),
+            retry_count: 0,
+            resume_offset: 0,
             items: vec![],
             created_at: chrono::Utc::now(),
             started_at: None,

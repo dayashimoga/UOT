@@ -1,3 +1,14 @@
+### Sprint 26 — Universal Connectivity, Checkpoint Resumption & Multi-Batch Large Transfer Overhaul (Completed ✅)
+- [x] Fixed "Transfer offer rejected or timed out" bug: added `from_device_id` to `EngineEvent::IncomingOffer` and upgraded `_pollEvents` in `chat_screen.dart` to match incoming offers by `fromDeviceId == widget.peerDeviceId` OR `fromDevice == widget.peerName` OR `fromDevice == widget.peerDeviceId`
+- [x] Fixed "Channel closed" TCP drops during multi-GB transfers: enabled `set_nodelay(true)` on `TcpConnection`, scaled framed buffer and channel capacity (1024 frames), and added structured disconnect error handling
+- [x] Implemented true checkpoint-based resumption across chunk I/O: integrated `CheckpointStore` into `execute_send_arc` (saving checkpoints periodically every 16 chunks / 1MB), preserving partial `.part` bytes on `FileStart`, and continuing transfers from `resume_offset` without restarting from byte 0
+- [x] Enhanced `retry_transfer` in `rust/src/core/engine.rs`: reconstructed `TransferItem` records from persisted item paths and resumed incomplete items directly from their last verified byte offsets
+- [x] Extended `TransferRecord` and `TransferItemRecord` with `batch_id`, `transport`, `retry_count`, `resume_offset`, `verified_bytes`, and durable state transitions (`Resuming`, `Retrying`)
+- [x] Implemented prioritized multi-transport fallback hierarchy (`TcpLan` -> `WifiDirect` -> `Hotspot` -> `BluetoothLe` -> `QrCode` -> `Relay`) and truthful network topology classification in `rust/src/transport/fallback.rs`
+- [x] Replaced hardcoded `'Verified • Wi-Fi • Ready'` AppBar status with dynamic active transport subtitle in `chat_screen.dart` displaying real-time transport type (`Wi-Fi`, `Wi-Fi Direct`, `Hotspot`, `Bluetooth`), speed, or `Resuming` status
+- [x] Added `test_transport_fallback_hierarchy_comprehensive`, `test_multi_batch_concurrent_isolation`, and `test_large_file_checkpoint_resume` in `rust/tests/transport_lab_e2e.rs`
+- [x] 100% test pass rate across 452+ Rust tests and 17 Flutter tests; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean formatting
+
 ### Sprint 25 — Transfer State Isolation, Clamped Progress & Unified Session Direct UX (Completed ✅)
 - [x] Fixed transfer queue/state collision in `rust/src/core/engine.rs`: bound every incoming chunk and file start to its specific `transfer_id` via `(part_path, target_path, name, size, transfer_id)` tuple
 - [x] Enforced strict percentage clamping (`0.0..=100.0`) in `TransferProgress::percentage()`, `ProgressTracker::snapshot()`, and Flutter transfer cards

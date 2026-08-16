@@ -278,8 +278,12 @@ class _ChatScreenState extends State<ChatScreen> {
         final type = event['type'] as String?;
         if (type == 'IncomingOffer') {
           final fromDevice = event['from_device']?.toString() ?? '';
-          if (fromDevice == widget.peerName ||
-              fromDevice == widget.peerDeviceId) {
+          final fromDeviceId = event['from_device_id']?.toString() ?? '';
+          if (fromDeviceId == widget.peerDeviceId ||
+              fromDevice == widget.peerName ||
+              fromDevice == widget.peerDeviceId ||
+              fromDeviceId == widget.peerName ||
+              (fromDeviceId.isEmpty && fromDevice.isNotEmpty)) {
             setState(() {
               _pendingOffer = event;
             });
@@ -292,6 +296,30 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
     } catch (_) {}
+  }
+
+  String _getActiveTransportSubtitle() {
+    final activeTransfer = _transfers.where((t) {
+      final s = t['status']?.toString();
+      return s == 'InProgress' ||
+          s == 'Resuming' ||
+          s == 'Retrying' ||
+          s == 'Verifying';
+    }).firstOrNull;
+
+    if (activeTransfer != null) {
+      final transport = activeTransfer['transport']?.toString() ?? 'Wi-Fi';
+      final status = activeTransfer['status']?.toString() ?? 'InProgress';
+      if (status == 'Retrying' || status == 'Resuming') {
+        return 'Resuming • $transport';
+      }
+      final speedDisplay = activeTransfer['speed_display']?.toString();
+      if (speedDisplay != null && speedDisplay.isNotEmpty) {
+        return 'Verified • $transport • $speedDisplay';
+      }
+      return 'Verified • $transport • Transferring';
+    }
+    return 'Verified • Wi-Fi • Ready';
   }
 
   Future<void> _sendMessage() async {
@@ -592,7 +620,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Verified • Wi-Fi • Ready',
+                        _getActiveTransportSubtitle(),
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,

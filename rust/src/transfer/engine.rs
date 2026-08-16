@@ -337,17 +337,24 @@ pub fn create_transfer_record(
             status: TransferStatus::Queued,
             hash: None,
             saved_path: Some(item.path.to_string_lossy().to_string()),
+            resume_offset: 0,
         })
         .collect();
 
+    let transfer_id = Uuid::new_v4();
     TransferRecord {
-        transfer_id: Uuid::new_v4(),
+        transfer_id,
+        batch_id: Some(format!("batch_{}", &transfer_id.to_string()[..8])),
         direction,
         status: TransferStatus::Queued,
         remote_device: remote_device.to_string(),
         items: item_records,
         total_size,
         transferred_bytes: 0,
+        verified_bytes: 0,
+        transport: Some("Wi-Fi".to_string()),
+        retry_count: 0,
+        resume_offset: 0,
         created_at: chrono::Utc::now(),
         started_at: None,
         finished_at: None,

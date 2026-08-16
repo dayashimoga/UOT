@@ -10,6 +10,9 @@ use uuid::Uuid;
 pub struct TransferRecord {
     /// Unique transfer identifier.
     pub transfer_id: Uuid,
+    /// Optional batch grouping identifier.
+    #[serde(default)]
+    pub batch_id: Option<String>,
     /// Direction of the transfer.
     pub direction: TransferDirection,
     /// Current status.
@@ -22,6 +25,18 @@ pub struct TransferRecord {
     pub total_size: u64,
     /// Bytes transferred so far.
     pub transferred_bytes: u64,
+    /// Verified bytes persisted to disk.
+    #[serde(default)]
+    pub verified_bytes: u64,
+    /// Active transport type (e.g., "Wi-Fi", "Wi-Fi Direct", "Hotspot", "Bluetooth").
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// Number of retry attempts made for this transfer.
+    #[serde(default)]
+    pub retry_count: u32,
+    /// Resume offset byte marker.
+    #[serde(default)]
+    pub resume_offset: u64,
     /// When the transfer was created.
     pub created_at: DateTime<Utc>,
     /// When the transfer started.
@@ -52,6 +67,9 @@ pub struct TransferItemRecord {
     /// Saved absolute or canonical path on local disk (if available).
     #[serde(default)]
     pub saved_path: Option<String>,
+    /// Resume offset byte marker.
+    #[serde(default)]
+    pub resume_offset: u64,
 }
 
 /// Direction of a transfer.
@@ -74,6 +92,10 @@ pub enum TransferStatus {
     InProgress,
     /// Transfer paused.
     Paused,
+    /// Resuming from checkpoint offset.
+    Resuming,
+    /// Retrying connection / transfer.
+    Retrying,
     /// Verifying integrity.
     Verifying,
     /// Successfully completed.
@@ -91,6 +113,8 @@ impl std::fmt::Display for TransferStatus {
             Self::Pending => write!(f, "Pending"),
             Self::InProgress => write!(f, "In Progress"),
             Self::Paused => write!(f, "Paused"),
+            Self::Resuming => write!(f, "Resuming"),
+            Self::Retrying => write!(f, "Retrying"),
             Self::Verifying => write!(f, "Verifying"),
             Self::Completed => write!(f, "Completed"),
             Self::Failed => write!(f, "Failed"),
@@ -236,12 +260,17 @@ mod tests {
     fn test_transfer_record_serialization() {
         let record = TransferRecord {
             transfer_id: Uuid::new_v4(),
+            batch_id: Some("batch_12345678".to_string()),
             direction: TransferDirection::Send,
             status: TransferStatus::Completed,
             remote_device: "Test Phone".to_string(),
             items: vec![],
             total_size: 1024,
             transferred_bytes: 1024,
+            verified_bytes: 1024,
+            transport: Some("Wi-Fi".to_string()),
+            retry_count: 0,
+            resume_offset: 0,
             created_at: Utc::now(),
             started_at: Some(Utc::now()),
             finished_at: Some(Utc::now()),
