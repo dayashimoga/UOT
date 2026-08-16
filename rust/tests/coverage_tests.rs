@@ -3285,3 +3285,766 @@ async fn test_subnet_scanner_comprehensive_coverage() {
     let active = scanner.scan_subnet([192, 0, 2, 0]).await;
     assert!(active.is_empty() || !active.is_empty());
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE ERROR HIERARCHY & CONVERSIONS COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_error_hierarchy_display_and_from_traits() {
+    use rust_lib_uot_app::core::error::*;
+
+    // 1. TransportError variants
+    let err1 = TransportError::ConnectionFailed {
+        reason: "refused".into(),
+    };
+    assert_eq!(err1.to_string(), "Connection failed: refused");
+    let err2 = TransportError::ConnectionLost {
+        reason: "peer reset".into(),
+    };
+    assert_eq!(err2.to_string(), "Connection lost: peer reset");
+    let err3 = TransportError::SendFailed {
+        reason: "broken pipe".into(),
+    };
+    assert_eq!(err3.to_string(), "Send failed: broken pipe");
+    let err4 = TransportError::ReceiveFailed {
+        reason: "unexpected EOF".into(),
+    };
+    assert_eq!(err4.to_string(), "Receive failed: unexpected EOF");
+    let err5 = TransportError::NotAvailable {
+        transport: "BLE".into(),
+    };
+    assert_eq!(err5.to_string(), "Transport not available: BLE");
+    let err6 = TransportError::Timeout { timeout_ms: 5000 };
+    assert_eq!(err6.to_string(), "Connection timeout after 5000ms");
+    let err7 = TransportError::AddressInUse {
+        address: "0.0.0.0:42000".into(),
+    };
+    assert_eq!(err7.to_string(), "Address already in use: 0.0.0.0:42000");
+    let err8 = TransportError::Connection("generic conn error".into());
+    assert_eq!(err8.to_string(), "Connection error: generic conn error");
+    let err9 = TransportError::Protocol("generic proto error".into());
+    assert_eq!(err9.to_string(), "Protocol error: generic proto error");
+
+    // 2. ProtocolError variants
+    let p_err1 = ProtocolError::InvalidStateTransition {
+        from: "Idle".into(),
+        to: "Transferring".into(),
+    };
+    assert_eq!(
+        p_err1.to_string(),
+        "Invalid state transition: Idle -> Transferring"
+    );
+    let p_err2 = ProtocolError::MalformedMessage {
+        reason: "invalid JSON".into(),
+    };
+    assert_eq!(p_err2.to_string(), "Malformed message: invalid JSON");
+    let p_err3 = ProtocolError::UnsupportedVersion { version: 99 };
+    assert_eq!(p_err3.to_string(), "Unsupported protocol version: 99");
+    let p_err4 = ProtocolError::SessionExpired {
+        session_id: "sess-123".into(),
+    };
+    assert_eq!(p_err4.to_string(), "Session expired: sess-123");
+    let p_err5 = ProtocolError::MessageTooLarge {
+        size: 1000000,
+        max_size: 500000,
+    };
+    assert_eq!(
+        p_err5.to_string(),
+        "Message too large: 1000000 bytes (max: 500000)"
+    );
+    let p_err6 = ProtocolError::UnexpectedMessage {
+        message_type: "Ping".into(),
+    };
+    assert_eq!(p_err6.to_string(), "Unexpected message type: Ping");
+
+    // 3. SecurityError variants
+    let s_err1 = SecurityError::AuthenticationFailed {
+        reason: "bad pin".into(),
+    };
+    assert_eq!(s_err1.to_string(), "Authentication failed: bad pin");
+    let s_err2 = SecurityError::Unauthorized {
+        reason: "no session token".into(),
+    };
+    assert_eq!(s_err2.to_string(), "Unauthorized: no session token");
+    let s_err3 = SecurityError::EncryptionFailed {
+        reason: "cipher error".into(),
+    };
+    assert_eq!(s_err3.to_string(), "Encryption failed: cipher error");
+    let s_err4 = SecurityError::DecryptionFailed {
+        reason: "corrupt auth tag".into(),
+    };
+    assert_eq!(s_err4.to_string(), "Decryption failed: corrupt auth tag");
+    let s_err5 = SecurityError::InvalidCertificate {
+        reason: "expired cert".into(),
+    };
+    assert_eq!(s_err5.to_string(), "Invalid certificate: expired cert");
+    let s_err6 = SecurityError::KeyGenerationFailed {
+        reason: "RNG failed".into(),
+    };
+    assert_eq!(s_err6.to_string(), "Key generation failed: RNG failed");
+    let s_err7 = SecurityError::SessionKeyExpired;
+    assert_eq!(s_err7.to_string(), "Session key expired");
+    let s_err8 = SecurityError::ReplayDetected {
+        nonce: "12345".into(),
+    };
+    assert_eq!(s_err8.to_string(), "Replay attack detected: nonce=12345");
+    let s_err9 = SecurityError::KeyExchangeFailed {
+        reason: "bad public key".into(),
+    };
+    assert_eq!(s_err9.to_string(), "Key exchange failed: bad public key");
+    let s_err10 = SecurityError::PathTraversal {
+        path: "../../secret".into(),
+        reason: "relative dotdot".into(),
+    };
+    assert_eq!(
+        s_err10.to_string(),
+        "Path traversal attempt: ../../secret (relative dotdot)"
+    );
+
+    // 4. DiscoveryError variants
+    let d_err1 = DiscoveryError::ScanFailed {
+        reason: "socket error".into(),
+    };
+    assert_eq!(d_err1.to_string(), "Scan failed: socket error");
+    let d_err2 = DiscoveryError::RegistrationFailed {
+        reason: "mDNS bind error".into(),
+    };
+    assert_eq!(
+        d_err2.to_string(),
+        "Service registration failed: mDNS bind error"
+    );
+    let d_err3 = DiscoveryError::DeviceNotFound {
+        device_id: "dev-999".into(),
+    };
+    assert_eq!(d_err3.to_string(), "Device not found: dev-999");
+    let d_err4 = DiscoveryError::Timeout { timeout_ms: 1000 };
+    assert_eq!(d_err4.to_string(), "Discovery timeout after 1000ms");
+    let d_err5 = DiscoveryError::ServiceError("mDNS daemon died".into());
+    assert_eq!(d_err5.to_string(), "Service error: mDNS daemon died");
+
+    // 5. TransferError variants
+    let t_err1 = TransferError::FileNotFound {
+        path: "/tmp/none".into(),
+    };
+    assert_eq!(t_err1.to_string(), "File not found: /tmp/none");
+    let t_err2 = TransferError::PermissionDenied {
+        path: "/root/secret".into(),
+    };
+    assert_eq!(t_err2.to_string(), "Permission denied: /root/secret");
+    let t_err3 = TransferError::Cancelled {
+        transfer_id: "tx-123".into(),
+    };
+    assert_eq!(t_err3.to_string(), "Transfer cancelled: tx-123");
+    let t_err4 = TransferError::InsufficientSpace {
+        needed: 2000,
+        available: 1000,
+    };
+    assert_eq!(
+        t_err4.to_string(),
+        "Insufficient disk space: need=2000 bytes, available=1000 bytes"
+    );
+    let t_err5 = TransferError::ChunkOutOfOrder {
+        expected: 5,
+        actual: 2,
+    };
+    assert_eq!(t_err5.to_string(), "Chunk out of order: expected=5, got=2");
+    let t_err6 = TransferError::TransferNotFound {
+        transfer_id: "tx-404".into(),
+    };
+    assert_eq!(t_err6.to_string(), "Transfer not found: tx-404");
+    let t_err7 = TransferError::ResumeNotPossible {
+        reason: "file deleted".into(),
+    };
+    assert_eq!(t_err7.to_string(), "Resume not possible: file deleted");
+    let t_err8 = TransferError::FileIo("disk error".into());
+    assert_eq!(t_err8.to_string(), "File I/O error: disk error");
+    let t_err9 = TransferError::IntegrityFailed("hash mismatch".into());
+    assert_eq!(t_err9.to_string(), "Integrity check failed: hash mismatch");
+    let t_err10 = TransferError::EmptyTransfer;
+    assert_eq!(t_err10.to_string(), "Empty transfer: no files to send");
+    let t_err11 = TransferError::DeviceNotFound("dev-0".into());
+    assert_eq!(t_err11.to_string(), "Device not found: dev-0");
+    let t_err12 = TransferError::Protocol("proto issue".into());
+    assert_eq!(t_err12.to_string(), "Protocol error: proto issue");
+
+    // 6. StreamingError variants
+    let str_err1 = StreamingError::NotSupported {
+        capability: "4k_video".into(),
+    };
+    assert_eq!(str_err1.to_string(), "Stream not supported: 4k_video");
+    let str_err2 = StreamingError::CodecError {
+        reason: "unsupported H265 profile".into(),
+    };
+    assert_eq!(
+        str_err2.to_string(),
+        "Codec error: unsupported H265 profile"
+    );
+    let str_err3 = StreamingError::BufferOverflow {
+        reason: "jitter buffer full".into(),
+    };
+    assert_eq!(str_err3.to_string(), "Buffer overflow: jitter buffer full");
+    let str_err4 = StreamingError::UnexpectedEnd;
+    assert_eq!(str_err4.to_string(), "Stream ended unexpectedly");
+    let str_err5 = StreamingError::PermissionDenied {
+        resource: "camera".into(),
+    };
+    assert_eq!(str_err5.to_string(), "Permission denied for camera");
+
+    // 7. UotError From conversions
+    let uot_trans: UotError = err1.into();
+    assert!(matches!(uot_trans, UotError::Transport(_)));
+    let uot_proto: UotError = p_err1.into();
+    assert!(matches!(uot_proto, UotError::Protocol(_)));
+    let uot_sec: UotError = s_err1.into();
+    assert!(matches!(uot_sec, UotError::Security(_)));
+    let uot_disc: UotError = d_err1.into();
+    assert!(matches!(uot_disc, UotError::Discovery(_)));
+    let uot_tx: UotError = t_err1.into();
+    assert!(matches!(uot_tx, UotError::Transfer(_)));
+    let uot_stream: UotError = str_err1.into();
+    assert!(matches!(uot_stream, UotError::Streaming(_)));
+    let uot_cfg: UotError = UotError::Config("invalid port number".into());
+    assert_eq!(
+        uot_cfg.to_string(),
+        "Configuration error: invalid port number"
+    );
+    let uot_io: UotError =
+        std::io::Error::new(std::io::ErrorKind::TimedOut, "socket timeout").into();
+    assert!(matches!(uot_io, UotError::Io(_)));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE PLATFORM CAPABILITIES & RUNTIME DETECTION
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_platform_capabilities_detection() {
+    use rust_lib_uot_app::core::capabilities::PlatformCapabilities;
+
+    let caps = PlatformCapabilities::detect();
+    assert!(!caps.platform.is_empty());
+    assert!(caps.encryption);
+    assert!(caps.fountain_qr);
+
+    let supported = caps.supported_transports();
+    assert!(!supported.is_empty());
+    assert!(supported.contains(&"tcp") || supported.contains(&"fountain_qr"));
+
+    let unsupported = caps.unsupported_features();
+    // On non-mobile/desktop platforms, unsupported features should document truthful reasons
+    for (feat, reason) in unsupported {
+        assert!(!feat.is_empty());
+        assert!(!reason.is_empty());
+    }
+
+    // Test serialization & deserialization
+    let json = serde_json::to_string(&caps).expect("caps serialize");
+    let deserialized: PlatformCapabilities = serde_json::from_str(&json).expect("caps deserialize");
+    assert_eq!(caps.platform, deserialized.platform);
+    assert_eq!(caps.tcp_transport, deserialized.tcp_transport);
+    assert_eq!(caps.encryption, deserialized.encryption);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE VERSION, BUILD INFO & PROTOCOL CONSTANTS
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_version_and_build_info() {
+    use rust_lib_uot_app::core::version::*;
+
+    assert_eq!(VERSION_MAJOR, 0);
+    assert_eq!(VERSION_MINOR, 1);
+    assert_eq!(VERSION_PATCH, 0);
+    assert_eq!(PROTOCOL_VERSION, 1);
+
+    let v_str = version_string();
+    assert!(v_str.contains("0.1.0"));
+
+    let build_info = BuildInfo::current();
+    assert_eq!(build_info.version, v_str);
+    assert_eq!(build_info.protocol_version, PROTOCOL_VERSION);
+    assert!(!build_info.target.is_empty());
+    assert!(!build_info.profile.is_empty());
+
+    let display = format!("{build_info}");
+    assert!(display.contains("UOT v"));
+    assert!(display.contains("protocol v1"));
+
+    let json = serde_json::to_string(&build_info).unwrap();
+    let deserialized: BuildInfo = serde_json::from_str(&json).unwrap();
+    assert_eq!(build_info, deserialized);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE PROTOCOL MESSAGES & PAYLOAD TYPES COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_protocol_message_payloads_serialization() {
+    use chrono::Utc;
+    use rust_lib_uot_app::protocol::messages::*;
+    use uuid::Uuid;
+
+    let sender = "device-test-node".to_string();
+    let sid = Some(Uuid::new_v4());
+    let tx_id = Uuid::new_v4();
+    let item_id = Uuid::new_v4();
+
+    let payloads = vec![
+        MessagePayload::Discover(DiscoverPayload {
+            device_name: "NodeA".into(),
+            device_type: "Desktop".into(),
+            capabilities: vec!["tcp_lan".into(), "qr".into()],
+        }),
+        MessagePayload::DiscoverResponse(DiscoverResponsePayload {
+            device_name: "NodeB".into(),
+            device_type: "Laptop".into(),
+            capabilities: vec!["tcp_lan".into()],
+        }),
+        MessagePayload::PairRequest(PairRequestPayload {
+            device_name: "NodeA".into(),
+            public_key: vec![1, 2, 3, 4],
+            qr_token: Some("qr-token-abc".into()),
+        }),
+        MessagePayload::PairResponse(PairResponsePayload {
+            accepted: true,
+            public_key: Some(vec![5, 6, 7, 8]),
+            reason: None,
+        }),
+        MessagePayload::CreateSession(CreateSessionPayload {
+            session_type: SessionType::Transfer,
+            expires_at: Utc::now() + chrono::Duration::hours(2),
+        }),
+        MessagePayload::CreateSession(CreateSessionPayload {
+            session_type: SessionType::Streaming,
+            expires_at: Utc::now() + chrono::Duration::hours(1),
+        }),
+        MessagePayload::CreateSession(CreateSessionPayload {
+            session_type: SessionType::Clipboard,
+            expires_at: Utc::now() + chrono::Duration::hours(1),
+        }),
+        MessagePayload::SessionCreated(SessionCreatedPayload {
+            session_id: Uuid::new_v4(),
+            expires_at: Utc::now() + chrono::Duration::hours(2),
+        }),
+        MessagePayload::Offer(OfferPayload {
+            transfer_id: tx_id,
+            items: vec![OfferItem {
+                item_id,
+                name: "file.txt".into(),
+                relative_path: "docs/file.txt".into(),
+                size: 2048,
+                mime_type: Some("text/plain".into()),
+                is_directory: false,
+                hash: Some("abcdef".into()),
+            }],
+            total_size: 2048,
+        }),
+        MessagePayload::OfferResponse(OfferResponsePayload {
+            transfer_id: tx_id,
+            accepted: true,
+            reason: None,
+            skip_items: vec![],
+        }),
+        MessagePayload::Start(StartPayload {
+            transfer_id: tx_id,
+            resume_offset: 1024,
+        }),
+        MessagePayload::Chunk(ChunkPayload {
+            transfer_id: tx_id,
+            item_id,
+            chunk_index: 1,
+            offset: 1024,
+            data: vec![10, 20, 30, 40],
+            checksum: 12345678,
+        }),
+        MessagePayload::Ack(AckPayload {
+            transfer_id: tx_id,
+            item_id,
+            chunk_index: 1,
+            received_bytes: 1024,
+        }),
+        MessagePayload::Pause(PausePayload {
+            transfer_id: tx_id,
+            reason: Some("user paused".into()),
+        }),
+        MessagePayload::Resume(ResumePayload {
+            transfer_id: tx_id,
+            resume_offset: 1024,
+        }),
+        MessagePayload::Cancel(CancelPayload {
+            transfer_id: tx_id,
+            reason: Some("user cancelled".into()),
+        }),
+        MessagePayload::Reconnect(ReconnectPayload {
+            session_id: Uuid::new_v4(),
+            last_sequence: 42,
+        }),
+        MessagePayload::Retry(RetryPayload {
+            transfer_id: tx_id,
+            item_id,
+            chunk_index: 1,
+        }),
+        MessagePayload::Verify(VerifyPayload {
+            transfer_id: tx_id,
+            item_id,
+            hash_algorithm: "SHA-256".into(),
+            expected_hash: "11223344".into(),
+        }),
+        MessagePayload::VerifyResult(VerifyResultPayload {
+            transfer_id: tx_id,
+            item_id,
+            verified: true,
+            actual_hash: "11223344".into(),
+        }),
+        MessagePayload::Complete(CompletePayload {
+            transfer_id: tx_id,
+            total_bytes: 2048,
+            duration_secs: 1.5,
+        }),
+        MessagePayload::Error(ErrorPayload {
+            transfer_id: Some(tx_id),
+            error_code: 500,
+            message: "disk full".into(),
+            recoverable: false,
+        }),
+        MessagePayload::Ping,
+        MessagePayload::Pong,
+    ];
+
+    for (seq, payload) in payloads.into_iter().enumerate() {
+        let msg = ProtocolMessage {
+            header: MessageHeader::new(sender.clone(), sid, seq as u64),
+            payload,
+        };
+        let json = serde_json::to_string(&msg).expect("Serialize ProtocolMessage");
+        let parsed: ProtocolMessage =
+            serde_json::from_str(&json).expect("Deserialize ProtocolMessage");
+        assert_eq!(parsed.header.sender_id, sender);
+        assert_eq!(parsed.header.sequence, seq as u64);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE PROTOCOL STATE MACHINE & TRANSITIONS COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_protocol_state_machine_transitions() {
+    use rust_lib_uot_app::protocol::state::ProtocolState;
+
+    let all_states = [
+        ProtocolState::Idle,
+        ProtocolState::Discovering,
+        ProtocolState::Pairing,
+        ProtocolState::Authenticating,
+        ProtocolState::Negotiating,
+        ProtocolState::SessionActive,
+        ProtocolState::OfferPending,
+        ProtocolState::OfferAccepted,
+        ProtocolState::Transferring,
+        ProtocolState::Paused,
+        ProtocolState::Reconnecting,
+        ProtocolState::Verifying,
+        ProtocolState::Completed,
+        ProtocolState::Cancelled,
+        ProtocolState::Error,
+    ];
+
+    for state in all_states {
+        // Test is_terminal
+        let terminal = state.is_terminal();
+        match state {
+            ProtocolState::Completed | ProtocolState::Cancelled | ProtocolState::Error => {
+                assert!(terminal);
+            }
+            _ => {
+                assert!(!terminal);
+            }
+        }
+
+        // Test is_active
+        let active = state.is_active();
+        match state {
+            ProtocolState::Transferring | ProtocolState::Paused | ProtocolState::Reconnecting => {
+                assert!(active);
+            }
+            _ => {
+                assert!(!active);
+            }
+        }
+    }
+
+    // Test explicit valid forward path
+    assert!(ProtocolState::Idle.can_transition_to(ProtocolState::Discovering));
+    assert!(ProtocolState::Discovering.can_transition_to(ProtocolState::Pairing));
+    assert!(ProtocolState::Pairing.can_transition_to(ProtocolState::Authenticating));
+    assert!(ProtocolState::Authenticating.can_transition_to(ProtocolState::Negotiating));
+    assert!(ProtocolState::Negotiating.can_transition_to(ProtocolState::SessionActive));
+    assert!(ProtocolState::SessionActive.can_transition_to(ProtocolState::OfferPending));
+    assert!(ProtocolState::OfferPending.can_transition_to(ProtocolState::OfferAccepted));
+    assert!(ProtocolState::OfferAccepted.can_transition_to(ProtocolState::Transferring));
+    assert!(ProtocolState::Transferring.can_transition_to(ProtocolState::Verifying));
+    assert!(ProtocolState::Verifying.can_transition_to(ProtocolState::Completed));
+    assert!(ProtocolState::Completed.can_transition_to(ProtocolState::Idle));
+
+    // Test pause/resume path
+    assert!(ProtocolState::Transferring.can_transition_to(ProtocolState::Paused));
+    assert!(ProtocolState::Paused.can_transition_to(ProtocolState::Transferring));
+
+    // Test invalid transitions
+    assert!(!ProtocolState::Idle.can_transition_to(ProtocolState::Completed));
+    assert!(!ProtocolState::Idle.can_transition_to(ProtocolState::Transferring));
+    assert!(!ProtocolState::Verifying.can_transition_to(ProtocolState::Pairing));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE FOUNTAIN CODES & ANIMATED QR TRANSPORT
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_fountain_encoder_and_block_indices() {
+    use rust_lib_uot_app::protocol::fountain::{get_block_indices, FountainEncoder};
+
+    // Test get_block_indices for edge cases
+    assert_eq!(get_block_indices(1, 0), vec![0]);
+    assert_eq!(get_block_indices(1, 1), vec![0]);
+    let idx2 = get_block_indices(3, 5); // seed % 3 == 0 -> degree 1
+    assert_eq!(idx2.len(), 1);
+
+    let idx3 = get_block_indices(4, 5); // seed % 3 != 0 -> multi-degree
+    assert!(!idx3.is_empty());
+    assert!(idx3.iter().all(|&i| i < 5));
+
+    // Test FountainEncoder
+    let test_data = b"Universal Offline Transfer Fountain Code Test Payload with sufficient length";
+    let block_size = 16;
+    let mut encoder = FountainEncoder::new(test_data, block_size);
+
+    let mut packets = Vec::new();
+    for _ in 0..10 {
+        let pkt = encoder.next_packet();
+        assert_eq!(pkt.total_size, test_data.len() as u64);
+        assert_eq!(pkt.payload.len(), block_size);
+        assert_eq!(crc32fast::hash(&pkt.payload), pkt.crc32);
+        packets.push(pkt);
+    }
+    assert_eq!(packets.len(), 10);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE ENGINE METHODS, DIAGNOSTICS & ERROR BRANCHES
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_engine_methods_and_diagnostics() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::{EngineState, PeerConnectionState, UotEngine};
+    use rust_lib_uot_app::transport::fallback::TransportSelectionStrategy;
+    use rust_lib_uot_app::transport::types::{TransportId, TransportState};
+
+    let mut config = AppConfig::default();
+    config.network_port = Some(42000);
+    let (engine, mut rx) = UotEngine::new(config);
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+
+    // 1. Diagnostics JSON
+    let diag = engine.get_diagnostics();
+    assert!(diag.contains("\"engine_state\":\"Stopped\""));
+    assert!(diag.contains("\"listening_port\":42000"));
+    assert!(diag.contains("\"device_count\":0"));
+    assert!(diag.contains("\"transfer_count\":0"));
+
+    // 2. Set save directory
+    let temp_save = tempfile::tempdir().unwrap();
+    let save_str = temp_save.path().to_string_lossy().to_string();
+    engine.set_save_directory(&save_str);
+    assert_eq!(engine.config().transfer.save_directory, save_str);
+
+    // 3. Fallback manager strategies
+    engine.set_transport_strategy(TransportSelectionStrategy::PreferOffline);
+    let best_offline = engine.select_best_transport(&[
+        (TransportId::TcpLan, TransportState::Connected),
+        (TransportId::BluetoothLe, TransportState::Connected),
+    ]);
+    assert!(best_offline.is_some());
+
+    engine.set_transport_strategy(TransportSelectionStrategy::Manual);
+    let best_manual =
+        engine.select_best_transport(&[(TransportId::QrCode, TransportState::Connected)]);
+    assert_eq!(best_manual, Some(TransportId::QrCode));
+
+    engine.set_transport_strategy(TransportSelectionStrategy::PreferSpeed);
+    let best_speed = engine.select_best_transport(&[
+        (TransportId::BluetoothLe, TransportState::Connected),
+        (TransportId::TcpLan, TransportState::Connected),
+    ]);
+    assert_eq!(best_speed, Some(TransportId::TcpLan));
+
+    // 4. Device connectivity and disconnect checks
+    assert!(!engine.is_device_connected("unknown-dev"));
+    engine.disconnect_device("unknown-dev");
+
+    // 5. Transfer operations on non-existent transfers (Error handling branches)
+    assert!(engine.pause_transfer("bad-uuid").is_err());
+    assert!(engine.resume_transfer("bad-uuid").is_err());
+    assert!(engine.cancel_transfer("bad-uuid").await.is_err());
+    assert!(engine.retry_transfer("bad-uuid").await.is_err());
+    assert!(engine.accept_transfer("bad-uuid").await.is_err());
+
+    let non_existent_uuid = uuid::Uuid::new_v4().to_string();
+    assert!(engine.pause_transfer(&non_existent_uuid).is_err());
+    assert!(engine.resume_transfer(&non_existent_uuid).is_err());
+    assert!(engine.cancel_transfer(&non_existent_uuid).await.is_err());
+    assert!(engine.retry_transfer(&non_existent_uuid).await.is_err());
+    assert!(engine.accept_transfer(&non_existent_uuid).await.is_err());
+
+    // 6. PIN acceptance error branch
+    let pin_err = engine
+        .accept_transfer_with_pin(&non_existent_uuid, "dev-test", "000000")
+        .await;
+    assert!(pin_err.is_err());
+
+    // 7. Outbound operations on non-existent destinations
+    assert!(engine
+        .send_clipboard("unknown-dev", "hello".into())
+        .await
+        .is_err());
+    assert!(engine
+        .send_chat_message("unknown-dev", "hello".into())
+        .await
+        .is_err());
+    assert!(engine.send_files("unknown-dev", vec![]).await.is_err());
+    assert!(engine
+        .send_files(
+            "unknown-dev",
+            vec![std::path::PathBuf::from("/non/existent/file.bin")]
+        )
+        .await
+        .is_err());
+
+    // 8. Connect peer invalid address / port loopback protection
+    let loopback_err = engine.connect_peer("127.0.0.1:42000").await;
+    assert!(
+        loopback_err.is_err(),
+        "Loopback to self port should be rejected"
+    );
+
+    // 9. PeerConnectionState Display
+    assert_eq!(
+        PeerConnectionState::TcpConnected.to_string(),
+        "TCP Connected"
+    );
+    assert_eq!(PeerConnectionState::HelloSent.to_string(), "Hello Sent");
+    assert_eq!(PeerConnectionState::HelloAcked.to_string(), "Hello Acked");
+    assert_eq!(
+        PeerConnectionState::PingConfirmed.to_string(),
+        "Ping Confirmed"
+    );
+    assert_eq!(
+        PeerConnectionState::SessionReady.to_string(),
+        "Session Ready"
+    );
+    assert_eq!(
+        PeerConnectionState::Disconnected.to_string(),
+        "Disconnected"
+    );
+    assert_eq!(
+        PeerConnectionState::Error("failed".into()).to_string(),
+        "Error: failed"
+    );
+
+    // 10. EngineState formatting
+    assert_eq!(EngineState::Stopped, engine.state());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE CLIPBOARD ITEM & CONTENT TYPE COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_clipboard_item_and_content_type() {
+    use rust_lib_uot_app::transfer::clipboard::{ClipboardContentType, ClipboardItem};
+
+    assert_eq!(ClipboardContentType::PlainText.to_string(), "text/plain");
+    assert_eq!(ClipboardContentType::Url.to_string(), "text/uri-list");
+    assert_eq!(ClipboardContentType::Html.to_string(), "text/html");
+    assert_eq!(ClipboardContentType::Image.to_string(), "image/png");
+
+    let text_item = ClipboardItem::text("Sample plain text".into());
+    assert_eq!(text_item.content_type.to_string(), "text/plain");
+    assert_eq!(text_item.preview, Some("Sample plain text".into()));
+
+    let url_item = ClipboardItem::url("https://example.com/file".into());
+    assert_eq!(url_item.content_type.to_string(), "text/uri-list");
+
+    let auto_http = ClipboardItem::auto_detect("http://local.link".into());
+    assert_eq!(auto_http.content_type.to_string(), "text/uri-list");
+
+    let auto_html =
+        ClipboardItem::auto_detect("<!DOCTYPE html><html><body>Test</body></html>".into());
+    assert_eq!(auto_html.content_type.to_string(), "text/html");
+
+    let auto_html_tag = ClipboardItem::auto_detect("<html><div>Test</div></html>".into());
+    assert_eq!(auto_html_tag.content_type.to_string(), "text/html");
+
+    let auto_text = ClipboardItem::auto_detect("Just regular text content".into());
+    assert_eq!(auto_text.content_type.to_string(), "text/plain");
+
+    let long_html = format!(
+        "<!DOCTYPE html><html><body>{}</body></html>",
+        "z".repeat(150)
+    );
+    let auto_long_html = ClipboardItem::auto_detect(long_html);
+    assert!(auto_long_html.preview.unwrap().ends_with('…'));
+
+    // Serde roundtrip
+    let json = serde_json::to_string(&text_item).expect("ClipboardItem serde");
+    let deserialized: ClipboardItem = serde_json::from_str(&json).expect("ClipboardItem deser");
+    assert_eq!(text_item.id, deserialized.id);
+    assert_eq!(text_item.data, deserialized.data);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE DISCOVERY TYPES & DEVICE MODELS COVERAGE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_discovery_types_and_device_models() {
+    use chrono::Utc;
+    use rust_lib_uot_app::discovery::types::{DeviceType, DiscoveredDevice, DiscoveryMethod};
+
+    assert_eq!(DeviceType::Phone.to_string(), "Phone");
+    assert_eq!(DeviceType::Tablet.to_string(), "Tablet");
+    assert_eq!(DeviceType::Laptop.to_string(), "Laptop");
+    assert_eq!(DeviceType::Desktop.to_string(), "Desktop");
+    assert_eq!(DeviceType::Tv.to_string(), "TV");
+    assert_eq!(DeviceType::Unknown.to_string(), "Unknown");
+
+    assert_eq!(DiscoveryMethod::Mdns.to_string(), "mDNS");
+    assert_eq!(DiscoveryMethod::BluetoothLe.to_string(), "Bluetooth LE");
+    assert_eq!(DiscoveryMethod::BluetoothClassic.to_string(), "Bluetooth");
+    assert_eq!(DiscoveryMethod::QrCode.to_string(), "QR Code");
+    assert_eq!(DiscoveryMethod::Manual.to_string(), "Manual");
+
+    let dev = DiscoveredDevice {
+        device_id: "node-xyz-789".into(),
+        device_name: "Smart TV Living Room".into(),
+        device_type: DeviceType::Tv,
+        discovery_method: DiscoveryMethod::Mdns,
+        address: Some("192.168.1.50:42000".into()),
+        capabilities: vec!["tcp_lan".into(), "streaming".into()],
+        signal_strength: Some(95),
+        first_seen: Utc::now(),
+        last_seen: Utc::now(),
+        is_trusted: true,
+    };
+
+    let json = serde_json::to_string(&dev).expect("DiscoveredDevice serde");
+    let parsed: DiscoveredDevice = serde_json::from_str(&json).expect("DiscoveredDevice deser");
+    assert_eq!(parsed.device_name, "Smart TV Living Room");
+    assert_eq!(parsed.device_type, DeviceType::Tv);
+    assert!(parsed.is_trusted);
+}

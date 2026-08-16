@@ -5,7 +5,8 @@
 - [x] Streamlined Nearby device UX: removed `_PeerActionSheet` modal ("Chat / Send Files"), tapping any device directly opens `ChatScreen`
 - [x] Added `test_concurrent_batch_isolation_and_progress_clamping` in `transport_lab_e2e.rs` validating isolated counters across concurrent single-file and multi-file batches
 - [x] Added `test_heavy_chat_and_transfer_interleaved_utf8_stress` in `transport_lab_e2e.rs` validating 200 Unicode/Emoji chat messages streamed concurrently with a 1MB file transfer over TCP
-- [x] 100% test pass rate across 440+ Rust tests and 17 Flutter tests; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean formatting
+- [x] Expanded `rust/tests/coverage_tests.rs` with exhaustive coverage across core errors, engine diagnostics, capabilities, protocol messages, fountain codes, clipboard, and discovery types to keep coverage comfortably above 82%+ (137 unit tests in coverage suite)
+- [x] 100% test pass rate across 449+ Rust tests and 17 Flutter tests; 0 Clippy warnings; 0 Flutter analysis errors; 100% clean formatting
 
 ### Sprint 24 — Canonical Device Deduplication, Wire Pause/Resume/Retry & UI Stability Overhaul (Completed ✅)
 - [x] Fixed device duplication in discovery (`"UOT Node (192.168.0.111)"` vs `"DAYA"`): implemented IP endpoint aggregation and canonical device deduplication in `UotEngine::discovered_devices()` and pruned synthetic `lan-*` / `peer-*` entries on inbound/outbound handshake

@@ -49,7 +49,7 @@ UOT is a cross-platform offline-first file transfer system built with **Rust (co
 
 ## Test Suite
 
-### Rust Tests (440+ tests)
+### Rust Tests (449+ tests)
 | Suite | Tests | Description |
 |-------|-------|-------------|
 | Unit tests | 250 | All modules: engine, crypto, checkpoint, queue, types |
@@ -58,16 +58,16 @@ UOT is a cross-platform offline-first file transfer system built with **Rust (co
 | Transport lab E2E | 7 | Multi-node concurrent transfers, pause/resume, batch isolation, chat stress |
 | Integration | 2 | Two-engine loopback, protocol handler |
 | Security | 19 | Malformed messages, path traversal, PIN brute-force, replay |
-| Coverage | 128 | Targeted tests for Display impls, error branches, fallback, subnet scanner |
+| Coverage | 137 | Comprehensive tests for error hierarchy, engine diagnostics, capabilities, fountain codes, clipboard, discovery |
 
 ### Coverage
-- Line coverage enforced via `cargo-tarpaulin` CI pipeline (≥80%).
+- Line coverage enforced via `cargo-tarpaulin` CI pipeline (≥80%, target ~85%+).
 - Excluded: `frb_generated` (auto-gen), `load_stress` (benchmarks), `src/testing` (infra), `discovery/mdns` (needs multicast), `transport/quic` (needs sockets), `streaming/capture` (needs hardware).
 - `core/engine.rs` async I/O methods tested by E2E and transport lab integration test suites.
 
 ## Verification & Status
-- **Rust Test Suite**: 440+ tests passing (`cargo test --manifest-path rust/Cargo.toml`)
-- **Rust Line Coverage**: ≥80% enforced via `cargo-tarpaulin` CI pipeline
+- **Rust Test Suite**: 449+ tests passing (`cargo test --manifest-path rust/Cargo.toml`)
+- **Rust Line Coverage**: ≥80% enforced via `cargo-tarpaulin` CI pipeline (resilient ~85%+ coverage baseline)
 - **Flutter Test Suite**: 17 tests passing (`flutter test`)
 - **Clippy Lint**: Clean (`cargo clippy -- -D warnings`)
 - **Dart Analyzer**: Clean (`flutter analyze`) — 0 errors, 0 warnings

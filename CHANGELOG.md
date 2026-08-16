@@ -16,10 +16,11 @@ This file is append-only - history is never overwritten.
 - **Direct Chat Navigation**: Removed intermediate `_PeerActionSheet` modal ("Chat / Send Files") from `nearby_screen.dart`. Tapping any discovered/connected device card directly opens the unified `ChatScreen` session window with chat, file sharing, transfer status, and media preview immediately available.
 - **Direction-Aware File Actions**: Maintained strict direction awareness: received files support in-app preview and system intent opening via `open_filex`, while sent files display sender status and local path references without collision.
 
-#### Deterministic Multi-Batch & Interleaved Chat Testing
+#### Deterministic Multi-Batch, Interleaved Chat & Coverage Expansion
 - **Multi-Batch Isolation E2E**: Added `test_concurrent_batch_isolation_and_progress_clamping` in `rust/tests/transport_lab_e2e.rs` validating that concurrent single-file and multi-file batch transfers maintain isolated state counters, verified byte ranges, and accurate completion.
 - **Interleaved UTF-8 Stress Test**: Added `test_heavy_chat_and_transfer_interleaved_utf8_stress` in `rust/tests/transport_lab_e2e.rs` exchanging 200 Unicode/Emoji messages simultaneously while streaming a 1MB file transfer over TCP, confirming 0 message drops, no framing corruption, and perfect SHA-256 match.
-- **Quality Metrics**: 440+ Rust tests passed (100%), 17 Flutter tests passed (100%), 0 Clippy warnings, 0 Flutter analyze issues, clean code formatting.
+- **Comprehensive Coverage Suite Expansion**: Added exhaustive test coverage in `rust/tests/coverage_tests.rs` covering all core error types and `From` conversions, `PlatformCapabilities` runtime detection, `BuildInfo`, `MessagePayload` protocol types, `ProtocolState` state machine, `FountainEncoder` fountain codes, `UotEngine` diagnostics and error handling branches, `ClipboardItem`, and `DiscoveryMethod`/`DeviceType` models (137 unit tests in coverage suite).
+- **Quality Metrics**: 449+ Rust tests passed (100%), 17 Flutter tests passed (100%), 0 Clippy warnings, 0 Flutter analyze issues, clean code formatting.
 
 ## [0.1.0-alpha.20] - 2026-08-15
 
