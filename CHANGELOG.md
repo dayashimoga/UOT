@@ -3,6 +3,24 @@
 All notable changes to UOT (Universal Offline Transfer) are documented here.
 This file is append-only - history is never overwritten.
 
+## [0.1.0-alpha.21] - 2026-08-16
+
+### Sprint 25 — Transfer State Isolation, Clamped Progress & Unified Session Direct UX
+
+#### Transfer State Isolation & Progress Invariant Enforcement
+- **Isolated Transfer Tracking**: Fixed transfer state collision in `rust/src/core/engine.rs` by eliminating global mutable tracker bindings on offer receipt. Each active file receiving state is strictly bound to its immutable `transfer_id` via `(part_path, target_path, name, size, transfer_id)`.
+- **Clamped Progress Calculation**: Enforced strict `0.0..=1.0` and `0.0..=100.0` bounds on `TransferProgress::percentage()`, `ProgressTracker::snapshot()`, and UI progress indicators in `chat_screen.dart` and `transfers_screen.dart`. Total transferred bytes can never exceed `total_size` regardless of out-of-order frames or multiple transfers.
+- **Batch Transfer Child Item Integrity**: Enhanced `FileEnd` and `TransferComplete` wire message handlers to accurately update child item status (`Completed`, verified SHA-256 hash, persisted path) and overall batch status without leaving child items in `Pending`.
+
+#### Unified Session Direct UX
+- **Direct Chat Navigation**: Removed intermediate `_PeerActionSheet` modal ("Chat / Send Files") from `nearby_screen.dart`. Tapping any discovered/connected device card directly opens the unified `ChatScreen` session window with chat, file sharing, transfer status, and media preview immediately available.
+- **Direction-Aware File Actions**: Maintained strict direction awareness: received files support in-app preview and system intent opening via `open_filex`, while sent files display sender status and local path references without collision.
+
+#### Deterministic Multi-Batch & Interleaved Chat Testing
+- **Multi-Batch Isolation E2E**: Added `test_concurrent_batch_isolation_and_progress_clamping` in `rust/tests/transport_lab_e2e.rs` validating that concurrent single-file and multi-file batch transfers maintain isolated state counters, verified byte ranges, and accurate completion.
+- **Interleaved UTF-8 Stress Test**: Added `test_heavy_chat_and_transfer_interleaved_utf8_stress` in `rust/tests/transport_lab_e2e.rs` exchanging 200 Unicode/Emoji messages simultaneously while streaming a 1MB file transfer over TCP, confirming 0 message drops, no framing corruption, and perfect SHA-256 match.
+- **Quality Metrics**: 440+ Rust tests passed (100%), 17 Flutter tests passed (100%), 0 Clippy warnings, 0 Flutter analyze issues, clean code formatting.
+
 ## [0.1.0-alpha.20] - 2026-08-15
 
 ### Sprint 24 — Canonical Device Deduplication, Wire Pause/Resume/Retry & UI Stability Overhaul

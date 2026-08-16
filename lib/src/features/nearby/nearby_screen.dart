@@ -8,14 +8,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
 import '../../rust/api/init.dart' as rust_api;
 import '../../rust/api/engine_api.dart' as engine;
 import 'qr_pairing_dialog.dart';
-import 'optical_qr_sender_dialog.dart';
-import 'active_transfer_dialog.dart';
-import 'confirm_send_dialog.dart';
-import 'instant_chat_dialog.dart';
 import '../chat/chat_screen.dart';
 import '../chat/active_session_tracker.dart';
 
@@ -49,7 +44,8 @@ class DeviceInfo {
   }
 
   bool get isConnected =>
-      capabilities.contains('connected') || capabilities.contains('session_ready');
+      capabilities.contains('connected') ||
+      capabilities.contains('session_ready');
 
   IconData get icon {
     switch (deviceType) {
@@ -239,10 +235,9 @@ class _NearbyScreenState extends State<NearbyScreen>
       return;
     }
 
-    final items = (event['items'] as List<dynamic>?)
-            ?.map((e) => e.toString())
-            .toList() ??
-        [];
+    final items =
+        (event['items'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+            [];
     final totalSize = (event['total_size'] as num?)?.toInt() ?? 0;
 
     // Show incoming offer dialog
@@ -263,8 +258,8 @@ class _NearbyScreenState extends State<NearbyScreen>
           children: [
             Text('${items.length} file(s) • ${_formatTransferSize(totalSize)}'),
             const SizedBox(height: 8),
-            ...items.take(5).map((name) => Text('• $name',
-                style: Theme.of(ctx).textTheme.bodySmall)),
+            ...items.take(5).map((name) =>
+                Text('• $name', style: Theme.of(ctx).textTheme.bodySmall)),
             if (items.length > 5)
               Text('  ...and ${items.length - 5} more',
                   style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
@@ -280,7 +275,8 @@ class _NearbyScreenState extends State<NearbyScreen>
           FilledButton.icon(
             onPressed: () async {
               final scaffoldMessenger = ScaffoldMessenger.of(context);
-              final res = await engine.engineAcceptTransfer(transferId: transferId);
+              final res =
+                  await engine.engineAcceptTransfer(transferId: transferId);
               if (ctx.mounted) {
                 Navigator.of(ctx).pop(true);
               }
@@ -314,7 +310,8 @@ class _NearbyScreenState extends State<NearbyScreen>
     final text = event['text']?.toString() ?? '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Message from $from: ${text.length > 80 ? '${text.substring(0, 80)}...' : text}'),
+        content: Text(
+            'Message from $from: ${text.length > 80 ? '${text.substring(0, 80)}...' : text}'),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'Copy',
@@ -449,7 +446,8 @@ class _NearbyScreenState extends State<NearbyScreen>
                       padding: const EdgeInsets.only(bottom: 8),
                       child: _DeviceCard(
                         device: device,
-                        isConnecting: _connectingDeviceIds.contains(device.deviceId),
+                        isConnecting:
+                            _connectingDeviceIds.contains(device.deviceId),
                         onTap: () => _onDeviceTap(device),
                       ),
                     ),
@@ -466,7 +464,9 @@ class _NearbyScreenState extends State<NearbyScreen>
   Future<void> _onDeviceTap(DeviceInfo device) async {
     final isSessionReady = device.isConnected;
 
-    if (!isSessionReady && device.address != null && device.address!.isNotEmpty) {
+    if (!isSessionReady &&
+        device.address != null &&
+        device.address!.isNotEmpty) {
       setState(() {
         _connectingDeviceIds.add(device.deviceId);
       });
@@ -486,7 +486,8 @@ class _NearbyScreenState extends State<NearbyScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Connection failed: ${res.replaceFirst("error:", "")}'),
+              content:
+                  Text('Connection failed: ${res.replaceFirst("error:", "")}'),
               backgroundColor: Colors.red.shade700,
             ),
           );
@@ -497,31 +498,13 @@ class _NearbyScreenState extends State<NearbyScreen>
     }
 
     if (mounted) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        builder: (ctx) => _PeerActionSheet(
-          device: device,
-          onChat: () {
-            Navigator.pop(ctx);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ChatScreen(
-                  peerDeviceId: device.deviceId,
-                  peerName: device.deviceName,
-                ),
-              ),
-            );
-          },
-          onSendFiles: () {
-            Navigator.pop(ctx);
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              builder: (ctx2) => _SendBottomSheet(device: device),
-            );
-          },
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            peerDeviceId: device.deviceId,
+            peerName: device.deviceName,
+          ),
         ),
       );
     }
@@ -535,8 +518,8 @@ class _NearbyScreenState extends State<NearbyScreen>
 
     final device = _devices.firstWhere(
       (d) => d.deviceId == fromId || d.address == fromId,
-      orElse: () =>
-          DeviceInfo(deviceId: fromId, deviceName: fromId, deviceType: 'Unknown'),
+      orElse: () => DeviceInfo(
+          deviceId: fromId, deviceName: fromId, deviceType: 'Unknown'),
     );
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -557,92 +540,6 @@ class _NearbyScreenState extends State<NearbyScreen>
               ),
             );
           },
-        ),
-      ),
-    );
-  }
-}
-
-// Bottom sheet with peer action options (Chat, Send Files).
-class _PeerActionSheet extends StatelessWidget {
-  final DeviceInfo device;
-  final VoidCallback onChat;
-  final VoidCallback onSendFiles;
-
-  const _PeerActionSheet({
-    required this.device,
-    required this.onChat,
-    required this.onSendFiles,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withAlpha(50),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Row(
-              children: [
-                Icon(device.icon, size: 32, color: theme.colorScheme.primary),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(device.deviceName,
-                          style: theme.textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold)),
-                      Text(device.deviceType,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: theme.colorScheme.onSurface.withAlpha(150))),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withAlpha(30),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.chat_bubble_outline, color: theme.colorScheme.primary),
-              ),
-              title: const Text('Chat'),
-              subtitle: const Text('Send messages'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: onChat,
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.green.withAlpha(30),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.send_rounded, color: Colors.green),
-              ),
-              title: const Text('Send Files'),
-              subtitle: const Text('Share files and folders'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: onSendFiles,
-            ),
-            const SizedBox(height: 8),
-          ],
         ),
       ),
     );
@@ -670,8 +567,9 @@ class _EngineStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isRunning =
-        engineState == 'Running' || engineState == 'Partial' || engineState == 'Starting';
+    final isRunning = engineState == 'Running' ||
+        engineState == 'Partial' ||
+        engineState == 'Starting';
 
     return Card(
       child: Padding(
@@ -959,268 +857,13 @@ class _DeviceCard extends StatelessWidget {
               ),
               Icon(
                 isConnected ? Icons.send_rounded : Icons.link_rounded,
-                color: isConnected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                color: isConnected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// Bottom sheet for selecting files to send.
-class _SendBottomSheet extends StatelessWidget {
-  const _SendBottomSheet({required this.device});
-
-  final DeviceInfo device;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.5,
-      minChildSize: 0.3,
-      maxChildSize: 0.85,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: theme.scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: ListView(
-            controller: scrollController,
-            padding: const EdgeInsets.all(24),
-            children: [
-              // Handle
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: colorScheme.onSurfaceVariant.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Header
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      device.icon,
-                      color: colorScheme.onPrimaryContainer,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Send to ${device.deviceName}',
-                          style: theme.textTheme.titleLarge,
-                        ),
-                        Text(
-                          device.deviceType,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              // Content options
-              _SendOption(
-                icon: Icons.insert_drive_file_rounded,
-                title: 'Files',
-                subtitle: 'Select one or more files',
-                color: colorScheme.primary,
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await FilePicker.platform.pickFiles(
-                    allowMultiple: true,
-                    type: FileType.any,
-                  );
-                  if (result != null && result.files.isNotEmpty) {
-                    final paths = result.files
-                        .where((f) => f.path != null)
-                        .map((f) => f.path!)
-                        .toList();
-                    if (paths.isNotEmpty && context.mounted) {
-                      final confirm = await ConfirmSendDialog.show(
-                        context,
-                        targetDeviceName: device.deviceName,
-                        targetAddress: device.address ?? 'LAN Node',
-                        filePaths: paths,
-                      );
-                      if (confirm == true && context.mounted) {
-                        final sendRes = await engine.engineSendFiles(
-                          deviceId: device.deviceId,
-                          filePaths: paths,
-                        );
-                        if (context.mounted) {
-                          _showSendFeedback(context, sendRes, device.deviceName, paths.length);
-                        }
-                      }
-                    }
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              _SendOption(
-                icon: Icons.folder_rounded,
-                title: 'Folder',
-                subtitle: 'Send an entire folder',
-                color: colorScheme.tertiary,
-                onTap: () async {
-                  Navigator.pop(context);
-                  final dir = await FilePicker.platform.getDirectoryPath();
-                  if (dir != null && context.mounted) {
-                    final confirm = await ConfirmSendDialog.show(
-                      context,
-                      targetDeviceName: device.deviceName,
-                      targetAddress: device.address ?? 'LAN Node',
-                      filePaths: [dir],
-                    );
-                    if (confirm == true && context.mounted) {
-                      final sendRes = await engine.engineSendFiles(
-                        deviceId: device.deviceId,
-                        filePaths: [dir],
-                      );
-                      if (context.mounted) {
-                        _showSendFeedback(context, sendRes, device.deviceName, 1);
-                      }
-                    }
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              _SendOption(
-                icon: Icons.chat_rounded,
-                title: 'Instant Message / Chat',
-                subtitle: 'Send text messages & ping peer connection',
-                color: Colors.green,
-                onTap: () {
-                  Navigator.pop(context);
-                  InstantChatDialog.show(
-                    context,
-                    deviceId: device.deviceId,
-                    deviceName: device.deviceName,
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-              _SendOption(
-                icon: Icons.content_paste_rounded,
-                title: 'Clipboard',
-                subtitle: 'Send text, URL, or image from clipboard',
-                color: colorScheme.secondary,
-                onTap: () async {
-                  Navigator.pop(context);
-                  final data = await Clipboard.getData(Clipboard.kTextPlain);
-                  if (data?.text != null && data!.text!.isNotEmpty) {
-                    final sendRes = await engine.engineSendClipboard(
-                      deviceId: device.deviceId,
-                      text: data.text!,
-                    );
-                    if (context.mounted) {
-                      _showSendFeedback(context, sendRes, device.deviceName, 1);
-                    }
-                  } else if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Clipboard is empty!'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              _SendOption(
-                icon: Icons.qr_code_2_rounded,
-                title: 'Optical Animated QR Stream',
-                subtitle: 'Zero network required • Air-gapped optical transfer',
-                color: colorScheme.tertiaryContainer,
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await FilePicker.platform.pickFiles(
-                    allowMultiple: false,
-                    type: FileType.any,
-                  );
-                  if (result != null && result.files.isNotEmpty) {
-                    final file = result.files.first;
-                    final name = file.name;
-                    final path = file.path;
-                    if (path != null && context.mounted) {
-                      await OpticalQrSenderDialog.show(
-                        context,
-                        fileName: name,
-                        payloadText: 'UOT-AIRGAPPED-PAYLOAD:$name',
-                      );
-                    }
-                  }
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-// Send option tile.
-class _SendOption extends StatelessWidget {
-  const _SendOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: color),
-        ),
-        title: Text(title, style: theme.textTheme.titleSmall),
-        subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        onTap: onTap,
       ),
     );
   }
@@ -1315,36 +958,6 @@ class _MyDeviceBanner extends StatelessWidget {
   }
 }
 
-void _showSendFeedback(
-    BuildContext context, String result, String deviceName, int count) {
-  if (result.startsWith('ok')) {
-    final transferId = result.replaceFirst('ok:', '');
-    ActiveTransferDialog.show(
-      context,
-      transferId: transferId.isEmpty
-          ? 'tx-${DateTime.now().millisecondsSinceEpoch}'
-          : transferId,
-      targetDeviceName: deviceName,
-      fileCount: count,
-    );
-  } else {
-    final errorMsg = result.replaceFirst('error:', '');
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Transfer Error'),
-        content: Text('Could not send to $deviceName:\n\n$errorMsg'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _WindowsFirewallBanner extends StatefulWidget {
   const _WindowsFirewallBanner();
 
@@ -1365,10 +978,14 @@ class _WindowsFirewallBannerState extends State<_WindowsFirewallBanner> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: _configured ? Colors.green.withOpacity(0.12) : Colors.blue.withOpacity(0.12),
+        color: _configured
+            ? Colors.green.withOpacity(0.12)
+            : Colors.blue.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: _configured ? Colors.green.shade700.withOpacity(0.4) : Colors.blue.shade700.withOpacity(0.4),
+          color: _configured
+              ? Colors.green.shade700.withOpacity(0.4)
+              : Colors.blue.shade700.withOpacity(0.4),
         ),
       ),
       child: Row(
@@ -1413,5 +1030,3 @@ class _WindowsFirewallBannerState extends State<_WindowsFirewallBanner> {
     );
   }
 }
-
-

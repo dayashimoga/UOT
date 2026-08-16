@@ -365,14 +365,17 @@ class _QrPairingDialogState extends State<QrPairingDialog>
                               color: colorScheme.error,
                             ),
                           ),
-                          if (_connectError!.contains('Firewall') || _connectError!.contains('42000')) ...[
+                          if (_connectError!.contains('Firewall') ||
+                              _connectError!.contains('42000')) ...[
                             const SizedBox(height: 8),
-                            if (defaultTargetPlatform == TargetPlatform.windows) ...[
+                            if (defaultTargetPlatform ==
+                                TargetPlatform.windows) ...[
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
                                   onPressed: () {
-                                    final res = engine.engineFixWindowsFirewall();
+                                    final res =
+                                        engine.engineFixWindowsFirewall();
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
@@ -383,8 +386,10 @@ class _QrPairingDialogState extends State<QrPairingDialog>
                                       ),
                                     );
                                   },
-                                  icon: const Icon(Icons.shield_rounded, size: 18),
-                                  label: const Text('Fix Windows Firewall (Allow Port 42000)'),
+                                  icon: const Icon(Icons.shield_rounded,
+                                      size: 18),
+                                  label: const Text(
+                                      'Fix Windows Firewall (Allow Port 42000)'),
                                 ),
                               ),
                             ] else ...[
@@ -394,7 +399,8 @@ class _QrPairingDialogState extends State<QrPairingDialog>
                                   color: Colors.amber.withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
-                                    color: Colors.amber.shade700.withOpacity(0.4),
+                                    color:
+                                        Colors.amber.shade700.withOpacity(0.4),
                                   ),
                                 ),
                                 child: Row(
@@ -408,7 +414,8 @@ class _QrPairingDialogState extends State<QrPairingDialog>
                                     Expanded(
                                       child: Text(
                                         'Target Windows PC must allow incoming TCP connections on Port 42000. Click "Fix Windows Firewall" on the Windows PC.',
-                                        style: theme.textTheme.bodySmall?.copyWith(
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
                                           color: Colors.amber.shade900,
                                         ),
                                       ),

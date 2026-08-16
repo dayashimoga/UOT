@@ -239,7 +239,8 @@ class _StreamScreenState extends State<StreamScreen> {
                           Icon(
                             Icons.cast_rounded,
                             size: 48,
-                            color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                            color:
+                                colorScheme.onSurfaceVariant.withOpacity(0.4),
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -252,7 +253,8 @@ class _StreamScreenState extends State<StreamScreen> {
                           Text(
                             'Select a stream type above to start',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                              color:
+                                  colorScheme.onSurfaceVariant.withOpacity(0.7),
                             ),
                           ),
                         ],
@@ -364,9 +366,8 @@ class _StreamTypeCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                     ),
                   ],

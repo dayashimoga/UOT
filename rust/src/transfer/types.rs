@@ -143,6 +143,15 @@ impl TransferProgress {
             None => "calculating…".to_string(),
         }
     }
+
+    /// Get clamped percentage (0.0 to 100.0).
+    pub fn percentage(&self) -> f64 {
+        if self.total_bytes == 0 {
+            0.0
+        } else {
+            ((self.transferred_bytes as f64 / self.total_bytes as f64) * 100.0).clamp(0.0, 100.0)
+        }
+    }
 }
 
 /// Format bytes/sec into a human-readable string.

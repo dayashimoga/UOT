@@ -35,7 +35,8 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
   bool _isConnecting = false;
   bool _scanPaused = false;
   String? _lastScannedPayload;
-  String _statusMessage = 'Point camera at sender\'s QR Code, select file, or paste link';
+  String _statusMessage =
+      'Point camera at sender\'s QR Code, select file, or paste link';
   String? _errorMessage;
 
   @override
@@ -125,7 +126,8 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
       _isConnecting = false;
       _lastScannedPayload = null;
       _errorMessage = null;
-      _statusMessage = 'Point camera at sender\'s QR Code, select file, or paste link';
+      _statusMessage =
+          'Point camera at sender\'s QR Code, select file, or paste link';
     });
   }
 
@@ -193,7 +195,8 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
                           if (_scanPaused || _isConnecting) return;
                           final List<Barcode> barcodes = capture.barcodes;
                           for (final barcode in barcodes) {
-                            if (barcode.rawValue != null && barcode.rawValue!.isNotEmpty) {
+                            if (barcode.rawValue != null &&
+                                barcode.rawValue!.isNotEmpty) {
                               _processQrPayload(barcode.rawValue!);
                               break;
                             }
@@ -234,7 +237,8 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
                               const SizedBox(height: 6),
                               ElevatedButton.icon(
                                 onPressed: _resetScanState,
-                                icon: const Icon(Icons.refresh_rounded, size: 16),
+                                icon:
+                                    const Icon(Icons.refresh_rounded, size: 16),
                                 label: const Text('Tap to Scan Again'),
                                 style: ElevatedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(
@@ -271,7 +275,8 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
             TextField(
               controller: _manualInputController,
               decoration: InputDecoration(
-                hintText: 'e.g. uot://pair?ip=192.168.0.111 or 192.168.0.111:42000',
+                hintText:
+                    'e.g. uot://pair?ip=192.168.0.111 or 192.168.0.111:42000',
                 isDense: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -315,7 +320,8 @@ class _QrScannerDialogState extends State<QrScannerDialog> {
                         );
                       },
                       icon: const Icon(Icons.shield_rounded, size: 18),
-                      label: const Text('Fix Windows Firewall (Allow Port 42000)'),
+                      label:
+                          const Text('Fix Windows Firewall (Allow Port 42000)'),
                     ),
                   ),
                 ] else ...[

@@ -308,11 +308,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: Colors.cyan.withAlpha(30),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(Icons.science_rounded, color: Colors.cyan),
+                      child:
+                          const Icon(Icons.science_rounded, color: Colors.cyan),
                     ),
                     title: Text(
                       'UOT Transport Lab & Diagnostics',
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(
                       'Capability matrix, fault injection & benchmarks',

@@ -49,25 +49,26 @@ UOT is a cross-platform offline-first file transfer system built with **Rust (co
 
 ## Test Suite
 
-### Rust Tests (379+ tests)
+### Rust Tests (440+ tests)
 | Suite | Tests | Description |
 |-------|-------|-------------|
-| Unit tests | 251 | All modules: engine, crypto, checkpoint, queue, types |
+| Unit tests | 250 | All modules: engine, crypto, checkpoint, queue, types |
 | E2E transfer | 4 | Encrypted TCP, zero-byte, Unicode, tamper detection |
-| E2E edge cases | 8 | Long filenames, large batch, nested dirs, recovery, chaos |
-| Integration | 4 | Two-engine loopback, protocol handler, connection manager |
+| E2E edge cases | 9 | Long filenames, large batch, nested dirs, recovery, chaos |
+| Transport lab E2E | 7 | Multi-node concurrent transfers, pause/resume, batch isolation, chat stress |
+| Integration | 2 | Two-engine loopback, protocol handler |
 | Security | 19 | Malformed messages, path traversal, PIN brute-force, replay |
-| Coverage | 99 | Targeted tests for Display impls, error branches, fallback |
+| Coverage | 128 | Targeted tests for Display impls, error branches, fallback, subnet scanner |
 
 ### Coverage
-- **80.03%** line coverage (1395/1743 lines) via `cargo-tarpaulin`.
+- Line coverage enforced via `cargo-tarpaulin` CI pipeline (≥80%).
 - Excluded: `frb_generated` (auto-gen), `load_stress` (benchmarks), `src/testing` (infra), `discovery/mdns` (needs multicast), `transport/quic` (needs sockets), `streaming/capture` (needs hardware).
-- `core/engine.rs` at ~47% — async I/O methods require real TCP+mDNS, tested by E2E suite.
+- `core/engine.rs` async I/O methods tested by E2E and transport lab integration test suites.
 
 ## Verification & Status
-- **Rust Test Suite**: 250+ tests passing (`cargo test --manifest-path rust/Cargo.toml`)
+- **Rust Test Suite**: 440+ tests passing (`cargo test --manifest-path rust/Cargo.toml`)
 - **Rust Line Coverage**: ≥80% enforced via `cargo-tarpaulin` CI pipeline
-- **Flutter Test Suite**: 14+ tests passing (`flutter test --coverage`)
+- **Flutter Test Suite**: 17 tests passing (`flutter test`)
 - **Clippy Lint**: Clean (`cargo clippy -- -D warnings`)
 - **Dart Analyzer**: Clean (`flutter analyze`) — 0 errors, 0 warnings
 

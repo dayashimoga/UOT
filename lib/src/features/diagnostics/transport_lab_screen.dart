@@ -125,7 +125,8 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
     final stopwatch = Stopwatch()..start();
 
     // Simulated benchmark loop measuring throughput and crypto hashing speed
-    await Future.delayed(Duration(milliseconds: (sizeMB * 150) + (_latencyMs * 2).toInt()));
+    await Future.delayed(
+        Duration(milliseconds: (sizeMB * 150) + (_latencyMs * 2).toInt()));
 
     stopwatch.stop();
     final elapsedSec = stopwatch.elapsedMilliseconds / 1000.0;
@@ -151,7 +152,8 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
           children: [
             Icon(Icons.science_rounded, color: Colors.cyan),
             SizedBox(width: 10),
-            Text('UOT Transport Lab', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text('UOT Transport Lab',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
           ],
         ),
         actions: [
@@ -165,7 +167,10 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
             ),
             child: const Text(
               'DEV / LAB MODE',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.cyan),
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.cyan),
             ),
           ),
         ],
@@ -174,14 +179,16 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           // Section: Transport Capability Matrix
-          _buildSectionHeader('Transport Capability Matrix', Icons.view_list_rounded),
+          _buildSectionHeader(
+              'Transport Capability Matrix', Icons.view_list_rounded),
           const SizedBox(height: 8),
           ..._transports.map((t) => _buildTransportTile(t, colorScheme)),
 
           const SizedBox(height: 24),
 
           // Section: Network Fault Injection Simulator
-          _buildSectionHeader('Fault Injection Simulator', Icons.troubleshoot_rounded),
+          _buildSectionHeader(
+              'Fault Injection Simulator', Icons.troubleshoot_rounded),
           const SizedBox(height: 8),
           Card(
             child: Padding(
@@ -192,8 +199,11 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Simulated Latency (Jitter):', style: TextStyle(fontWeight: FontWeight.w600)),
-                      Text('${_latencyMs.toInt()} ms', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.cyan)),
+                      const Text('Simulated Latency (Jitter):',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text('${_latencyMs.toInt()} ms',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, color: Colors.cyan)),
                     ],
                   ),
                   Slider(
@@ -208,11 +218,14 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Packet Loss Simulation:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Text('Packet Loss Simulation:',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
                       Text('${(_packetLossRate * 100).toInt()}%',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: _packetLossRate > 0 ? Colors.amber : Colors.green,
+                            color: _packetLossRate > 0
+                                ? Colors.amber
+                                : Colors.green,
                           )),
                     ],
                   ),
@@ -226,15 +239,20 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
                   ),
                   const Divider(height: 24),
                   SwitchListTile(
-                    title: const Text('Simulate Network Partition', style: TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: const Text('Abruptly drop all packets to test disconnect & reconnect handling'),
+                    title: const Text('Simulate Network Partition',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text(
+                        'Abruptly drop all packets to test disconnect & reconnect handling'),
                     value: _isPartitioned,
                     onChanged: (v) {
                       setState(() => _isPartitioned = v);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(v ? 'Network partitioned — packets blocked' : 'Network healed — transmission restored'),
-                          backgroundColor: v ? Colors.red.shade700 : Colors.green.shade700,
+                          content: Text(v
+                              ? 'Network partitioned — packets blocked'
+                              : 'Network healed — transmission restored'),
+                          backgroundColor:
+                              v ? Colors.red.shade700 : Colors.green.shade700,
                         ),
                       );
                     },
@@ -247,7 +265,8 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
           const SizedBox(height: 24),
 
           // Section: Synthetic Loopback Benchmark
-          _buildSectionHeader('Synthetic Loopback Benchmark', Icons.speed_rounded),
+          _buildSectionHeader(
+              'Synthetic Loopback Benchmark', Icons.speed_rounded),
           const SizedBox(height: 8),
           Card(
             child: Padding(
@@ -263,19 +282,25 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
                   Row(
                     children: [
                       FilledButton.icon(
-                        onPressed: _isRunningBenchmark ? null : () => _runSyntheticBenchmark(1),
+                        onPressed: _isRunningBenchmark
+                            ? null
+                            : () => _runSyntheticBenchmark(1),
                         icon: const Icon(Icons.play_arrow_rounded, size: 18),
                         label: const Text('1 MB Test'),
                       ),
                       const SizedBox(width: 8),
                       FilledButton.tonalIcon(
-                        onPressed: _isRunningBenchmark ? null : () => _runSyntheticBenchmark(5),
+                        onPressed: _isRunningBenchmark
+                            ? null
+                            : () => _runSyntheticBenchmark(5),
                         icon: const Icon(Icons.flash_on_rounded, size: 18),
                         label: const Text('5 MB Test'),
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton(
-                        onPressed: _isRunningBenchmark ? null : () => _runSyntheticBenchmark(10),
+                        onPressed: _isRunningBenchmark
+                            ? null
+                            : () => _runSyntheticBenchmark(10),
                         child: const Text('10 MB'),
                       ),
                     ],
@@ -295,7 +320,8 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
                       ),
                       child: Text(
                         _benchmarkResult,
-                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                        style: const TextStyle(
+                            fontSize: 12, fontFamily: 'monospace'),
                       ),
                     ),
                   ],
@@ -307,7 +333,8 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
           const SizedBox(height: 24),
 
           // Section: Engine Diagnostics Inspector
-          _buildSectionHeader('Engine Diagnostics Inspector', Icons.code_rounded),
+          _buildSectionHeader(
+              'Engine Diagnostics Inspector', Icons.code_rounded),
           const SizedBox(height: 8),
           Card(
             child: Padding(
@@ -355,7 +382,9 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
         leading: Icon(t['icon'] as IconData, color: badgeColor),
         title: Row(
           children: [
-            Text(t['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            Text(t['name'] as String,
+                style:
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -366,7 +395,10 @@ class _TransportLabScreenState extends State<TransportLabScreen> {
               ),
               child: Text(
                 badgeText,
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: badgeColor),
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: badgeColor),
               ),
             ),
           ],

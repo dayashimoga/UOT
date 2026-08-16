@@ -118,38 +118,43 @@ class _TransfersScreenState extends State<TransfersScreen>
     try {
       final json = engine.engineGetTransfers();
       final List<dynamic> parsed = jsonDecode(json);
-      final transfers = parsed
-          .map((t) {
-            final items = t['items'] as List<dynamic>?;
-            final firstItemName = (items != null && items.isNotEmpty && items.first is Map)
+      final transfers = parsed.map((t) {
+        final items = t['items'] as List<dynamic>?;
+        final firstItemName =
+            (items != null && items.isNotEmpty && items.first is Map)
                 ? items.first['name']?.toString()
                 : null;
-            final fileName = t['file_name']?.toString() ??
-                firstItemName ??
-                t['name']?.toString() ??
-                'Unknown';
-            final totalBytes = (t['total_bytes'] as num?)?.toInt() ??
-                (t['total_size'] as num?)?.toInt() ??
-                0;
-            final transferredBytes = (t['transferred_bytes'] as num?)?.toInt() ?? 0;
-            final progress = (t['progress'] as num?)?.toDouble() ??
-                (totalBytes > 0 ? transferredBytes / totalBytes : 0.0);
+        final fileName = t['file_name']?.toString() ??
+            firstItemName ??
+            t['name']?.toString() ??
+            'Unknown';
+        final totalBytes = (t['total_bytes'] as num?)?.toInt() ??
+            (t['total_size'] as num?)?.toInt() ??
+            0;
+        final rawTransferred = (t['transferred_bytes'] as num?)?.toInt() ?? 0;
+        final transferredBytes = totalBytes > 0
+            ? rawTransferred.clamp(0, totalBytes)
+            : rawTransferred;
+        final rawProgress = (t['progress'] as num?)?.toDouble() ??
+            (totalBytes > 0 ? transferredBytes / totalBytes : 0.0);
+        final progress = rawProgress.clamp(0.0, 1.0);
 
-            return TransferInfo(
-              id: t['id']?.toString() ?? t['transfer_id']?.toString() ?? '',
-              fileName: fileName,
-              remoteName: t['remote_name']?.toString() ?? t['remote_device']?.toString() ?? 'Unknown',
-              direction: t['direction']?.toString() ?? 'Send',
-              status: t['status']?.toString() ?? 'Pending',
-              progress: progress,
-              totalBytes: totalBytes,
-              transferredBytes: transferredBytes,
-              speed: t['speed']?.toString(),
-              eta: t['eta']?.toString(),
-              savedPath: t['saved_path']?.toString(),
-            );
-          })
-          .toList();
+        return TransferInfo(
+          id: t['id']?.toString() ?? t['transfer_id']?.toString() ?? '',
+          fileName: fileName,
+          remoteName: t['remote_name']?.toString() ??
+              t['remote_device']?.toString() ??
+              'Unknown',
+          direction: t['direction']?.toString() ?? 'Send',
+          status: t['status']?.toString() ?? 'Pending',
+          progress: progress,
+          totalBytes: totalBytes,
+          transferredBytes: transferredBytes,
+          speed: t['speed']?.toString(),
+          eta: t['eta']?.toString(),
+          savedPath: t['saved_path']?.toString(),
+        );
+      }).toList();
       setState(() {
         _activeTransfers.clear();
         _historyTransfers.clear();
@@ -506,7 +511,8 @@ class _HistoryTransferCard extends StatelessWidget {
 
     return Card(
       child: ListTile(
-        onTap: transfer.status == 'Completed' ? () => _handleOpen(context) : null,
+        onTap:
+            transfer.status == 'Completed' ? () => _handleOpen(context) : null,
         leading: Container(
           width: 40,
           height: 40,

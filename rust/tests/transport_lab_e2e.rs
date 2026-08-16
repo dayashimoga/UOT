@@ -526,3 +526,254 @@ async fn test_stress_1000_chat_messages() {
     engine_a.stop();
     engine_b.stop();
 }
+
+#[tokio::test]
+async fn test_concurrent_batch_isolation_and_progress_clamping() {
+    let dir_sender = tempdir().unwrap();
+    let dir_receiver = tempdir().unwrap();
+
+    let mut config_s = AppConfig::default();
+    config_s.transfer.save_directory = dir_sender.path().to_string_lossy().to_string();
+    config_s.device_name = "Sender_Node".to_string();
+    config_s.network_port = Some(0);
+
+    let mut config_r = AppConfig::default();
+    config_r.transfer.save_directory = dir_receiver.path().to_string_lossy().to_string();
+    config_r.device_name = "Receiver_Node".to_string();
+    config_r.network_port = Some(0);
+
+    let (engine_s, mut rx_s) = UotEngine::new(config_s);
+    let (engine_r, mut rx_r) = UotEngine::new(config_r);
+
+    let incoming_offers = std::sync::Arc::new(parking_lot::RwLock::new(Vec::new()));
+    let offers_clone = incoming_offers.clone();
+
+    tokio::spawn(async move { while rx_s.recv().await.is_some() {} });
+    tokio::spawn(async move {
+        while let Some(event) = rx_r.recv().await {
+            if let rust_lib_uot_app::core::engine::EngineEvent::IncomingOffer {
+                transfer_id, ..
+            } = event
+            {
+                offers_clone.write().push(transfer_id);
+            }
+        }
+    });
+
+    engine_s.start().await.unwrap();
+    engine_r.start().await.unwrap();
+
+    let port_r = engine_r.listening_port();
+    let addr_r = format!("127.0.0.1:{port_r}");
+
+    let dev_r = engine_s.connect_peer(&addr_r).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Create Batch 1: 500 KB file
+    let file1_path = dir_sender.path().join("large_batch1.bin");
+    let data1 = vec![0xABu8; 512 * 1024];
+    std::fs::write(&file1_path, &data1).unwrap();
+    let hash1 = compute_sha256(&file1_path);
+
+    // Create Batch 2: 3 small files (20 KB each)
+    let mut batch2_paths = Vec::new();
+    let mut batch2_hashes = Vec::new();
+    for i in 1..=3 {
+        let p = dir_sender.path().join(format!("small_file_{i}.txt"));
+        let content = format!("UOT Batch 2 Item #{i} test content {}", "x".repeat(20_000));
+        std::fs::write(&p, &content).unwrap();
+        batch2_hashes.push(compute_sha256(&p));
+        batch2_paths.push(p);
+    }
+
+    // Initiate Batch 1
+    let tx1_id = engine_s
+        .send_files(&dev_r.device_id, vec![file1_path.clone()])
+        .await
+        .unwrap();
+
+    // Immediately initiate Batch 2
+    let tx2_id = engine_s
+        .send_files(&dev_r.device_id, batch2_paths)
+        .await
+        .unwrap();
+
+    // Wait for both offers to arrive at receiver
+    for _ in 0..50 {
+        if incoming_offers.read().len() >= 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    // Accept both transfers
+    for tid in incoming_offers.read().iter() {
+        let _ = engine_r.accept_transfer(&tid.to_string()).await;
+    }
+
+    // Poll transfers and assert progress invariants:
+    // 1. transferred_bytes <= total_size
+    // 2. percentage <= 100.0%
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        for t in engine_r.get_transfers() {
+            assert!(
+                t.transferred_bytes <= t.total_size,
+                "Receiver transfer {} transferred_bytes ({}) exceeded total_size ({})!",
+                t.transfer_id,
+                t.transferred_bytes,
+                t.total_size
+            );
+            let pct = if t.total_size > 0 {
+                (t.transferred_bytes as f64 / t.total_size as f64) * 100.0
+            } else {
+                0.0
+            };
+            assert!(pct <= 100.0, "Transfer progress {}% exceeded 100.0%!", pct);
+        }
+        let transfers = engine_r.get_transfers();
+        let all_done = transfers
+            .iter()
+            .filter(|t| t.status == TransferStatus::Completed)
+            .count();
+        if all_done >= 2 {
+            break;
+        }
+    }
+
+    // Assert both transfers completed successfully
+    let r_transfers = engine_r.get_transfers();
+    let rec1 = r_transfers
+        .iter()
+        .find(|t| t.transfer_id == tx1_id)
+        .expect("Tx1 missing");
+    let rec2 = r_transfers
+        .iter()
+        .find(|t| t.transfer_id == tx2_id)
+        .expect("Tx2 missing");
+
+    assert_eq!(rec1.status, TransferStatus::Completed);
+    assert_eq!(rec2.status, TransferStatus::Completed);
+    assert_eq!(rec1.transferred_bytes, rec1.total_size);
+    assert_eq!(rec2.transferred_bytes, rec2.total_size);
+
+    // Verify all child items in batch 2 completed
+    assert_eq!(rec2.items.len(), 3);
+    for item in &rec2.items {
+        assert_eq!(item.status, TransferStatus::Completed);
+        assert_eq!(item.transferred_bytes, item.size);
+    }
+
+    // Verify files on receiver filesystem
+    let dest1 = dir_receiver.path().join("large_batch1.bin");
+    assert!(dest1.exists());
+    assert_eq!(hash1, compute_sha256(&dest1));
+
+    for i in 1..=3 {
+        let dest_item = dir_receiver.path().join(format!("small_file_{i}.txt"));
+        assert!(dest_item.exists());
+        assert_eq!(batch2_hashes[i - 1], compute_sha256(&dest_item));
+    }
+
+    engine_s.stop();
+    engine_r.stop();
+}
+
+#[tokio::test]
+async fn test_heavy_chat_and_transfer_interleaved_utf8_stress() {
+    let dir_s = tempdir().unwrap();
+    let dir_r = tempdir().unwrap();
+
+    let mut config_s = AppConfig::default();
+    config_s.transfer.save_directory = dir_s.path().to_string_lossy().to_string();
+    config_s.device_name = "ChatStream_A".to_string();
+    config_s.network_port = Some(0);
+
+    let mut config_r = AppConfig::default();
+    config_r.transfer.save_directory = dir_r.path().to_string_lossy().to_string();
+    config_r.device_name = "ChatStream_B".to_string();
+    config_r.network_port = Some(0);
+
+    let (engine_s, mut rx_s) = UotEngine::new(config_s);
+    let (engine_r, mut rx_r) = UotEngine::new(config_r);
+
+    let received_offer = std::sync::Arc::new(parking_lot::RwLock::new(None));
+    let offer_slot = received_offer.clone();
+
+    tokio::spawn(async move { while rx_s.recv().await.is_some() {} });
+    tokio::spawn(async move {
+        while let Some(event) = rx_r.recv().await {
+            if let rust_lib_uot_app::core::engine::EngineEvent::IncomingOffer {
+                transfer_id, ..
+            } = event
+            {
+                *offer_slot.write() = Some(transfer_id);
+            }
+        }
+    });
+
+    engine_s.start().await.unwrap();
+    engine_r.start().await.unwrap();
+
+    let port_r = engine_r.listening_port();
+    let addr_r = format!("127.0.0.1:{port_r}");
+
+    let dev_r = engine_s.connect_peer(&addr_r).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Create 1 MB file to stream
+    let file_path = dir_s.path().join("interleaved_stream.dat");
+    let test_data: Vec<u8> = (0..1024 * 1024).map(|i| (i % 256) as u8).collect();
+    std::fs::write(&file_path, &test_data).unwrap();
+    let expected_hash = compute_sha256(&file_path);
+
+    let tx_id = engine_s
+        .send_files(&dev_r.device_id, vec![file_path.clone()])
+        .await
+        .unwrap();
+
+    // Wait for offer and accept
+    for _ in 0..50 {
+        if received_offer.read().is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let tid = received_offer.read().unwrap();
+    engine_r.accept_transfer(&tid.to_string()).await.unwrap();
+
+    // While transfer is streaming, interleave 200 Unicode/Emoji chat messages rapidly
+    for i in 0..200 {
+        let msg = format!(
+            "⚡ UOT Interleaved Message #{i} 🚀 Unicode: 日本語 🌟 العربية ✓ Special: <>&\"'\\n"
+        );
+        let _ = engine_s.send_chat_message(&dev_r.device_id, msg).await;
+        if i % 20 == 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
+    // Wait for transfer to complete
+    let mut completed = false;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if let Some(t) = engine_r
+            .get_transfers()
+            .iter()
+            .find(|t| t.transfer_id == tx_id)
+        {
+            if t.status == TransferStatus::Completed {
+                completed = true;
+                break;
+            }
+        }
+    }
+    assert!(completed, "Interleaved file transfer must complete");
+
+    let dest = dir_r.path().join("interleaved_stream.dat");
+    assert!(dest.exists());
+    assert_eq!(expected_hash, compute_sha256(&dest));
+
+    engine_s.stop();
+    engine_r.stop();
+}

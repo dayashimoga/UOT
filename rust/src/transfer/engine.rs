@@ -244,10 +244,11 @@ impl ProgressTracker {
 
     /// Record bytes transferred.
     pub fn add_bytes(&self, bytes: u64) {
-        *self.transferred.write() += bytes;
+        let mut transferred = self.transferred.write();
+        *transferred = (*transferred + bytes).min(self.total_bytes);
 
         let elapsed_ms = self.start_time.elapsed().as_millis() as u64;
-        let total = *self.transferred.read();
+        let total = *transferred;
         self.speed_samples.write().push((elapsed_ms, total));
 
         // Keep only last 20 samples
@@ -272,7 +273,7 @@ impl ProgressTracker {
     pub fn snapshot(&self) -> TransferProgress {
         let transferred = *self.transferred.read();
         let progress = if self.total_bytes > 0 {
-            transferred as f64 / self.total_bytes as f64
+            (transferred as f64 / self.total_bytes as f64).clamp(0.0, 1.0)
         } else {
             1.0
         };

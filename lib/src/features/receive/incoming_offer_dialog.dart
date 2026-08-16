@@ -256,7 +256,8 @@ class _IncomingOfferDialogState extends State<IncomingOfferDialog> {
               ? const SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
                 )
               : const Icon(Icons.check_rounded),
           label: Text(_isLoading ? 'Accepting...' : 'Accept'),

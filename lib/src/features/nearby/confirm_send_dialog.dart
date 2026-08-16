@@ -118,7 +118,8 @@ class ConfirmSendDialog extends StatelessWidget {
                         Text(
                           targetAddress,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onPrimaryContainer.withOpacity(0.8),
+                            color:
+                                colorScheme.onPrimaryContainer.withOpacity(0.8),
                           ),
                         ),
                       ],
@@ -199,7 +200,9 @@ class ConfirmSendDialog extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  totalSize > 0 ? _formatBytes(totalSize) : '${filePaths.length} item(s)',
+                  totalSize > 0
+                      ? _formatBytes(totalSize)
+                      : '${filePaths.length} item(s)',
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: colorScheme.primary,

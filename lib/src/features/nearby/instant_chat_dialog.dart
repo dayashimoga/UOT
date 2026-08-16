@@ -47,7 +47,8 @@ class _InstantChatDialogState extends State<InstantChatDialog> {
     super.initState();
     _messages.add({
       'sender': 'System',
-      'text': 'Connected to ${widget.deviceName}. Ready for messaging & file transfers.',
+      'text':
+          'Connected to ${widget.deviceName}. Ready for messaging & file transfers.',
       'time': _formattedTime(),
     });
     _startPolling();
@@ -64,7 +65,8 @@ class _InstantChatDialogState extends State<InstantChatDialog> {
           if (_seenEvents.contains(str)) continue;
           _seenEvents.add(str);
 
-          if (str.contains('ClipboardReceived') || str.contains('Received clipboard data')) {
+          if (str.contains('ClipboardReceived') ||
+              str.contains('Received clipboard data')) {
             String rawText = str;
             if (str.contains('MESSAGE:')) {
               final idx = str.indexOf('MESSAGE:');
@@ -227,7 +229,8 @@ class _InstantChatDialogState extends State<InstantChatDialog> {
                   itemBuilder: (ctx, index) {
                     final msg = _messages[index];
                     final isMe = msg['sender'] == 'Me';
-                    final isSystem = msg['sender'] == 'System' || msg['sender'] == 'System Error';
+                    final isSystem = msg['sender'] == 'System' ||
+                        msg['sender'] == 'System Error';
 
                     if (isSystem) {
                       return Padding(
@@ -255,7 +258,8 @@ class _InstantChatDialogState extends State<InstantChatDialog> {
                     }
 
                     return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      alignment:
+                          isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         padding: const EdgeInsets.symmetric(

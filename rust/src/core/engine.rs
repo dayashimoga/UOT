@@ -1128,9 +1128,8 @@ impl UotEngine {
         pending_completion_acks: &Arc<RwLock<HashMap<Uuid, tokio::sync::oneshot::Sender<bool>>>>,
         transfer_connections: &Arc<RwLock<HashMap<Uuid, Arc<TcpConnection>>>>,
     ) {
-        let mut current_file: Option<(PathBuf, PathBuf, String, u64)> = None; // (part_path, target_path, name, size)
+        let mut current_file: Option<(PathBuf, PathBuf, String, u64, Uuid)> = None; // (part_path, target_path, name, size, transfer_id)
         let mut current_transfer_id: Option<Uuid> = None;
-        let mut recv_tracker: Option<Arc<ProgressTracker>> = None;
         let mut session_cipher: Option<SessionCipher> = None;
         let mut remote_peer_id: Option<String> = known_peer_id;
 
@@ -1358,7 +1357,6 @@ impl UotEngine {
                             let items: Vec<String> =
                                 offer_items.iter().map(|i| i.name.clone()).collect();
 
-                            current_transfer_id = Some(transfer_id);
                             transfer_connections
                                 .write()
                                 .insert(transfer_id, Arc::clone(&conn));
@@ -1398,8 +1396,7 @@ impl UotEngine {
                             let item_count = offer_items.len();
                             let tracker =
                                 Arc::new(ProgressTracker::new(transfer_id, total_size, item_count));
-                            trackers.write().insert(transfer_id, Arc::clone(&tracker));
-                            recv_tracker = Some(tracker);
+                            trackers.write().insert(transfer_id, tracker);
 
                             let _ = event_tx
                                 .send(EngineEvent::IncomingOffer {
@@ -1413,11 +1410,18 @@ impl UotEngine {
                             log::info!("Received offer {transfer_id} from {remote}");
                         }
                         WireMessage::FileStart {
+                            ref transfer_id,
                             file_name,
                             file_size,
                             relative_path,
                             ..
                         } => {
+                            let tid = Uuid::parse_str(transfer_id)
+                                .ok()
+                                .or(current_transfer_id)
+                                .unwrap_or_else(Uuid::new_v4);
+                            current_transfer_id = Some(tid);
+
                             let path_validator =
                                 StrictPathValidator::new(Some(PathBuf::from(save_dir)));
                             let sanitized = match path_validator
@@ -1458,7 +1462,7 @@ impl UotEngine {
                                 .open(&part_path)
                                 .await;
 
-                            if let Some(tid) = current_transfer_id {
+                            {
                                 let mut t = transfers.write();
                                 if let Some(record) = t.get_mut(&tid) {
                                     if record.status == TransferStatus::Pending {
@@ -1478,15 +1482,31 @@ impl UotEngine {
                                 }
                             }
 
-                            current_file =
-                                Some((part_path, target_file_path, file_name.clone(), file_size));
-                            log::info!("Receiving file: {file_name} ({file_size} bytes)");
+                            if let Some(tracker) = trackers.read().get(&tid) {
+                                tracker.set_current_item(&file_name);
+                            }
+
+                            current_file = Some((
+                                part_path,
+                                target_file_path,
+                                file_name.clone(),
+                                file_size,
+                                tid,
+                            ));
+                            log::info!("Receiving file: {file_name} ({file_size} bytes) for transfer {tid}");
                         }
-                        WireMessage::FileEnd { sha256, .. } => {
-                            if let Some((part_path, target_path, name, _)) = current_file.take() {
+                        WireMessage::FileEnd {
+                            ref transfer_id,
+                            ref sha256,
+                            ..
+                        } => {
+                            if let Some((part_path, target_path, name, _file_size, file_tid)) =
+                                current_file.take()
+                            {
+                                let tid = Uuid::parse_str(transfer_id).ok().unwrap_or(file_tid);
                                 match engine::compute_sha256(&part_path).await {
                                     Ok(actual_hash) => {
-                                        if actual_hash == sha256 {
+                                        if actual_hash == *sha256 {
                                             log::info!("File {name} verified ✓ (SHA-256 match)");
                                             // Handle duplicate target path if file already exists
                                             let final_path = if target_path.exists() {
@@ -1545,34 +1565,40 @@ impl UotEngine {
                                                     "Saved file to {}",
                                                     final_path.display()
                                                 );
-                                                if let Some(tid) = current_transfer_id {
-                                                    let mut t = transfers.write();
-                                                    if let Some(record) = t.get_mut(&tid) {
-                                                        if let Some(item_rec) = record
-                                                            .items
-                                                            .iter_mut()
-                                                            .find(|i| i.name == name)
-                                                        {
-                                                            item_rec.status =
-                                                                TransferStatus::Completed;
-                                                            item_rec.hash =
-                                                                Some(actual_hash.clone());
-                                                            item_rec.transferred_bytes =
-                                                                item_rec.size;
-                                                            item_rec.saved_path = Some(
-                                                                final_path
-                                                                    .to_string_lossy()
-                                                                    .to_string(),
-                                                            );
-                                                        }
+                                                let mut t = transfers.write();
+                                                if let Some(record) = t.get_mut(&tid) {
+                                                    if let Some(item_rec) = record
+                                                        .items
+                                                        .iter_mut()
+                                                        .find(|i| i.name == name)
+                                                    {
+                                                        item_rec.status = TransferStatus::Completed;
+                                                        item_rec.hash = Some(actual_hash.clone());
+                                                        item_rec.transferred_bytes = item_rec.size;
+                                                        item_rec.saved_path = Some(
+                                                            final_path
+                                                                .to_string_lossy()
+                                                                .to_string(),
+                                                        );
                                                     }
+                                                }
+                                                if let Some(tracker) = trackers.read().get(&tid) {
+                                                    tracker.complete_item();
                                                 }
                                             }
                                         } else {
                                             log::error!(
-                                            "File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}"
-                                        );
+                                                "File {name} hash mismatch! Expected: {sha256}, Got: {actual_hash}"
+                                            );
                                             let _ = tokio::fs::remove_file(&part_path).await;
+                                            let mut t = transfers.write();
+                                            if let Some(record) = t.get_mut(&tid) {
+                                                if let Some(item_rec) =
+                                                    record.items.iter_mut().find(|i| i.name == name)
+                                                {
+                                                    item_rec.status = TransferStatus::Failed;
+                                                }
+                                            }
                                         }
                                     }
                                     Err(e) => {
@@ -1599,6 +1625,10 @@ impl UotEngine {
                                         record.status = TransferStatus::Completed;
                                         record.finished_at = Some(chrono::Utc::now());
                                         record.transferred_bytes = record.total_size;
+                                        for item in &mut record.items {
+                                            item.status = TransferStatus::Completed;
+                                            item.transferred_bytes = item.size;
+                                        }
                                     } else {
                                         record.status = TransferStatus::Failed;
                                         record.finished_at = Some(chrono::Utc::now());
@@ -1854,7 +1884,7 @@ impl UotEngine {
                     }
                 }
                 FrameType::Data => {
-                    if let Some((ref part_path, _, _, _)) = current_file {
+                    if let Some((ref part_path, _, ref name, _file_size, tid)) = current_file {
                         // Decrypt frame payload if session cipher is established; fallback to raw payload if unencrypted
                         let decrypted = if let Some(ref mut cipher) = session_cipher {
                             match cipher.decrypt_frame(&frame.payload) {
@@ -1879,36 +1909,34 @@ impl UotEngine {
                         {
                             log::error!("Write chunk failed: {e}");
                         } else {
-                            // Track receive progress
+                            // Track receive progress for this specific transfer
                             let chunk_len = chunk_data.len() as u64;
-                            if let Some(ref tracker) = recv_tracker {
+                            if let Some(tracker) = trackers.read().get(&tid) {
                                 tracker.add_bytes(chunk_len);
                                 let progress = tracker.snapshot();
                                 let _ = event_tx.try_send(EngineEvent::TransferProgress(progress));
                             }
-                            // Update transfer record status and bytes
-                            if let Some(tid) = current_transfer_id {
-                                if let Some(record) = transfers.write().get_mut(&tid) {
-                                    if record.status == TransferStatus::Pending {
-                                        record.status = TransferStatus::InProgress;
-                                        record.started_at = Some(chrono::Utc::now());
-                                        let _ =
-                                            event_tx.try_send(EngineEvent::TransferStatusChanged {
-                                                transfer_id: tid,
-                                                status: TransferStatus::InProgress,
-                                            });
+                            // Update transfer record status and bytes safely bounded by total_size
+                            let mut t = transfers.write();
+                            if let Some(record) = t.get_mut(&tid) {
+                                if record.status == TransferStatus::Pending {
+                                    record.status = TransferStatus::InProgress;
+                                    record.started_at = Some(chrono::Utc::now());
+                                    let _ = event_tx.try_send(EngineEvent::TransferStatusChanged {
+                                        transfer_id: tid,
+                                        status: TransferStatus::InProgress,
+                                    });
+                                }
+                                record.transferred_bytes =
+                                    (record.transferred_bytes + chunk_len).min(record.total_size);
+                                if let Some(item_rec) =
+                                    record.items.iter_mut().find(|i| i.name == *name)
+                                {
+                                    if item_rec.status == TransferStatus::Pending {
+                                        item_rec.status = TransferStatus::InProgress;
                                     }
-                                    record.transferred_bytes += chunk_len;
-                                    if let Some(ref current) = current_file {
-                                        if let Some(item_rec) =
-                                            record.items.iter_mut().find(|i| i.name == current.2)
-                                        {
-                                            if item_rec.status == TransferStatus::Pending {
-                                                item_rec.status = TransferStatus::InProgress;
-                                            }
-                                            item_rec.transferred_bytes += chunk_len;
-                                        }
-                                    }
+                                    item_rec.transferred_bytes =
+                                        (item_rec.transferred_bytes + chunk_len).min(item_rec.size);
                                 }
                             }
                         }

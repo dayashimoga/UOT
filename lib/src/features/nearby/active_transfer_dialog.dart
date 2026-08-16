@@ -65,13 +65,15 @@ class _ActiveTransferDialogState extends State<ActiveTransferDialog> {
 
   void _updateProgress() {
     try {
-      final jsonProgress = engine.engineGetProgress(transferId: widget.transferId);
+      final jsonProgress =
+          engine.engineGetProgress(transferId: widget.transferId);
       if (jsonProgress.isNotEmpty && jsonProgress != '{}') {
         final map = jsonDecode(jsonProgress) as Map<String, dynamic>;
         final p = (map['progress'] as num?)?.toDouble() ?? 0.0;
         final status = (map['status'] as String?) ?? 'Transferring';
         final speed = (map['speed'] as String?) ?? '14.8 MB/s';
-        final currentFile = (map['current_file'] as String?) ?? 'Sending items...';
+        final currentFile =
+            (map['current_file'] as String?) ?? 'Sending items...';
 
         setState(() {
           _progress = p.clamp(0.0, 1.0);
