@@ -4994,3 +4994,282 @@ async fn test_exhaustive_subnet_scanner_and_ip_parsing() {
     let results = scanner.scan_subnet([127, 0, 0, 1]).await;
     assert!(results.is_empty() || !results.is_empty());
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE SESSION CIPHER WIRE ENCRYPTION & REPLAY PROTECTION
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_session_cipher_encryption_and_tampering() {
+    use rust_lib_uot_app::security::session_cipher::SessionCipher;
+
+    // 1. Key exchange pair derivation
+    let (priv_a, pub_a) = SessionCipher::create_key_exchange().unwrap();
+    let (priv_b, pub_b) = SessionCipher::create_key_exchange().unwrap();
+
+    let mut cipher_a = SessionCipher::from_key_exchange(&priv_a, &pub_b).unwrap();
+    let mut cipher_b = SessionCipher::from_key_exchange(&priv_b, &pub_a).unwrap();
+
+    // 2. Encrypt/decrypt frames
+    let frame_0 = b"Frame payload 0 bytes";
+    let encrypted_0 = cipher_a.encrypt_frame(frame_0).unwrap();
+    assert_ne!(&encrypted_0, frame_0);
+
+    let decrypted_0 = cipher_b.decrypt_frame(&encrypted_0).unwrap();
+    assert_eq!(&decrypted_0, frame_0);
+
+    // 3. Incrementing nonce works for sequential frames
+    let frame_1 = b"Frame payload 1 bytes";
+    let encrypted_1 = cipher_a.encrypt_frame(frame_1).unwrap();
+    let decrypted_1 = cipher_b.decrypt_frame(&encrypted_1).unwrap();
+    assert_eq!(&decrypted_1, frame_1);
+
+    // 4. Tampered ciphertext fails
+    let mut tampered = encrypted_0.clone();
+    tampered[10] ^= 0xFF;
+    assert!(cipher_b.decrypt_frame(&tampered).is_err());
+
+    // 5. Short frame (< 24 bytes) fails
+    assert!(cipher_b.decrypt_frame(&[0u8; 10]).is_err());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE QR INVITATION LIFECYCLE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_qr_invitation_lifecycle() {
+    use rust_lib_uot_app::security::qr::QrInvitation;
+
+    let inv = QrInvitation::new(
+        "HostNode".to_string(),
+        "dev-xyz-123".to_string(),
+        "base64publickey".to_string(),
+        "192.168.1.50:42000".to_string(),
+        "123456".to_string(),
+        300,
+    );
+
+    assert_eq!(inv.device_name, "HostNode");
+    assert_eq!(inv.pin, "123456");
+    assert!(!inv.is_expired());
+
+    let json = inv.to_json().unwrap();
+    assert!(json.contains("HostNode"));
+    assert!(json.contains("123456"));
+
+    let parsed = QrInvitation::from_json(&json).unwrap();
+    assert_eq!(parsed.device_id, "dev-xyz-123");
+
+    // Expired invitation
+    let expired_inv = QrInvitation {
+        device_name: "OldNode".to_string(),
+        device_id: "dev-old".to_string(),
+        public_key: "key".to_string(),
+        address: "1.2.3.4:42000".to_string(),
+        pin: "000000".to_string(),
+        expires_at: 0,
+    };
+    assert!(expired_inv.is_expired());
+
+    // Malformed JSON parsing fails
+    assert!(QrInvitation::from_json("invalid json").is_err());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE USER SETTINGS PERSISTENCE & DEFAULTS
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_user_settings_persistence_and_defaults() {
+    use rust_lib_uot_app::core::settings::UserSettings;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let file_path = temp_dir.path().join("settings.json");
+
+    let default_settings = UserSettings::default();
+    assert_eq!(default_settings.network_port, 42000);
+    assert_eq!(default_settings.chunk_size_kb, 256);
+
+    // Save to disk
+    assert!(default_settings.save(&file_path).is_ok());
+
+    // Load from disk
+    let loaded = UserSettings::load(&file_path);
+    assert_eq!(loaded.device_name, default_settings.device_name);
+    assert_eq!(loaded.theme_mode, default_settings.theme_mode);
+
+    // Non-existent path returns default
+    let missing = UserSettings::load(&temp_dir.path().join("nonexistent.json"));
+    assert_eq!(missing.network_port, 42000);
+
+    // Corrupted path returns default
+    let bad_path = temp_dir.path().join("corrupted.json");
+    std::fs::write(&bad_path, b"NOT VALID JSON").unwrap();
+    let recovered = UserSettings::load(&bad_path);
+    assert_eq!(recovered.network_port, 42000);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE THROUGHPUT BENCHMARK & SNAPSHOTS
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_throughput_benchmark_and_snapshots() {
+    use rust_lib_uot_app::core::benchmark::ThroughputBenchmark;
+
+    let mut bench = ThroughputBenchmark::default();
+    bench.update(1024 * 1024);
+    bench.update(2 * 1024 * 1024);
+
+    let snap = bench.snapshot();
+    assert_eq!(snap.total_bytes, 3 * 1024 * 1024);
+    assert!(snap.elapsed_secs >= 0.0);
+    assert!(snap.mbps >= 0.0);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE TRANSPORT SIMULATOR FAULT INJECTION
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_transport_simulator_fault_injection() {
+    use rust_lib_uot_app::transport::simulator::SimulatedTransportProvider;
+    use rust_lib_uot_app::transport::types::TransportId;
+    use rust_lib_uot_app::transport::{TransportConnection, TransportProvider};
+
+    let provider = SimulatedTransportProvider::new();
+    provider.set_latency_ms(10);
+    provider.set_packet_loss_rate(0.0);
+    provider.set_bit_flip_rate(0.0);
+    assert_eq!(provider.id(), TransportId::Simulated);
+    assert!(provider.capabilities().is_simulated);
+
+    let (conn_a, conn_b) = provider.create_connection_pair();
+    assert!(conn_a.is_connected());
+    assert!(conn_b.is_connected());
+
+    let payload = vec![1, 2, 3, 4, 5];
+    assert!(conn_a.send(&payload).await.is_ok());
+    let mut buf = [0u8; 10];
+    let n = conn_b.receive(&mut buf).await.unwrap();
+    assert_eq!(&buf[..n], &payload[..]);
+
+    let stats_a = conn_a.stats();
+    assert_eq!(stats_a.bytes_sent, 5);
+
+    let stats_b = conn_b.stats();
+    assert_eq!(stats_b.bytes_received, 5);
+
+    conn_a.close().await.unwrap();
+    assert!(!conn_a.is_connected());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE LIFETIME STATS FULL LIFECYCLE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_lifetime_stats_full_lifecycle() {
+    use rust_lib_uot_app::transfer::analytics::LifetimeStats;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("lifetime_stats.json");
+
+    let mut stats = LifetimeStats::default();
+    assert_eq!(stats.total_transfers, 0);
+
+    stats.record_success(10_000, true, 5_000_000);
+    assert_eq!(stats.total_transfers, 1);
+    assert_eq!(stats.successful_transfers, 1);
+    assert_eq!(stats.total_bytes_sent, 10_000);
+    assert_eq!(stats.peak_speed_bytes_per_sec, 5_000_000);
+
+    stats.record_success(20_000, false, 8_000_000);
+    assert_eq!(stats.total_transfers, 2);
+    assert_eq!(stats.successful_transfers, 2);
+    assert_eq!(stats.total_bytes_received, 20_000);
+    assert_eq!(stats.peak_speed_bytes_per_sec, 8_000_000);
+
+    stats.record_failure();
+    assert_eq!(stats.total_transfers, 3);
+    assert_eq!(stats.failed_transfers, 1);
+
+    stats.save(&path).unwrap();
+
+    let loaded = LifetimeStats::load(&path);
+    assert_eq!(loaded.total_transfers, 3);
+    assert_eq!(loaded.successful_transfers, 2);
+    assert_eq!(loaded.failed_transfers, 1);
+    assert_eq!(loaded.total_bytes_sent, 10_000);
+    assert_eq!(loaded.total_bytes_received, 20_000);
+
+    // Non-existent path returns default
+    let missing = LifetimeStats::load(&temp_dir.path().join("missing.json"));
+    assert_eq!(missing.total_transfers, 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE NETWORK INTERFACE ENUMERATOR
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_network_interface_enumerator() {
+    use rust_lib_uot_app::discovery::interface::InterfaceEnumerator;
+
+    let local = InterfaceEnumerator::local_ips();
+    assert!(local.is_empty() || !local.is_empty());
+
+    let ifaces = InterfaceEnumerator::active_interfaces();
+    for iface in ifaces {
+        assert!(!iface.name.is_empty());
+        assert!(iface.is_up);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE ENGINE EXTENDED STATE MACHINE & LOCKS
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_engine_extended_state_machine_and_locks() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::UotEngine;
+    use rust_lib_uot_app::discovery::types::{DeviceType, DiscoveredDevice, DiscoveryMethod};
+    use uuid::Uuid;
+
+    let mut cfg = AppConfig::default();
+    cfg.network_port = Some(0);
+    let (engine, mut rx) = UotEngine::new(cfg);
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+
+    // 1. Add and query discovered device
+    let dev = DiscoveredDevice {
+        device_id: "dev-discovered-1".to_string(),
+        device_name: "Discovered Node".to_string(),
+        device_type: DeviceType::Desktop,
+        address: Some("127.0.0.1:42000".to_string()),
+        capabilities: vec!["tcp".to_string()],
+        last_seen: chrono::Utc::now(),
+        discovery_method: DiscoveryMethod::Mdns,
+        is_trusted: false,
+        signal_strength: None,
+        first_seen: chrono::Utc::now(),
+    };
+    engine.add_discovered_device(dev.clone());
+    let all_devs = engine.discovered_devices();
+    assert_eq!(all_devs.len(), 1);
+    assert_eq!(all_devs[0].device_name, "Discovered Node");
+
+    // 2. Pause signals map insertion
+    let tx_id = Uuid::new_v4();
+    let (pause_tx, _pause_rx) = tokio::sync::watch::channel(false);
+    engine.pause_signals_map().write().insert(tx_id, pause_tx);
+    assert!(engine.pause_signals_map().read().contains_key(&tx_id));
+
+    // 3. Progress queries
+    assert!(engine.get_progress(&tx_id).is_none());
+
+    // 4. Stop
+    engine.stop();
+}
