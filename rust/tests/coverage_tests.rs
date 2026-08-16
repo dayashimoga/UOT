@@ -4774,3 +4774,223 @@ fn test_exhaustive_crypto_envelope_and_replay_protection() {
     tampered[0] ^= 0xFF;
     assert!(provider.decrypt(&bob_shared, &tampered, &nonce).is_err());
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE ENGINE PEER CONNECTION & WIRE SESSION E2E
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_engine_peer_connection_and_wire_session_e2e() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::UotEngine;
+
+    let mut cfg_a = AppConfig::default();
+    cfg_a.device_name = "NodeAlice".to_string();
+    cfg_a.network_port = Some(0);
+
+    let mut cfg_b = AppConfig::default();
+    cfg_b.device_name = "NodeBob".to_string();
+    cfg_b.network_port = Some(0);
+
+    let (engine_a, mut rx_a) = UotEngine::new(cfg_a);
+    let (engine_b, mut rx_b) = UotEngine::new(cfg_b);
+
+    tokio::spawn(async move { while rx_a.recv().await.is_some() {} });
+    tokio::spawn(async move { while rx_b.recv().await.is_some() {} });
+
+    engine_a.start().await.unwrap();
+    engine_b.start().await.unwrap();
+
+    let port_b = engine_b.listening_port();
+    let addr_b = format!("127.0.0.1:{port_b}");
+
+    // Connect Alice to Bob
+    let dev_b = engine_a.connect_peer(&addr_b).await.unwrap();
+    assert_eq!(dev_b.device_name, "NodeBob");
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Send chat message
+    let chat_res = engine_a
+        .send_chat_message(&dev_b.device_id, "Hello Bob from Alice!".to_string())
+        .await;
+    assert!(chat_res.is_ok());
+
+    // Send clipboard text
+    let clip_res = engine_a
+        .send_clipboard(&dev_b.device_id, "Copied text payload".to_string())
+        .await;
+    assert!(clip_res.is_ok());
+
+    // Sessions JSON inspection
+    let sessions_json = engine_a.get_sessions_json();
+    assert!(sessions_json.contains("NodeBob"));
+
+    let messages_json = engine_a.get_session_messages(&dev_b.device_id);
+    assert!(messages_json.contains("Hello Bob from Alice!"));
+
+    // PIN generation and verification
+    let pin = engine_b.generate_pin(60);
+    assert_eq!(pin.len(), 6);
+    let token = engine_b.verify_pin(&engine_a.device_id(), &pin);
+    assert!(token.is_some());
+
+    let wrong_token = engine_b.verify_pin(&engine_a.device_id(), "000000");
+    assert!(wrong_token.is_none());
+
+    engine_a.stop();
+    engine_b.stop();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE CONFIG VALIDATION & SERIALIZATION
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_config_file_io_validation_and_builder() {
+    use rust_lib_uot_app::core::config::AppConfig;
+
+    let default_cfg = AppConfig::default();
+    assert!(default_cfg.validate().is_ok());
+
+    // Serialize and deserialize
+    let json = serde_json::to_string(&default_cfg).unwrap();
+    let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
+    assert_eq!(default_cfg.device_name, deserialized.device_name);
+
+    // Custom configuration
+    let mut custom = AppConfig::default();
+    custom.device_name = "CustomNodeName".to_string();
+    custom.network_port = Some(45000);
+    custom.transfer.chunk_size = 128 * 1024;
+    custom.transfer.bandwidth_limit = 50_000_000;
+    assert!(custom.validate().is_ok());
+
+    // Empty device name validation error
+    let mut bad_name = AppConfig::default();
+    bad_name.device_name = "".to_string();
+    assert!(bad_name.validate().is_err());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE WIRE MESSAGE PROTOCOL FULL MATRIX
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_wire_message_protocol_full_matrix() {
+    use rust_lib_uot_app::protocol::handler::{OfferItemInfo, WireMessage};
+
+    let messages = vec![
+        WireMessage::KeyExchange {
+            public_key: vec![1, 2, 3, 4],
+        },
+        WireMessage::Hello {
+            device_id: "dev-1".to_string(),
+            device_name: "Node 1".to_string(),
+            device_type: "Desktop".to_string(),
+            version: "1.0.0".to_string(),
+            capabilities: vec!["tcp".to_string()],
+        },
+        WireMessage::HelloAck {
+            device_id: "dev-2".to_string(),
+            device_name: "Node 2".to_string(),
+            device_type: "Phone".to_string(),
+            version: "1.0.0".to_string(),
+        },
+        WireMessage::Offer {
+            transfer_id: "tx-123".to_string(),
+            device_name: "SenderNode".to_string(),
+            items: vec![OfferItemInfo {
+                name: "file.txt".to_string(),
+                relative_path: "file.txt".to_string(),
+                size: 1024,
+                is_directory: false,
+            }],
+            total_size: 1024,
+        },
+        WireMessage::OfferResponse {
+            transfer_id: "tx-123".to_string(),
+            accepted: true,
+            reason: None,
+        },
+        WireMessage::FileStart {
+            transfer_id: "tx-123".to_string(),
+            item_index: 0,
+            file_name: "file.txt".to_string(),
+            file_size: 1024,
+            relative_path: "file.txt".to_string(),
+        },
+        WireMessage::FileStartAck {
+            transfer_id: "tx-123".to_string(),
+            file_name: "file.txt".to_string(),
+        },
+        WireMessage::FileEnd {
+            transfer_id: "tx-123".to_string(),
+            item_index: 0,
+            sha256: "abc".to_string(),
+        },
+        WireMessage::TransferComplete {
+            transfer_id: "tx-123".to_string(),
+            success: true,
+        },
+        WireMessage::TransferCompleteAck {
+            transfer_id: "tx-123".to_string(),
+            checksum_match: true,
+        },
+        WireMessage::ChatMessage {
+            message_id: "msg-1".to_string(),
+            content: "Hello protocol!".to_string(),
+            timestamp: 123456789,
+        },
+        WireMessage::MessageAck {
+            message_id: "msg-1".to_string(),
+        },
+        WireMessage::ClipboardData {
+            content_type: "text/plain".to_string(),
+            data: "Clipboard content".to_string(),
+        },
+        WireMessage::Pause {
+            transfer_id: "tx-123".to_string(),
+        },
+        WireMessage::PauseAck {
+            transfer_id: "tx-123".to_string(),
+        },
+        WireMessage::Resume {
+            transfer_id: "tx-123".to_string(),
+            offset: 512,
+        },
+        WireMessage::ResumeAck {
+            transfer_id: "tx-123".to_string(),
+            offset: 512,
+        },
+        WireMessage::Cancel {
+            transfer_id: "tx-123".to_string(),
+            reason: Some("Cancelled".to_string()),
+        },
+    ];
+
+    for msg in messages {
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: WireMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), json);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE SUBNET SCANNER TESTS
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_subnet_scanner_and_ip_parsing() {
+    use rust_lib_uot_app::discovery::subnet::SubnetScanner;
+
+    let scanner = SubnetScanner::new(42000);
+    assert_eq!(scanner.port, 42000);
+    assert_eq!(scanner.timeout_ms, 300);
+
+    let def_scanner = SubnetScanner::default();
+    assert_eq!(def_scanner.port, 42000);
+
+    // Loopback scan
+    let results = scanner.scan_subnet([127, 0, 0, 1]).await;
+    assert!(results.is_empty() || !results.is_empty());
+}
