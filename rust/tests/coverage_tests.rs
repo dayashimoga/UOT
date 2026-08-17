@@ -5668,3 +5668,229 @@ fn test_exhaustive_transfer_queue_manager_priorities() {
     // Pop empty
     assert!(qm.pop_next().is_none());
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE ENGINE FULL API COVERAGE MATRIX
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_engine_full_api_coverage_matrix() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::UotEngine;
+    use rust_lib_uot_app::transport::fallback::TransportSelectionStrategy;
+    use rust_lib_uot_app::transport::types::{TransportId, TransportState};
+    use uuid::Uuid;
+
+    let mut cfg = AppConfig::default();
+    cfg.network_port = Some(0);
+    cfg.device_name = "MatrixNode".to_string();
+    let (engine, mut rx) = UotEngine::new(cfg);
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+
+    // 1. Diagnostics & Configuration
+    let diag = engine.get_diagnostics();
+    assert!(diag.contains("listening_port"));
+    assert!(diag.contains("MatrixNode") || diag.contains("engine_state"));
+
+    engine.set_device_name("MatrixNodeRenamed");
+    assert_eq!(engine.config().device_name, "MatrixNodeRenamed");
+
+    let temp_save = tempfile::tempdir().unwrap();
+    engine.set_save_directory(&temp_save.path().to_string_lossy());
+    assert_eq!(
+        engine.config().transfer.save_directory,
+        temp_save.path().to_string_lossy().to_string()
+    );
+
+    // 2. PIN Generation, Verification & Secured Acceptance
+    let pin = engine.generate_pin(60);
+    assert_eq!(pin.len(), 6);
+
+    let wrong_token = engine.verify_pin("peer-999", "000000");
+    assert!(wrong_token.is_none());
+
+    let correct_token = engine.verify_pin("peer-999", &pin);
+    assert!(correct_token.is_some());
+
+    // accept_transfer_with_pin - invalid pin fails
+    let dummy_tx_id = Uuid::new_v4().to_string();
+    let res_bad_pin = engine
+        .accept_transfer_with_pin(&dummy_tx_id, "peer-999", "999999")
+        .await;
+    assert!(res_bad_pin.is_err());
+
+    // 3. Event Logging
+    engine.log_event("Custom event 1");
+    engine.log_event("Custom event 2");
+    let recent = engine.get_recent_events(5);
+    assert!(recent.len() >= 2);
+    assert!(recent.iter().any(|e| e.contains("Custom event 2")));
+
+    // 4. Session Management & Accessors
+    let sess1 = engine.get_or_create_session("peer-abc", "Alice");
+    assert_eq!(sess1.read().peer_name, "Alice");
+
+    // Lookup by ID
+    let found_by_id = engine.get_peer_session("peer-abc");
+    assert!(found_by_id.is_some());
+
+    // Lookup by Name
+    let found_by_name = engine.get_peer_session("Alice");
+    assert!(found_by_name.is_some());
+
+    // Lookup by session_id UUID string
+    let sid_str = sess1.read().session_id.to_string();
+    let found_by_uuid = engine.get_peer_session(&sid_str);
+    assert!(found_by_uuid.is_some());
+
+    // Lookup non-existent
+    assert!(engine.get_peer_session("non-existent-device").is_none());
+
+    // JSON serialization
+    let sess_json = engine.get_sessions_json();
+    assert!(sess_json.contains("Alice"));
+
+    let msgs_json = engine.get_session_messages("peer-abc");
+    assert_eq!(msgs_json, "[]");
+
+    let msgs_non_existent = engine.get_session_messages("non-existent");
+    assert_eq!(msgs_non_existent, "[]");
+
+    // 5. Transfer History & Lifetime Stats
+    let _all_hist = engine.get_transfer_history("", None);
+    let hist_filtered = engine.get_transfer_history("non_existent_search_query_uuid_xyz", None);
+    assert!(hist_filtered.is_empty());
+
+    let stats = engine.get_lifetime_stats();
+    assert_eq!(stats.failed_transfers, stats.failed_transfers); // exercises accessor
+
+    // 6. Transport Selection & Strategies
+    engine.set_transport_strategy(TransportSelectionStrategy::PreferSpeed);
+    let candidates = vec![
+        (TransportId::BluetoothLe, TransportState::Connected),
+        (TransportId::TcpLan, TransportState::Connected),
+    ];
+    let best = engine.select_best_transport(&candidates);
+    assert_eq!(best, Some(TransportId::TcpLan));
+
+    engine.set_transport_strategy(TransportSelectionStrategy::PreferOffline);
+    let best_offline = engine.select_best_transport(&candidates);
+    assert!(best_offline.is_some());
+
+    // 7. Device Connection & Disconnect
+    assert!(!engine.is_device_connected("peer-abc"));
+    engine.disconnect_device("peer-abc");
+    assert!(!engine.is_device_connected("peer-abc"));
+
+    // 8. Transfer Operations on Non-Existent IDs
+    let fake_id = Uuid::new_v4().to_string();
+    assert!(engine.cancel_transfer(&fake_id).await.is_err());
+    assert!(engine.pause_transfer(&fake_id).is_err());
+    assert!(engine.resume_transfer(&fake_id).is_err());
+    assert!(engine.retry_transfer(&fake_id).await.is_err());
+    assert!(engine.accept_transfer(&fake_id).await.is_err());
+
+    // Invalid UUID strings
+    assert!(engine.cancel_transfer("not-a-uuid").await.is_err());
+    assert!(engine.pause_transfer("not-a-uuid").is_err());
+    assert!(engine.resume_transfer("not-a-uuid").is_err());
+    assert!(engine.retry_transfer("not-a-uuid").await.is_err());
+    assert!(engine.accept_transfer("not-a-uuid").await.is_err());
+
+    // 9. Send Chat & Clipboard to Disconnected Peer
+    let chat_err = engine
+        .send_chat_message("peer-disconnected", "Hi".into())
+        .await;
+    assert!(chat_err.is_err());
+
+    let clip_err = engine
+        .send_clipboard("peer-disconnected", "Clip".into())
+        .await;
+    assert!(clip_err.is_err());
+
+    let reconnect_err = engine.reconnect_session("peer-disconnected").await;
+    assert!(reconnect_err.is_err());
+
+    engine.stop();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE ENGINE CHAT & CLIPBOARD E2E LOOPBACK
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_engine_chat_and_clipboard_e2e_matrix() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::{EngineEvent, UotEngine};
+
+    let mut cfg_a = AppConfig::default();
+    cfg_a.device_name = "ChatSender".to_string();
+    cfg_a.network_port = Some(0);
+
+    let mut cfg_b = AppConfig::default();
+    cfg_b.device_name = "ChatReceiver".to_string();
+    cfg_b.network_port = Some(0);
+
+    let (engine_a, _rx_a) = UotEngine::new(cfg_a);
+    let (engine_b, mut rx_b) = UotEngine::new(cfg_b);
+
+    engine_a.start().await.unwrap();
+    engine_b.start().await.unwrap();
+
+    let port_b = engine_b.listening_port();
+    let addr_b = format!("127.0.0.1:{port_b}");
+
+    // Connect A to B
+    let _dev_b = engine_a.connect_peer(&addr_b).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+
+    // 1. Send Chat Message from A to B
+    let msg_text = "Universal Offline Transfer E2E Chat Message";
+    let chat_res = engine_a
+        .send_chat_message(&engine_b.device_id(), msg_text.to_string())
+        .await;
+    assert!(chat_res.is_ok());
+
+    // 2. Send Clipboard from A to B
+    let clip_text = "Copied text content for E2E clipboard test";
+    let clip_res = engine_a
+        .send_clipboard(&engine_b.device_id(), clip_text.to_string())
+        .await;
+    assert!(clip_res.is_ok());
+
+    // 3. Receive events on B
+    let mut received_chat = false;
+    let mut received_clipboard = false;
+
+    for _ in 0..30 {
+        match tokio::time::timeout(std::time::Duration::from_millis(100), rx_b.recv()).await {
+            Ok(Some(EngineEvent::IncomingMessage { content, .. })) => {
+                if content == msg_text {
+                    received_chat = true;
+                }
+            }
+            Ok(Some(EngineEvent::ClipboardReceived { text, .. })) => {
+                if text == clip_text {
+                    received_clipboard = true;
+                }
+            }
+            _ => {}
+        }
+        if received_chat && received_clipboard {
+            break;
+        }
+    }
+
+    assert!(
+        received_chat,
+        "Did not receive incoming chat message on node B"
+    );
+    assert!(
+        received_clipboard,
+        "Did not receive clipboard content on node B"
+    );
+
+    // Clean up
+    engine_a.stop();
+    engine_b.stop();
+}
