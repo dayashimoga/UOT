@@ -65,18 +65,15 @@ jobs:
           # - streaming: requires real camera/screen/audio hardware and media capture pipelines
           cargo tarpaulin --engine llvm --manifest-path rust/Cargo.toml --all-targets --ignore-tests --out xml --out stdout --output-dir rust/target/coverage --skip-clean --exclude-files "*frb_generated*" --exclude-files "*src/api*" --exclude-files "*load_stress*" --exclude-files "*src/testing*" --exclude-files "*transport/simulator*" --exclude-files "*core/benchmark*" --exclude-files "*discovery/mdns*" --exclude-files "*transport/quic*" --exclude-files "*transport/ble*" --exclude-files "*transport/wifidirect*" --exclude-files "*transport/usb*" --exclude-files "*transport/webrtc*" --exclude-files "*transport/hotspot*" --exclude-files "*streaming*" -- --test-threads=1 2>&1 | tee rust/target/coverage/tarpaulin.log
 
-      - name: Check coverage threshold (>= 80%)
+      - name: Check coverage threshold (>= 82%)
         run: |
-          # Threshold: 80% (realistic for a project with heavy async I/O code)
-          # core/engine.rs (420 lines) has ~47% coverage because start(), handle_incoming_connection(),
-          # run_transfer_send/receive() require real TCP+mDNS networking. These paths are tested
-          # by E2E integration tests (e2e_transfer.rs) and the virtual node harness instead.
+          # Threshold: 82%
           COVERAGE=$(grep -oP '\d+\.\d+% coverage' rust/target/coverage/tarpaulin.log | tail -1 | grep -oP '\d+\.\d+')
           echo "Coverage: ${COVERAGE}%"
           if [ -z "$COVERAGE" ]; then
             echo "::warning::Could not parse coverage percentage"
-          elif (( $(echo "$COVERAGE < 80.0" | bc -l) )); then
-            echo "::error::Coverage ${COVERAGE}% is below 80% threshold"
+          elif (( $(echo "$COVERAGE < 82.0" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below 82% threshold"
             exit 1
           else
             echo "✅ Coverage ${COVERAGE}% meets threshold"

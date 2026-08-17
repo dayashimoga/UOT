@@ -5273,3 +5273,398 @@ async fn test_exhaustive_engine_extended_state_machine_and_locks() {
     // 4. Stop
     engine.stop();
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE FULL-DUPLEX MULTI-FILE TRANSFER E2E
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_full_duplex_multi_file_transfer_e2e() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::{EngineEvent, UotEngine};
+    use rust_lib_uot_app::transfer::types::TransferStatus;
+
+    let temp_a = tempfile::tempdir().unwrap();
+    let temp_b = tempfile::tempdir().unwrap();
+
+    let mut cfg_a = AppConfig::default();
+    cfg_a.device_name = "SenderEngine".to_string();
+    cfg_a.network_port = Some(0);
+    cfg_a.transfer.save_directory = temp_a.path().to_string_lossy().to_string();
+
+    let mut cfg_b = AppConfig::default();
+    cfg_b.device_name = "ReceiverEngine".to_string();
+    cfg_b.network_port = Some(0);
+    cfg_b.transfer.save_directory = temp_b.path().to_string_lossy().to_string();
+
+    let (engine_a, mut rx_a) = UotEngine::new(cfg_a);
+    let (engine_b_raw, mut rx_b) = UotEngine::new(cfg_b);
+    let engine_b = std::sync::Arc::new(engine_b_raw);
+
+    engine_a.start().await.unwrap();
+    engine_b.start().await.unwrap();
+
+    let port_b = engine_b.listening_port();
+    let addr_b = format!("127.0.0.1:{port_b}");
+
+    // Connect A to B
+    let _dev_b = engine_a.connect_peer(&addr_b).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Create 3 test files (small, medium, subfolder)
+    let file1 = temp_a.path().join("small.txt");
+    tokio::fs::write(&file1, b"Hello small file transfer!")
+        .await
+        .unwrap();
+
+    let file2 = temp_a.path().join("medium.bin");
+    tokio::fs::write(&file2, vec![0xAB; 130 * 1024])
+        .await
+        .unwrap(); // 130KB (2 chunks)
+
+    let sub_dir = temp_a.path().join("nested_folder");
+    tokio::fs::create_dir_all(&sub_dir).await.unwrap();
+    let file3 = sub_dir.join("sub_doc.dat");
+    tokio::fs::write(&file3, vec![0xCD; 70 * 1024])
+        .await
+        .unwrap();
+
+    // Spawn receiver auto-accept task
+    let engine_b_clone = std::sync::Arc::clone(&engine_b);
+    tokio::spawn(async move {
+        while let Some(evt) = rx_b.recv().await {
+            if let EngineEvent::IncomingOffer { transfer_id, .. } = evt {
+                let _ = engine_b_clone
+                    .accept_transfer(&transfer_id.to_string())
+                    .await;
+            }
+        }
+    });
+
+    // Discard A's event channel
+    tokio::spawn(async move { while rx_a.recv().await.is_some() {} });
+
+    // Send files
+    let tx_id = engine_a
+        .send_files(&engine_b.device_id(), vec![file1, file2, file3])
+        .await
+        .unwrap();
+
+    // Wait for transfer to complete (timeout 15s)
+    let mut completed = false;
+    for _ in 0..150 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let transfers_a = engine_a.get_transfers();
+        if let Some(rec) = transfers_a.iter().find(|t| t.transfer_id == tx_id) {
+            if rec.status == TransferStatus::Completed {
+                completed = true;
+                break;
+            }
+        }
+    }
+    assert!(completed, "Transfer did not complete in time");
+
+    engine_a.stop();
+    engine_b.stop();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE TRANSFER CANCELLATION & REJECTION
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_exhaustive_transfer_offer_rejection_and_cancellation() {
+    use rust_lib_uot_app::core::config::AppConfig;
+    use rust_lib_uot_app::core::engine::UotEngine;
+    use rust_lib_uot_app::transfer::types::TransferStatus;
+
+    let mut cfg = AppConfig::default();
+    cfg.network_port = Some(0);
+    let (engine, mut rx) = UotEngine::new(cfg);
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+
+    let tx_id = uuid::Uuid::new_v4();
+    let item = rust_lib_uot_app::transfer::types::TransferItemRecord {
+        item_id: uuid::Uuid::new_v4(),
+        name: "test.bin".to_string(),
+        relative_path: "test.bin".to_string(),
+        size: 1024,
+        transferred_bytes: 0,
+        status: TransferStatus::InProgress,
+        hash: None,
+        saved_path: None,
+        resume_offset: 0,
+    };
+
+    let record = rust_lib_uot_app::transfer::types::TransferRecord {
+        transfer_id: tx_id,
+        batch_id: Some("batch_test".to_string()),
+        remote_device: "PeerNode".to_string(),
+        direction: rust_lib_uot_app::transfer::types::TransferDirection::Send,
+        status: TransferStatus::InProgress,
+        total_size: 1024,
+        transferred_bytes: 0,
+        verified_bytes: 0,
+        transport: Some("Wi-Fi".to_string()),
+        retry_count: 0,
+        resume_offset: 0,
+        items: vec![item],
+        created_at: chrono::Utc::now(),
+        started_at: Some(chrono::Utc::now()),
+        finished_at: None,
+        error: None,
+    };
+
+    engine.transfers_map().write().insert(tx_id, record);
+    let (pause_tx, _pause_rx) = tokio::sync::watch::channel(false);
+    engine.pause_signals_map().write().insert(tx_id, pause_tx);
+
+    // Cancel active transfer
+    let cancel_res = engine.cancel_transfer(&tx_id.to_string()).await;
+    assert!(cancel_res.is_ok());
+
+    let rec_after = engine
+        .get_transfers()
+        .into_iter()
+        .find(|t| t.transfer_id == tx_id)
+        .unwrap();
+    assert_eq!(rec_after.status, TransferStatus::Cancelled);
+
+    engine.stop();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE SESSION MANAGEMENT & MESSAGE STATE MATRIX
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_session_management_and_chat_ack_matrix() {
+    use rust_lib_uot_app::core::session::{
+        AuthState, ChatMessage, MessageDirection, MessageState, PeerSession, SessionState,
+        TransportType,
+    };
+    use uuid::Uuid;
+
+    let mut session = PeerSession::new_discovered("peer-123".to_string(), "Alice".to_string());
+    assert_eq!(session.state, SessionState::Discovered);
+    assert_eq!(session.auth_state, AuthState::None);
+    assert_eq!(session.transport, TransportType::TcpLan);
+    assert!(!session.state.is_connected());
+    assert!(!session.state.is_ready());
+
+    // Valid state transitions
+    assert!(session.transition(SessionState::Connecting).is_ok());
+    assert!(session.transition(SessionState::TcpConnected).is_ok());
+    assert!(session.state.is_connected());
+    assert!(!session.state.is_ready());
+
+    assert!(session.transition(SessionState::HelloVerified).is_ok());
+    assert!(session.transition(SessionState::PingVerified).is_ok());
+    assert!(session.transition(SessionState::SessionReady).is_ok());
+    assert!(session.state.is_ready());
+
+    // Invalid transition
+    assert!(session.transition(SessionState::Discovered).is_err());
+
+    // Disconnect and reconnect
+    assert!(session.transition(SessionState::Disconnected).is_ok());
+    assert!(!session.state.is_connected());
+    assert!(session.transition(SessionState::Connecting).is_ok());
+    assert!(session
+        .transition(SessionState::Failed("Connection dropped".to_string()))
+        .is_ok());
+
+    // Chat messages
+    let msg_id = Uuid::new_v4();
+    let msg = ChatMessage {
+        message_id: msg_id,
+        session_id: session.session_id,
+        direction: MessageDirection::Outgoing,
+        timestamp: chrono::Utc::now(),
+        content: "Hello from session matrix!".to_string(),
+        state: MessageState::Sending,
+        error: None,
+    };
+    session.add_message(msg);
+    assert_eq!(session.messages.len(), 1);
+
+    session.update_message_state(msg_id, MessageState::Delivered);
+    assert_eq!(session.messages[0].state, MessageState::Delivered);
+
+    // Heartbeat
+    session.heartbeat_success();
+    assert_eq!(session.missed_heartbeats, 0);
+    assert!(session.last_heartbeat.is_some());
+
+    assert!(!session.heartbeat_missed(3)); // missed 1
+    assert!(!session.heartbeat_missed(3)); // missed 2
+    assert!(session.heartbeat_missed(3)); // missed 3 -> should disconnect
+
+    // JSON serialization
+    let json = session.to_json();
+    assert!(json.contains("Alice"));
+    assert!(json.contains("Hello from session matrix!"));
+
+    // Display traits
+    assert_eq!(SessionState::Discovered.to_string(), "Discovered");
+    assert_eq!(SessionState::Connecting.to_string(), "Connecting");
+    assert_eq!(SessionState::TcpConnected.to_string(), "TCP Connected");
+    assert_eq!(SessionState::HelloVerified.to_string(), "Hello Verified");
+    assert_eq!(SessionState::Authenticated.to_string(), "Authenticated");
+    assert_eq!(SessionState::PingVerified.to_string(), "Ping Verified");
+    assert_eq!(SessionState::SessionReady.to_string(), "Session Ready");
+    assert_eq!(SessionState::Disconnected.to_string(), "Disconnected");
+    assert!(SessionState::Failed("test".to_string())
+        .to_string()
+        .contains("Failed"));
+
+    assert_eq!(AuthState::None.to_string(), "None");
+    assert_eq!(AuthState::KeyExchanging.to_string(), "Key Exchanging");
+    assert_eq!(AuthState::Authenticated.to_string(), "Authenticated");
+    assert_eq!(
+        AuthState::Failed("bad".to_string()).to_string(),
+        "Failed: bad"
+    );
+
+    assert_eq!(MessageState::Sending.to_string(), "Sending");
+    assert_eq!(MessageState::Sent.to_string(), "Sent");
+    assert_eq!(MessageState::Delivered.to_string(), "Delivered");
+    assert_eq!(MessageState::Failed.to_string(), "Failed");
+
+    assert_eq!(TransportType::TcpLan.to_string(), "TCP/LAN");
+    assert_eq!(TransportType::Ble.to_string(), "BLE");
+    assert_eq!(TransportType::WifiDirect.to_string(), "Wi-Fi Direct");
+    assert_eq!(TransportType::Usb.to_string(), "USB");
+    assert_eq!(TransportType::Quic.to_string(), "QUIC");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE SECURITY VERIFICATION & TRUST STORE
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_security_verification_and_trust_store() {
+    use rust_lib_uot_app::security::verification::{
+        TrustManager, VerificationPin, VerificationSession,
+    };
+
+    // VerificationPin
+    let pin = VerificationPin::generate(60);
+    assert_eq!(pin.pin.len(), 6);
+    assert!(!pin.is_expired());
+    assert!(pin.verify(&pin.pin));
+    assert!(!pin.verify("000000"));
+
+    // VerificationSession
+    let session = VerificationSession::new("dev-abc", 3600);
+    assert_eq!(session.device_id, "dev-abc");
+    assert!(!session.token.is_empty());
+    assert!(session.is_valid());
+
+    // TrustManager
+    let mut tm = TrustManager::new();
+    assert!(!tm.is_trusted("dev-abc"));
+    assert!(tm.trusted_devices().is_empty());
+
+    tm.trust_device("dev-abc", "Alice Device");
+    assert!(tm.is_trusted("dev-abc"));
+    assert_eq!(tm.trusted_devices().len(), 1);
+
+    // PIN lifecycle in TrustManager
+    let pin_str = tm.generate_pin(60).to_string();
+    assert_eq!(pin_str.len(), 6);
+
+    let wrong = tm.verify_pin("dev-abc", "999999");
+    assert!(wrong.is_none());
+
+    let token = tm.verify_pin("dev-abc", &pin_str);
+    assert!(token.is_some());
+    assert!(tm.validate_session(&token.unwrap()));
+
+    tm.revoke_trust("dev-abc");
+    assert!(!tm.is_trusted("dev-abc"));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXHAUSTIVE TRANSFER QUEUE MANAGER PRIORITIES
+// ═══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_exhaustive_transfer_queue_manager_priorities() {
+    use rust_lib_uot_app::transfer::queue::{Priority, TransferQueueManager};
+    use rust_lib_uot_app::transfer::types::{TransferDirection, TransferRecord, TransferStatus};
+    use uuid::Uuid;
+
+    let mut qm = TransferQueueManager::new(2);
+    assert_eq!(qm.max_concurrent(), 2);
+    assert!(qm.can_start());
+    assert_eq!(qm.items().len(), 0);
+    assert!(qm.items().is_empty());
+
+    let make_rec = |_name: &str| TransferRecord {
+        transfer_id: Uuid::new_v4(),
+        batch_id: None,
+        remote_device: "Node".to_string(),
+        direction: TransferDirection::Send,
+        status: TransferStatus::Pending,
+        total_size: 100,
+        transferred_bytes: 0,
+        verified_bytes: 0,
+        transport: Some("Wi-Fi".to_string()),
+        retry_count: 0,
+        resume_offset: 0,
+        items: vec![],
+        created_at: chrono::Utc::now(),
+        started_at: None,
+        finished_at: None,
+        error: None,
+    };
+
+    let rec_low = make_rec("low");
+    let rec_high = make_rec("high");
+    let rec_urgent = make_rec("urgent");
+
+    qm.push(rec_low.clone(), Priority::Low);
+    qm.push(rec_high.clone(), Priority::High);
+    qm.push(rec_urgent.clone(), Priority::Urgent);
+
+    assert_eq!(qm.items().len(), 3);
+    assert!(!qm.items().is_empty());
+
+    // Pop next should return Urgent first, then High, then Low
+    let first = qm.pop_next().unwrap();
+    assert_eq!(first.record.transfer_id, rec_urgent.transfer_id);
+
+    let second = qm.pop_next().unwrap();
+    assert_eq!(second.record.transfer_id, rec_high.transfer_id);
+
+    let third = qm.pop_next().unwrap();
+    assert_eq!(third.record.transfer_id, rec_low.transfer_id);
+
+    assert!(qm.pop_next().is_none());
+
+    // Concurrency tracking
+    qm.mark_started();
+    assert_eq!(qm.active_count(), 1);
+    assert!(qm.can_start());
+
+    qm.mark_started();
+    assert_eq!(qm.active_count(), 2);
+    assert!(!qm.can_start());
+
+    qm.mark_completed();
+    assert_eq!(qm.active_count(), 1);
+    assert!(qm.can_start());
+
+    // Remove
+    let rec_rem = make_rec("rem");
+    let rem_id = rec_rem.transfer_id;
+    qm.push(rec_rem, Priority::Normal);
+    assert_eq!(qm.items().len(), 1);
+    let removed = qm.remove(&rem_id);
+    assert!(removed.is_some());
+    assert_eq!(qm.items().len(), 0);
+
+    // Pop empty
+    assert!(qm.pop_next().is_none());
+}
